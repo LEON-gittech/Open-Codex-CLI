@@ -17,8 +17,11 @@ use codex_login::CodexAuth;
 use codex_login::auth_provider_from_auth;
 use codex_login::collect_auth_env_telemetry;
 use codex_login::default_client::build_reqwest_client;
-use codex_login::provider_uses_external_bearer_auth;
 use codex_login::required_auth_manager_for_provider;
+use codex_model_provider::ProviderAuthStrategy;
+use codex_model_provider::ProviderResolutionOptions;
+use codex_model_provider::RemoteModelRefreshPolicy;
+use codex_model_provider::ResolvedModelProvider;
 use codex_model_provider_info::ModelProviderInfo;
 use codex_otel::TelemetryAuthMode;
 use codex_protocol::config_types::CollaborationModeMask;
@@ -165,25 +168,15 @@ impl fmt::Display for RefreshStrategy {
     }
 }
 
-/// How the manager's base catalog is sourced for the lifetime of the process.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum CatalogMode {
-    /// Start from bundled `models.json` and allow cache/network refresh updates.
-    Default,
-    /// Use a caller-provided catalog as authoritative and do not mutate it via refresh.
-    Custom,
-}
-
 /// Coordinates remote model discovery plus cached metadata on disk.
 #[derive(Debug)]
 pub struct ModelsManager {
     remote_models: RwLock<Vec<ModelInfo>>,
-    catalog_mode: CatalogMode,
     collaboration_modes_config: CollaborationModesConfig,
     auth_manager: Arc<AuthManager>,
     etag: RwLock<Option<String>>,
     cache_manager: ModelsCacheManager,
-    provider: ModelProviderInfo,
+    provider: ResolvedModelProvider,
 }
 
 impl ModelsManager {
@@ -216,19 +209,21 @@ impl ModelsManager {
         provider: ModelProviderInfo,
     ) -> Self {
         let auth_manager = required_auth_manager_for_provider(auth_manager, &provider);
+        let provider = ResolvedModelProvider::resolve_with_options(
+            provider.name.clone(),
+            provider,
+            ProviderResolutionOptions { model_catalog },
+        )
+        .expect("model provider should resolve");
         let cache_path = codex_home.join(MODEL_CACHE_FILE);
         let cache_manager = ModelsCacheManager::new(cache_path, DEFAULT_MODEL_CACHE_TTL);
-        let catalog_mode = if model_catalog.is_some() {
-            CatalogMode::Custom
-        } else {
-            CatalogMode::Default
-        };
-        let remote_models = model_catalog
-            .map(|catalog| catalog.models)
+        let remote_models = provider
+            .model_catalog()
+            .static_models()
+            .map(|catalog| catalog.models.clone())
             .unwrap_or_else(|| Self::load_remote_models_from_file().unwrap_or_default());
         Self {
             remote_models: RwLock::new(remote_models),
-            catalog_mode,
             collaboration_modes_config,
             auth_manager,
             etag: RwLock::new(None),
@@ -392,13 +387,19 @@ impl ModelsManager {
 
     /// Refresh available models according to the specified strategy.
     async fn refresh_available_models(&self, refresh_strategy: RefreshStrategy) -> CoreResult<()> {
-        // don't override the custom model catalog if one was provided by the user
-        if matches!(self.catalog_mode, CatalogMode::Custom) {
+        // Don't override a provider-owned static catalog.
+        if matches!(
+            self.provider.model_catalog().remote_refresh_policy(),
+            RemoteModelRefreshPolicy::Disabled
+        ) {
             return Ok(());
         }
 
         if self.auth_manager.auth_mode() != Some(AuthMode::Chatgpt)
-            && !provider_uses_external_bearer_auth(&self.provider)
+            && !matches!(
+                self.provider.auth_strategy(),
+                ProviderAuthStrategy::ExternalBearer { .. }
+            )
         {
             if matches!(
                 refresh_strategy,
@@ -436,12 +437,11 @@ impl ModelsManager {
             codex_otel::start_global_timer("codex.remote_models.fetch_update.duration_ms", &[]);
         let auth = self.auth_manager.auth().await;
         let auth_mode = auth.as_ref().map(CodexAuth::auth_mode);
-        let api_provider = self.provider.to_api_provider(auth_mode)?;
-        let api_auth = auth_provider_from_auth(auth.clone(), &self.provider)?;
-        let auth_env = collect_auth_env_telemetry(
-            &self.provider,
-            self.auth_manager.codex_api_key_env_enabled(),
-        );
+        let provider = self.provider.info();
+        let api_provider = provider.to_api_provider(auth_mode)?;
+        let api_auth = auth_provider_from_auth(auth.clone(), provider)?;
+        let auth_env =
+            collect_auth_env_telemetry(provider, self.auth_manager.codex_api_key_env_enabled());
         let transport = ReqwestTransport::new(build_reqwest_client());
         let request_telemetry: Arc<dyn RequestTelemetry> = Arc::new(ModelsRequestTelemetry {
             auth_mode: auth_mode.map(|mode| TelemetryAuthMode::from(mode).to_string()),

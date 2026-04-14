@@ -8,6 +8,7 @@
 
 use codex_model_provider_info::ModelProviderInfo;
 use codex_protocol::config_types::ModelProviderAuthInfo;
+use codex_protocol::openai_models::ModelsResponse;
 use std::error::Error;
 use std::fmt;
 
@@ -23,6 +24,7 @@ pub trait ModelProvider {
     fn id(&self) -> &str;
     fn info(&self) -> &ModelProviderInfo;
     fn auth_strategy(&self) -> &ProviderAuthStrategy;
+    fn model_catalog(&self) -> &ProviderModelCatalog;
 }
 
 /// Auth strategy selected for a resolved model provider.
@@ -50,6 +52,51 @@ impl ProviderAuthStrategy {
     }
 }
 
+/// Options used when resolving config-facing provider metadata.
+///
+/// Most provider behavior is derived from `ModelProviderInfo`, but callers may
+/// provide an authoritative model catalog from config.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct ProviderResolutionOptions {
+    pub model_catalog: Option<ModelsResponse>,
+}
+
+/// Model catalog source selected for a resolved provider.
+#[derive(Debug, Clone, PartialEq)]
+pub enum ProviderModelCatalog {
+    /// Start from the bundled catalog and preserve the current cache/remote refresh behavior.
+    BundledWithOptionalRemoteRefresh,
+    /// Use a caller-provided catalog as authoritative.
+    Static { models: ModelsResponse },
+}
+
+impl ProviderModelCatalog {
+    /// Return the authoritative model list for static catalogs.
+    pub fn static_models(&self) -> Option<&ModelsResponse> {
+        match self {
+            Self::Static { models } => Some(models),
+            Self::BundledWithOptionalRemoteRefresh => None,
+        }
+    }
+
+    /// Return the remote refresh policy for this catalog.
+    pub fn remote_refresh_policy(&self) -> RemoteModelRefreshPolicy {
+        match self {
+            Self::Static { .. } => RemoteModelRefreshPolicy::Disabled,
+            Self::BundledWithOptionalRemoteRefresh => RemoteModelRefreshPolicy::ExistingAuthGated,
+        }
+    }
+}
+
+/// Whether a catalog source permits remote refresh.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RemoteModelRefreshPolicy {
+    /// Never refresh this catalog from remote or cache.
+    Disabled,
+    /// Use the existing auth-gated refresh policy from `codex-models-manager`.
+    ExistingAuthGated,
+}
+
 /// Resolved runtime provider facade.
 ///
 /// This type starts as an auth-only facade. Future provider-owned behavior
@@ -60,6 +107,7 @@ pub struct ResolvedModelProvider {
     id: ModelProviderId,
     info: ModelProviderInfo,
     auth: ProviderAuthStrategy,
+    model_catalog: ProviderModelCatalog,
 }
 
 impl ResolvedModelProvider {
@@ -68,13 +116,24 @@ impl ResolvedModelProvider {
         id: impl Into<ModelProviderId>,
         info: ModelProviderInfo,
     ) -> Result<Self, ResolveProviderError> {
+        Self::resolve_with_options(id, info, ProviderResolutionOptions::default())
+    }
+
+    /// Resolve provider metadata with runtime options supplied by config loading.
+    pub fn resolve_with_options(
+        id: impl Into<ModelProviderId>,
+        info: ModelProviderInfo,
+        options: ProviderResolutionOptions,
+    ) -> Result<Self, ResolveProviderError> {
         info.validate()
             .map_err(ResolveProviderError::InvalidConfig)?;
         let auth = resolve_auth(&info)?;
+        let model_catalog = resolve_model_catalog(options);
         Ok(Self {
             id: id.into(),
             info,
             auth,
+            model_catalog,
         })
     }
 
@@ -90,6 +149,11 @@ impl ResolvedModelProvider {
     pub fn auth_strategy(&self) -> &ProviderAuthStrategy {
         &self.auth
     }
+
+    /// Return the provider-owned model catalog strategy.
+    pub fn model_catalog(&self) -> &ProviderModelCatalog {
+        &self.model_catalog
+    }
 }
 
 impl ModelProvider for ResolvedModelProvider {
@@ -103,6 +167,10 @@ impl ModelProvider for ResolvedModelProvider {
 
     fn auth_strategy(&self) -> &ProviderAuthStrategy {
         &self.auth
+    }
+
+    fn model_catalog(&self) -> &ProviderModelCatalog {
+        &self.model_catalog
     }
 }
 
@@ -133,6 +201,13 @@ fn resolve_auth(info: &ModelProviderInfo) -> Result<ProviderAuthStrategy, Resolv
     }
 }
 
+fn resolve_model_catalog(options: ProviderResolutionOptions) -> ProviderModelCatalog {
+    match options.model_catalog {
+        Some(models) => ProviderModelCatalog::Static { models },
+        None => ProviderModelCatalog::BundledWithOptionalRemoteRefresh,
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ResolveProviderError {
     InvalidConfig(String),
@@ -153,6 +228,7 @@ mod tests {
     use super::*;
     use codex_model_provider_info::ModelProviderInfo;
     use codex_model_provider_info::WireApi;
+    use codex_protocol::openai_models::ModelsResponse;
     use codex_utils_absolute_path::AbsolutePathBuf;
     use pretty_assertions::assert_eq;
     use std::num::NonZeroU64;
@@ -187,6 +263,10 @@ mod tests {
         assert_eq!(provider.id(), "openai");
         assert_eq!(provider.info(), &info);
         assert_eq!(provider.auth_strategy(), &ProviderAuthStrategy::OpenAi);
+        assert_eq!(
+            provider.model_catalog(),
+            &ProviderModelCatalog::BundledWithOptionalRemoteRefresh
+        );
         assert!(provider.auth_strategy().requires_openai_auth());
     }
 
@@ -203,6 +283,24 @@ mod tests {
         .unwrap();
 
         assert_eq!(auth_from_provider(&provider), &ProviderAuthStrategy::OpenAi);
+    }
+
+    #[test]
+    fn resolved_provider_implements_model_catalog_facade() {
+        fn catalog_from_provider(provider: &impl ModelProvider) -> &ProviderModelCatalog {
+            provider.model_catalog()
+        }
+
+        let provider = ResolvedModelProvider::resolve(
+            "openai",
+            ModelProviderInfo::create_openai_provider(/*base_url*/ None),
+        )
+        .unwrap();
+
+        assert_eq!(
+            catalog_from_provider(&provider),
+            &ProviderModelCatalog::BundledWithOptionalRemoteRefresh
+        );
     }
 
     #[test]
@@ -309,6 +407,40 @@ mod tests {
             &ProviderAuthStrategy::NoProviderAuth
         );
         assert!(!provider.auth_strategy().requires_openai_auth());
+    }
+
+    #[test]
+    fn resolves_static_model_catalog_from_options() {
+        let models = ModelsResponse { models: Vec::new() };
+
+        let provider = ResolvedModelProvider::resolve_with_options(
+            "custom",
+            provider(),
+            ProviderResolutionOptions {
+                model_catalog: Some(models.clone()),
+            },
+        )
+        .unwrap();
+
+        assert_eq!(
+            provider.model_catalog(),
+            &ProviderModelCatalog::Static { models }
+        );
+        assert_eq!(
+            provider.model_catalog().remote_refresh_policy(),
+            RemoteModelRefreshPolicy::Disabled
+        );
+    }
+
+    #[test]
+    fn default_catalog_allows_existing_auth_gated_refresh() {
+        let provider = ResolvedModelProvider::resolve("custom", provider()).unwrap();
+
+        assert_eq!(
+            provider.model_catalog().remote_refresh_policy(),
+            RemoteModelRefreshPolicy::ExistingAuthGated
+        );
+        assert_eq!(provider.model_catalog().static_models(), None);
     }
 
     #[test]

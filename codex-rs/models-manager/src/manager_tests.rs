@@ -6,6 +6,7 @@ use codex_api::TransportError;
 use codex_config::types::AuthCredentialsStoreMode;
 use codex_login::AuthManager;
 use codex_login::CodexAuth;
+use codex_login::provider_uses_external_bearer_auth;
 use codex_model_provider_info::WireApi;
 use codex_protocol::config_types::ModelProviderAuthInfo;
 use codex_protocol::openai_models::ModelsResponse;
@@ -299,6 +300,45 @@ async fn get_model_info_uses_custom_catalog() {
     assert!(model_info.supports_image_detail_original);
     assert!(!model_info.supports_parallel_tool_calls);
     assert!(!model_info.used_fallback_model_metadata);
+}
+
+#[tokio::test]
+async fn static_catalog_skips_cache_and_remote_refresh() {
+    let server = MockServer::start().await;
+    let remote_models = vec![remote_model("remote-model", "Remote", /*priority*/ 0)];
+    let models_mock = mount_models_once(
+        &server,
+        ModelsResponse {
+            models: remote_models,
+        },
+    )
+    .await;
+
+    let codex_home = tempdir().expect("temp dir");
+    let static_models = vec![remote_model("static-model", "Static", /*priority*/ 0)];
+    let auth_manager =
+        AuthManager::from_auth_for_testing(CodexAuth::create_dummy_chatgpt_auth_for_testing());
+    let manager = ModelsManager::new_with_provider(
+        codex_home.path().to_path_buf(),
+        auth_manager,
+        Some(ModelsResponse {
+            models: static_models.clone(),
+        }),
+        CollaborationModesConfig::default(),
+        provider_for(server.uri()),
+    );
+
+    manager
+        .refresh_available_models(RefreshStrategy::Online)
+        .await
+        .expect("static catalog refresh is a no-op");
+
+    assert_eq!(manager.get_remote_models().await, static_models);
+    assert_eq!(
+        models_mock.requests().len(),
+        0,
+        "static catalog should not fetch /models"
+    );
 }
 
 #[tokio::test]
