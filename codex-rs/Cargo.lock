@@ -1688,6 +1688,7 @@ dependencies = [
  "codex-mcp",
  "codex-mcp-server",
  "codex-protocol",
+ "codex-provider-auth",
  "codex-responses-api-proxy",
  "codex-rmcp-client",
  "codex-sandboxing",
@@ -1929,6 +1930,7 @@ dependencies = [
  "codex-otel",
  "codex-plugin",
  "codex-protocol",
+ "codex-provider-auth",
  "codex-response-debug-context",
  "codex-rmcp-client",
  "codex-rollout",
@@ -2326,7 +2328,6 @@ dependencies = [
  "async-trait",
  "base64 0.22.1",
  "chrono",
- "codex-api",
  "codex-app-server-protocol",
  "codex-client",
  "codex-config",
@@ -2454,6 +2455,7 @@ dependencies = [
  "codex-model-provider-info",
  "codex-otel",
  "codex-protocol",
+ "codex-provider-auth",
  "codex-response-debug-context",
  "codex-utils-absolute-path",
  "codex-utils-output-truncation",
@@ -2607,6 +2609,18 @@ dependencies = [
  "tracing",
  "ts-rs",
  "uuid",
+]
+
+[[package]]
+name = "codex-provider-auth"
+version = "0.0.0"
+dependencies = [
+ "codex-api",
+ "codex-login",
+ "codex-model-provider-info",
+ "codex-protocol",
+ "http 1.4.0",
+ "pretty_assertions",
 ]
 
 [[package]]
