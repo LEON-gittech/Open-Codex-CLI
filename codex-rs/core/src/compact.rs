@@ -58,6 +58,7 @@ pub(crate) enum InitialContextInjection {
     DoNotInject,
 }
 
+// TODO(celia-oai): Move this onto ModelProvider crate.
 pub(crate) fn should_use_remote_compact_task(provider: &dyn ModelProvider) -> bool {
     provider.info().supports_remote_compaction()
 }
