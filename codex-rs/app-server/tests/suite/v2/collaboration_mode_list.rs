@@ -21,7 +21,8 @@ use pretty_assertions::assert_eq;
 use tempfile::TempDir;
 use tokio::time::timeout;
 
-const DEFAULT_TIMEOUT: Duration = Duration::from_secs(20);
+// These tests start full app-server processes; keep headroom for concurrent debug startup.
+const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Confirms the server returns the default collaboration mode presets in a stable order.
 #[tokio::test]

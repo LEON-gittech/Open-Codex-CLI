@@ -18,7 +18,8 @@ use std::path::Path;
 use tempfile::TempDir;
 use tokio::time::timeout;
 
-const DEFAULT_READ_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(20);
+// These tests start full app-server processes; keep headroom for concurrent debug startup.
+const DEFAULT_READ_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
 #[tokio::test]
 async fn turn_start_forwards_client_metadata_to_responses_request_v2() -> Result<()> {

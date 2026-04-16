@@ -29,12 +29,15 @@ impl Session {
     }
 
     pub(super) async fn restore_persisted_agent_task(&self, rollout_items: &[RolloutItem]) {
-        let Some(agent_task) = Self::latest_persisted_agent_task(rollout_items).flatten() else {
+        let Some(agent_task_update) = Self::latest_persisted_agent_task(rollout_items) else {
             return;
         };
 
         let mut state = self.state.lock().await;
-        state.set_agent_task(agent_task);
+        match agent_task_update {
+            Some(agent_task) => state.set_agent_task(agent_task),
+            None => state.clear_agent_task(),
+        }
     }
 
     async fn persist_agent_task_update(&self, agent_task: Option<&RegisteredAgentTask>) {
