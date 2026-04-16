@@ -1146,6 +1146,11 @@ impl CodexMessageProcessor {
             | ClientRequest::ExperimentalFeatureEnablementSet { .. } => {
                 warn!("Config request reached CodexMessageProcessor unexpectedly");
             }
+            ClientRequest::RemoteControlPairingStart { .. } => {
+                warn!(
+                    "RemoteControlPairingStart request reached CodexMessageProcessor unexpectedly"
+                );
+            }
             ClientRequest::FsReadFile { .. }
             | ClientRequest::FsWriteFile { .. }
             | ClientRequest::FsCreateDirectory { .. }
