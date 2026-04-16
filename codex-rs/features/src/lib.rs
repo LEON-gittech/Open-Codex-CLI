@@ -146,6 +146,8 @@ pub enum Feature {
     Apps,
     /// Enable the tool_search tool for apps.
     ToolSearch,
+    /// Use estimated tool-schema tokens instead of tool count for tool_search deferral.
+    ToolSearchTokenBudgetDeferral,
     /// Expose placeholder tools for unavailable historical tool calls.
     UnavailableDummyTools,
     /// Enable discoverable tool suggestions for apps.
@@ -790,6 +792,12 @@ pub const FEATURES: &[FeatureSpec] = &[
         key: "tool_search",
         stage: Stage::Stable,
         default_enabled: true,
+    },
+    FeatureSpec {
+        id: Feature::ToolSearchTokenBudgetDeferral,
+        key: "tool_search_token_budget_deferral",
+        stage: Stage::UnderDevelopment,
+        default_enabled: false,
     },
     FeatureSpec {
         id: Feature::UnavailableDummyTools,
