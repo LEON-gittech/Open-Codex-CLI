@@ -7179,7 +7179,10 @@ impl ChatWidget {
                 if from_replay || self.is_review_mode =>
             {
                 if !from_replay
-                    && !self.should_accept_live_turn_from(live_event_turn_id, /*explicit_turn_id*/ None)
+                    && !self.should_accept_live_turn_from(
+                        live_event_turn_id,
+                        /*explicit_turn_id*/ None,
+                    )
                 {
                     tracing::debug!(
                         event_turn_id = ?live_event_turn_id,
@@ -7198,7 +7201,10 @@ impl ChatWidget {
             }
             EventMsg::AgentMessage(AgentMessageEvent { message, .. }) => {
                 if !from_replay
-                    && !self.should_accept_live_turn_from(live_event_turn_id, /*explicit_turn_id*/ None)
+                    && !self.should_accept_live_turn_from(
+                        live_event_turn_id,
+                        /*explicit_turn_id*/ None,
+                    )
                 {
                     tracing::debug!(
                         event_turn_id = ?live_event_turn_id,
@@ -7264,10 +7270,8 @@ impl ChatWidget {
             }
             EventMsg::AgentReasoningSectionBreak(event) => {
                 if !from_replay
-                    && !self.should_accept_live_turn_from(
-                        live_event_turn_id,
-                        event.turn_id.as_deref(),
-                    )
+                    && !self
+                        .should_accept_live_turn_from(live_event_turn_id, event.turn_id.as_deref())
                 {
                     tracing::debug!(
                         event_turn_id = ?event.turn_id.as_deref().or(live_event_turn_id),

@@ -327,8 +327,14 @@ async fn stale_plan_and_reasoning_deltas_are_ignored_after_new_turn_starts() {
         None,
     );
 
-    assert!(rx.try_recv().is_err(), "stale deltas should not emit history cells");
-    assert!(chat.plan_delta_buffer.is_empty(), "stale plan delta should be ignored");
+    assert!(
+        rx.try_recv().is_err(),
+        "stale deltas should not emit history cells"
+    );
+    assert!(
+        chat.plan_delta_buffer.is_empty(),
+        "stale plan delta should be ignored"
+    );
     assert!(
         chat.reasoning_buffer.is_empty(),
         "stale reasoning delta should be ignored"
