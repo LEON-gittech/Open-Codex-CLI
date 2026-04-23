@@ -36,6 +36,8 @@ From commit `598bebc6b`:
 
 This is a usability-focused patch for the `zellij` environment: the goal is to reduce ambiguity in the chat history without changing the underlying interaction model.
 
+For context: [Zellij](https://github.com/zellij-org/zellij) is a terminal workspace / terminal multiplexer. Compared with `tmux`, it puts more emphasis on a batteries-included user experience, richer pane behavior, built-in layouts, and more discoverable interaction patterns out of the box.
+
 ### 2. Stale turn output protection in the TUI
 
 From commits `642d306a7` and `6c27de579`:
