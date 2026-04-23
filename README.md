@@ -34,6 +34,11 @@ That policy is understandable from the perspective of the upstream maintainers, 
 
 The goal of **Open Codex CLI** is not to diverge for the sake of divergence. The goal is to keep a small, intentional delta on top of upstream Codex CLI, make that delta easy to understand, and keep the fork mergeable as upstream evolves.
 
+## Targets
+
+- solve real Codex CLI usage problems I run into, whether they are bugs or features worth borrowing from Claude Code
+- keep improving the Codex CLI experience under `zellij` (**Fuck Off Tmux!**)
+
 ## Current Delta vs. Latest Upstream Codex CLI
 
 This fork is currently based on the latest upstream `openai/codex` and adds a small set of focused CLI improvements from recent fork-specific commits:
@@ -168,6 +173,11 @@ Codex CLI 是开源的，但上游仓库当前对外部代码贡献采用 invita
 从上游维护者的角度，这个策略是可以理解的；但对于想要公开迭代、持续提交 CLI 改进、并让社区可以正常协作的人来说，这中间就出现了一个空白。这也是这个 fork 存在的原因。
 
 **Open Codex CLI** 的目标不是为了分叉而分叉，而是在尽量贴近 upstream Codex CLI 的前提下，保留一层小而明确、容易理解、也容易持续维护的公开改动。
+
+## 当前目标
+
+- 解决我在实际使用 Codex CLI 时遇到的体验问题，不管它们是 bug，还是值得从 Claude Code 借鉴过来的 feature
+- 持续优化 Codex CLI 在 `zellij` 下的使用体验（**Fuck Off Tmux!**）
 
 ## 当前相对最新 Upstream Codex CLI 的差异
 
