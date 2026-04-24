@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
-"""Stage and optionally package the @openai/codex npm module."""
+"""Stage and optionally package the @leonw24/open-codex npm module."""
+
+from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -14,48 +17,48 @@ CODEX_CLI_ROOT = SCRIPT_DIR.parent
 REPO_ROOT = CODEX_CLI_ROOT.parent
 RESPONSES_API_PROXY_NPM_ROOT = REPO_ROOT / "codex-rs" / "responses-api-proxy" / "npm"
 CODEX_SDK_ROOT = REPO_ROOT / "sdk" / "typescript"
-CODEX_NPM_NAME = "@openai/codex"
+CODEX_NPM_NAME = "@leonw24/open-codex"
 
 # `npm_name` is the local optional-dependency alias consumed by `bin/codex.js`.
-# The underlying package published to npm is always `@openai/codex`.
+# The underlying package published to npm is always `@leonw24/open-codex`.
 CODEX_PLATFORM_PACKAGES: dict[str, dict[str, str]] = {
     "codex-linux-x64": {
-        "npm_name": "@openai/codex-linux-x64",
+        "npm_name": "@leonw24/open-codex-linux-x64",
         "npm_tag": "linux-x64",
-        "target_triple": "x86_64-unknown-linux-musl",
+        "target_triple": "x86_64-unknown-linux-gnu",
         "os": "linux",
         "cpu": "x64",
     },
     "codex-linux-arm64": {
-        "npm_name": "@openai/codex-linux-arm64",
+        "npm_name": "@leonw24/open-codex-linux-arm64",
         "npm_tag": "linux-arm64",
-        "target_triple": "aarch64-unknown-linux-musl",
+        "target_triple": "aarch64-unknown-linux-gnu",
         "os": "linux",
         "cpu": "arm64",
     },
     "codex-darwin-x64": {
-        "npm_name": "@openai/codex-darwin-x64",
+        "npm_name": "@leonw24/open-codex-darwin-x64",
         "npm_tag": "darwin-x64",
         "target_triple": "x86_64-apple-darwin",
         "os": "darwin",
         "cpu": "x64",
     },
     "codex-darwin-arm64": {
-        "npm_name": "@openai/codex-darwin-arm64",
+        "npm_name": "@leonw24/open-codex-darwin-arm64",
         "npm_tag": "darwin-arm64",
         "target_triple": "aarch64-apple-darwin",
         "os": "darwin",
         "cpu": "arm64",
     },
     "codex-win32-x64": {
-        "npm_name": "@openai/codex-win32-x64",
+        "npm_name": "@leonw24/open-codex-win32-x64",
         "npm_tag": "win32-x64",
         "target_triple": "x86_64-pc-windows-msvc",
         "os": "win32",
         "cpu": "x64",
     },
     "codex-win32-arm64": {
-        "npm_name": "@openai/codex-win32-arm64",
+        "npm_name": "@leonw24/open-codex-win32-arm64",
         "npm_tag": "win32-arm64",
         "target_triple": "aarch64-pc-windows-msvc",
         "os": "win32",
@@ -93,6 +96,23 @@ COMPONENT_DEST_DIR: dict[str, str] = {
     "codex-command-runner": "codex",
     "rg": "path",
 }
+
+
+def platform_packages_for_meta() -> list[str]:
+    requested = os.environ.get("CODEX_NPM_PLATFORM_PACKAGES")
+    if not requested:
+        return [
+            platform_package
+            for platform_package in PACKAGE_EXPANSIONS["codex"]
+            if platform_package != "codex"
+        ]
+
+    packages = [package.strip() for package in requested.split(",") if package.strip()]
+    unknown = [package for package in packages if package not in CODEX_PLATFORM_PACKAGES]
+    if unknown:
+        unknown_list = ", ".join(sorted(unknown))
+        raise RuntimeError(f"Unknown CODEX_NPM_PLATFORM_PACKAGES entries: {unknown_list}")
+    return packages
 
 
 def parse_args() -> argparse.Namespace:
@@ -308,8 +328,7 @@ def stage_sources(staging_dir: Path, version: str, package: str) -> None:
                 f"npm:{CODEX_NPM_NAME}@"
                 f"{compute_platform_package_version(version, CODEX_PLATFORM_PACKAGES[platform_package]['npm_tag'])}"
             )
-            for platform_package in PACKAGE_EXPANSIONS["codex"]
-            if platform_package != "codex"
+            for platform_package in platform_packages_for_meta()
         }
 
     elif package == "codex-sdk":
@@ -419,7 +438,9 @@ def run_npm_pack(staging_dir: Path, output_path: Path) -> Path:
     output_path = output_path.resolve()
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    with tempfile.TemporaryDirectory(prefix="codex-npm-pack-") as pack_dir_str:
+    runner_temp = Path(os.environ.get("RUNNER_TEMP", tempfile.gettempdir()))
+    runner_temp.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="codex-npm-pack-", dir=runner_temp) as pack_dir_str:
         pack_dir = Path(pack_dir_str)
         stdout = subprocess.check_output(
             ["npm", "pack", "--json", "--pack-destination", str(pack_dir)],

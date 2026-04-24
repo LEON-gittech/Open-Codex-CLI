@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <code>codex</code> remains the command name, and <code>@openai/codex</code> remains the compatibility target for the current CLI surface.
+  Install with <code>npm install -g @leonw24/open-codex</code>, then run <code>open-codex</code>.
 </p>
 
 <p align="center">
@@ -115,14 +115,28 @@ The intent of this repository is to keep development open and reviewable in publ
 
 ## Compatibility Notes
 
-This fork keeps the current Codex CLI naming surface intact:
+This fork keeps the native Codex CLI implementation close to upstream, but the npm distribution uses fork-specific names so it can coexist with the official package:
 
-- command name: `codex`
-- package naming target: `@openai/codex`
+- npm package: `@leonw24/open-codex`
+- npm command: `open-codex`
+- native binary identity: `codex-cli`
 
-That means the README, docs, and fork messaging are intentionally about the project identity and maintenance model, not a wholesale rename of the CLI interface.
+That means installing this fork from npm does not overwrite the official `codex` command from `@openai/codex`.
 
 ## Quickstart
+
+### Option A: install from npm
+
+The npm package is published under the `leonw24` scope:
+
+```shell
+npm install -g @leonw24/open-codex
+open-codex --version
+```
+
+The current npm payload is published for Linux x64. For other platforms, build from source until this fork publishes platform artifacts for macOS, Windows, and Linux arm64.
+
+### Option B: build from source
 
 If you want to use this fork from source, build the Rust workspace and install the resulting binary locally.
 
@@ -135,21 +149,21 @@ cargo build --release
 
 Then choose one of these install modes:
 
-### Option A: replace your local `codex`
+#### Replace your local `codex`
 
 ```shell
 mkdir -p ~/.local/bin
 install -m 755 target/release/codex ~/.local/bin/codex
 ```
 
-### Option B: install this fork as `codex-dev`
+#### Install this fork as `open-codex`
 
 ```shell
 mkdir -p ~/.local/bin
-install -m 755 target/release/codex ~/.local/bin/codex-dev
+install -m 755 target/release/codex ~/.local/bin/open-codex
 ```
 
-After that, run either `codex` or `codex-dev`, depending on which install path you chose.
+After that, run either `codex` or `open-codex`, depending on which install path you chose.
 
 ## Docs
 
@@ -255,14 +269,28 @@ Codex CLI 是开源的，但上游仓库当前对外部代码贡献采用 invita
 
 ## 兼容性说明
 
-这个 fork 保留当前 Codex CLI 的命名表面：
+这个 fork 的原生 CLI 实现尽量贴近 upstream，但 npm 分发使用 fork 自己的命名，这样可以和官方包共存：
 
-- 命令名仍然是：`codex`
-- 当前兼容的包命名目标仍然是：`@openai/codex`
+- npm 包名：`@leonw24/open-codex`
+- npm 命令名：`open-codex`
+- 原生二进制身份：`codex-cli`
 
-也就是说，这份 README 的重点是项目身份和维护方式，而不是把 CLI 的命令名整体重命名掉。
+也就是说，通过 npm 安装这个 fork 不会覆盖官方 `@openai/codex` 提供的 `codex` 命令。
 
 ## Quickstart
+
+### 方式 A：通过 npm 安装
+
+npm 包发布在 `leonw24` scope 下：
+
+```shell
+npm install -g @leonw24/open-codex
+open-codex --version
+```
+
+当前 npm payload 已发布 Linux x64 版本。macOS、Windows 和 Linux arm64 在发布对应平台 artifact 之前，请先使用源码构建方式安装。
+
+### 方式 B：从源码构建
 
 如果你想从源码使用这个 fork，可以先构建 Rust workspace，再把产出的二进制安装到本地。
 
@@ -275,21 +303,21 @@ cargo build --release
 
 然后在下面两种安装方式中选一个：
 
-### 方式 A：直接覆盖你本地的 `codex`
+#### 直接覆盖你本地的 `codex`
 
 ```shell
 mkdir -p ~/.local/bin
 install -m 755 target/release/codex ~/.local/bin/codex
 ```
 
-### 方式 B：并行安装为 `codex-dev`
+#### 并行安装为 `open-codex`
 
 ```shell
 mkdir -p ~/.local/bin
-install -m 755 target/release/codex ~/.local/bin/codex-dev
+install -m 755 target/release/codex ~/.local/bin/open-codex
 ```
 
-之后根据你的安装方式，运行 `codex` 或 `codex-dev` 即可。
+之后根据你的安装方式，运行 `codex` 或 `open-codex` 即可。
 
 ## 文档
 
