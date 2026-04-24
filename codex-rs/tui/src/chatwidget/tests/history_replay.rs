@@ -170,6 +170,77 @@ async fn stale_agent_delta_is_ignored_after_new_turn_starts() {
 }
 
 #[tokio::test]
+async fn stale_agent_delta_is_ignored_after_new_turn_is_submitted_before_turn_started() {
+    let (mut chat, mut rx, _ops) = make_chatwidget_manual(/*model_override*/ None).await;
+
+    let conversation_id = ThreadId::new();
+    let rollout_file = NamedTempFile::new().unwrap();
+    chat.handle_codex_event(Event {
+        id: "initial".into(),
+        msg: EventMsg::SessionConfigured(codex_protocol::protocol::SessionConfiguredEvent {
+            session_id: conversation_id,
+            forked_from_id: None,
+            thread_name: None,
+            model: "test-model".to_string(),
+            model_provider_id: "test-provider".to_string(),
+            service_tier: None,
+            approval_policy: AskForApproval::Never,
+            approvals_reviewer: ApprovalsReviewer::User,
+            sandbox_policy: SandboxPolicy::new_read_only_policy(),
+            cwd: test_path_buf("/home/user/project").abs(),
+            reasoning_effort: Some(ReasoningEffortConfig::default()),
+            history_log_id: 0,
+            history_entry_count: 0,
+            initial_messages: None,
+            permission_profile: None,
+            network_proxy: None,
+            rollout_path: Some(rollout_file.path().to_path_buf()),
+        }),
+    });
+
+    chat.handle_codex_event(Event {
+        id: "turn-1".into(),
+        msg: EventMsg::TurnStarted(TurnStartedEvent {
+            turn_id: "turn-1".to_string(),
+            started_at: None,
+            model_context_window: None,
+            collaboration_mode_kind: ModeKind::Default,
+        }),
+    });
+    chat.handle_codex_event(Event {
+        id: "turn-1".into(),
+        msg: EventMsg::TurnComplete(TurnCompleteEvent {
+            turn_id: "turn-1".to_string(),
+            last_agent_message: None,
+            completed_at: None,
+            duration_ms: None,
+            time_to_first_token_ms: None,
+        }),
+    });
+    drain_insert_history(&mut rx);
+
+    chat.submit_user_message(UserMessage::from("new query"));
+    assert!(
+        chat.user_turn_pending_start,
+        "new user turn should be pending before TurnStarted arrives"
+    );
+    drain_insert_history(&mut rx);
+
+    chat.handle_codex_event(Event {
+        id: "turn-1".into(),
+        msg: EventMsg::AgentMessageDelta(AgentMessageDeltaEvent {
+            turn_id: Some("turn-1".to_string()),
+            delta: "late stale output".to_string(),
+        }),
+    });
+
+    assert!(
+        rx.try_recv().is_err(),
+        "late stale delta should not emit history cells after a new turn is submitted"
+    );
+}
+
+#[tokio::test]
 async fn stale_turn_completion_does_not_end_current_turn() {
     let (mut chat, _rx, _ops) = make_chatwidget_manual(/*model_override*/ None).await;
 
