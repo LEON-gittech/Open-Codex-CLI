@@ -656,6 +656,12 @@ pub(crate) enum AppEvent {
         cwd: PathBuf,
         branch: Option<String>,
     },
+
+    /// Result of a `/memories` subcommand (list/add/edit/clear).
+    MemoryCommandResult {
+        text: String,
+        is_error: bool,
+    },
     /// Apply a user-confirmed status-line item ordering/selection.
     StatusLineSetup {
         items: Vec<StatusLineItem>,
