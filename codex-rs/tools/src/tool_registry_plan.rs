@@ -227,6 +227,25 @@ pub fn build_tool_registry_plan(
     );
     plan.register_handler("update_plan", ToolHandlerKind::Plan);
     if config.goal_tools {
+        plan.push_spec(
+            create_get_goal_tool(),
+            /*supports_parallel_tool_calls*/ false,
+            config.code_mode_enabled,
+        );
+        plan.register_handler("get_goal", ToolHandlerKind::Goal);
+        plan.push_spec(
+            create_create_goal_tool(),
+            /*supports_parallel_tool_calls*/ false,
+            config.code_mode_enabled,
+        );
+        plan.register_handler("create_goal", ToolHandlerKind::Goal);
+        plan.push_spec(
+            create_update_goal_tool(),
+            /*supports_parallel_tool_calls*/ false,
+            config.code_mode_enabled,
+        );
+        plan.register_handler("update_goal", ToolHandlerKind::Goal);
+    }
 
     // Memory and notepad tools (enabled when MemoryTool feature is on).
     if config.memory_tools_enabled {
@@ -291,27 +310,6 @@ pub fn build_tool_registry_plan(
             config.code_mode_enabled,
         );
         plan.register_handler("notepad_prune", ToolHandlerKind::NotepadPrune);
-    }
-
-    if config.has_environment && config.js_repl_enabled {
-        plan.push_spec(
-            create_get_goal_tool(),
-            /*supports_parallel_tool_calls*/ false,
-            config.code_mode_enabled,
-        );
-        plan.register_handler("get_goal", ToolHandlerKind::Goal);
-        plan.push_spec(
-            create_create_goal_tool(),
-            /*supports_parallel_tool_calls*/ false,
-            config.code_mode_enabled,
-        );
-        plan.register_handler("create_goal", ToolHandlerKind::Goal);
-        plan.push_spec(
-            create_update_goal_tool(),
-            /*supports_parallel_tool_calls*/ false,
-            config.code_mode_enabled,
-        );
-        plan.register_handler("update_goal", ToolHandlerKind::Goal);
     }
 
     plan.push_spec(
