@@ -66,6 +66,20 @@ From commits `642d306a7` and `6c27de579`:
 
 This is a correctness-focused patch: the UI should not render output from the wrong turn, even when retry, replay, or stream timing gets messy.
 
+### 3. Consolidated memory subsystem
+
+From commits `9f800e44`, `a46f1e68`:
+
+Three new subsystems inspired by Claude Code and oh-my-codex:
+
+- **AGENTS.md Hierarchical Loading** — Loads instruction files from four scopes (Managed → User → Project → Local), with `@include` directive expansion (10-depth limit, circular detection), YAML frontmatter parsing, and mtime-based caching. Injected into user instructions at session start.
+
+- **Notepad Section System** — A structured scratchpad (`~/.codex/memories/notepad.md`) with three sections: PRIORITY (auto-injected into developer context, ≤500 chars), WORKING MEMORY (timestamped session notes, auto-prunable), and MANUAL (permanent notes). Uses atomic writes for crash safety.
+
+- **Memory CRUD Tools** — Eight built-in tools (`memory_read/write/add_note/search`, `notepad_read/write_priority/write_working/prune`) that let the agent actively read and write its own memory during a session. Gated behind the `MemoryTool` feature flag. TUI integration via `/memories list|add|edit|clear`.
+
+This directly addresses roadmap item 3 (better memory mechanics).
+
 ## Maintenance Philosophy
 
 This fork is maintained with a conservative strategy:
@@ -97,9 +111,21 @@ Improve the Codex CLI status line so it can surface token throughput directly, i
 
 Implement a Claude Code-style export flow for the current session, so a user can export the active session record in a reusable format. The goal is to make debugging, sharing, and archival much easier.
 
-### 3. Better memory mechanics
+### 3. ~~Better memory mechanics~~ ✅ Completed
 
-Improve the Codex memory mechanism so it is easier to understand, easier to inspect, and more useful over long-running usage. The focus here is not just more memory, but better memory behavior.
+Implemented as the consolidated memory subsystem (see Current Delta section 3 above). Remaining improvements tracked below.
+
+### 5. AutoDream background daemon
+
+Replace the startup-blocking Phase 2 consolidation with a 3-gate background consolidator (time ≥ 24h, ≥ 5 new sessions, no lock), using a 4-phase merge pipeline: Orient → Gather → Consolidate → Prune. Inspired by Claude Code's AutoDream.
+
+### 6. Notepad TUI sidebar
+
+Show notepad sections in the TUI sidebar so users can view and edit memory context without running `/memories` commands.
+
+### 7. Memory versioning
+
+Keep a lightweight changelog of topic edits so agents can reason about what changed and when.
 
 ### 4. Better Zellij ergonomics
 
@@ -220,6 +246,20 @@ Codex CLI 是开源的，但上游仓库当前对外部代码贡献采用 invita
 
 这是一个偏正确性的修复：即使在 retry、replay、stream 时序比较复杂的情况下，UI 也不应该把错误 turn 的输出渲染出来。
 
+### 3. 合并 memory 子系统
+
+来自 commits `9f800e44`、`a46f1e68`：
+
+借鉴 Claude Code 和 oh-my-codex，新增三个子系统：
+
+- **AGENTS.md 层级加载** — 从四个作用域加载指令文件（Managed → User → Project → Local），支持 `@include` 指令展开（10 层深度限制、循环检测）、YAML frontmatter 解析、mtime 缓存。在 session 启动时注入 user instructions。
+
+- **Notepad 分区系统** — 结构化草稿本（`~/.codex/memories/notepad.md`），三个分区：PRIORITY（自动注入 developer 上下文，≤500 字）、WORKING MEMORY（时间戳条目，可自动修剪）、MANUAL（永久笔记）。使用原子写入保证崩溃安全。
+
+- **Memory CRUD 内置工具** — 8 个内置工具（`memory_read/write/add_note/search`、`notepad_read/write_priority/write_working/prune`），让 agent 在 session 中主动读写自己的 memory。通过 `MemoryTool` feature flag 控制。TUI 集成通过 `/memories list|add|edit|clear` 使用。
+
+直接完成了路线图第 3 项（更好的 memory 机制）。
+
 ## 维护思路
 
 这个 fork 的维护策略是偏保守的：
@@ -251,9 +291,21 @@ Codex CLI 是开源的，但上游仓库当前对外部代码贡献采用 invita
 
 实现类似 Claude Code 的 session 导出能力，让用户可以把当前会话记录导出成可复用格式，方便调试、归档和分享。
 
-### 3. 更好的 memory 机制
+### 3. ~~更好的 memory 机制~~ ✅ 已完成
 
-改进 Codex 的 memory 机制，让它更容易理解、更容易检查，也更适合长时间使用场景。重点不是“更多 memory”，而是“更好的 memory 行为”。
+已实现为合并 memory 子系统（见上方当前差异第 3 项）。后续改进见下方。
+
+### 5. AutoDream 后台守护进程
+
+用 3-gate 后台合并器（时间 ≥ 24h、≥ 5 个新 session、无锁）替代启动时阻塞的 Phase 2 合并，使用 4 阶段合并管线：Orient → Gather → Consolidate → Prune。借鉴 Claude Code 的 AutoDream。
+
+### 6. Notepad TUI 侧边栏
+
+在 TUI 侧边栏展示 notepad 分区，让用户无需运行 `/memories` 命令即可查看和编辑 memory 上下文。
+
+### 7. Memory 版本管理
+
+为 topic 编辑维护轻量级变更日志，让 agent 能推理内容何时发生了什么变化。
 
 ### 4. 更好的 Zellij 使用体验
 
