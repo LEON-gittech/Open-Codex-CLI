@@ -10,9 +10,17 @@ memory files directly**, as they handle relevance scoring, truncation, and
 formatting automatically:
 
 - `memory_read` — Read the memory index, relevant topics, and notepad priority.
-  Use this when you need a broad overview or when starting a new task.
+  Use this when you need a broad overview or when starting a new task. This
+  tool combines the MEMORY.md index with the most relevant topics and notepad
+  priority into a single response.
 - `memory_search` — Search topics by query with relevance scoring. Use this
-  when looking for specific information across many topics.
+  when looking for specific information across many topics. This searches the
+  individual topic files under `topics/`, not the MEMORY.md index.
+
+**When to use which:** Start with `memory_read` for a broad overview. If you
+need more detail on a specific area, use `memory_search` with targeted keywords.
+Do NOT read MEMORY.md or topic files directly — the tools already cover both
+the index and the topic content.
 - `memory_write` — Create or update a memory topic with frontmatter.
 - `memory_add_note` — Append a timestamped note to an existing topic (creates
   the topic if it does not exist).
