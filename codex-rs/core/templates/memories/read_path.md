@@ -62,7 +62,8 @@ Memory layout (general -> specific):
 
 - {{ base_path }}/MEMORY.md (searchable registry; primary file to query)
 - {{ base_path }}/topics/ (individual topic files with YAML frontmatter)
-  - Each topic has: name, description, type, keywords, source
+  - Each topic has: name, description, type, keywords, source, priority
+  - Topics with `priority: high` appear in the Directives section below
   - Topics are scored by relevance to the current query
 - {{ base_path }}/notepad.md (structured scratchpad)
   - PRIORITY: current top-priority item (auto-injected into context)
@@ -170,6 +171,15 @@ rollout_summaries/2026-02-17T21-23-02-LN3m-weekly_memory_report_pivot_from_git_h
   - For every `citation_entries`, try to find and cite the corresponding rollout id if possible
 - Never include memory citations inside pull-request messages.
 - Never cite blank lines; double-check ranges.
+
+### Compaction Protocol
+
+Before context compaction, preserve critical state:
+1. Save key decisions and progress via `notepad_write_working`
+2. Write important facts to topics via `memory_add_note`
+3. If context is >80% full, proactively checkpoint state
+
+This ensures you can recover key information after compaction.
 
 ========= MEMORY_SUMMARY BEGINS =========
 {{ memory_summary }}
