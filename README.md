@@ -68,15 +68,17 @@ This is a correctness-focused patch: the UI should not render output from the wr
 
 ### 3. Consolidated memory subsystem
 
-From commits `9f800e44`, `a46f1e68`:
+From commits `9f800e44`, `a46f1e68`, `f8987ce`:
 
-Three new subsystems inspired by Claude Code and oh-my-codex:
+Four new subsystems inspired by Claude Code and oh-my-codex:
 
 - **AGENTS.md Hierarchical Loading** — Loads instruction files from four scopes (Managed → User → Project → Local), with `@include` directive expansion (10-depth limit, circular detection), YAML frontmatter parsing, and mtime-based caching. Injected into user instructions at session start.
 
-- **Notepad Section System** — A structured scratchpad (`~/.codex/memories/notepad.md`) with three sections: PRIORITY (auto-injected into developer context, ≤500 chars), WORKING MEMORY (timestamped session notes, auto-prunable), and MANUAL (permanent notes). Uses atomic writes for crash safety.
+- **Notepad Section System** — A structured scratchpad (`~/.codex/memories/notepad.md`) with three sections: PRIORITY (auto-injected into developer context, ≤500 chars), WORKING MEMORY (timestamped session notes, auto-prunable), and MANUAL (permanent notes). Uses atomic writes with directory-based file locking (PID stale detection) for crash safety and concurrent access safety.
 
-- **Memory CRUD Tools** — Eight built-in tools (`memory_read/write/add_note/search`, `notepad_read/write_priority/write_working/prune`) that let the agent actively read and write its own memory during a session. Gated behind the `MemoryTool` feature flag. TUI integration via `/memories list|add|edit|clear`.
+- **Memory CRUD Tools** — Eight built-in tools (`memory_read/write/add_note/search`, `notepad_read/write_priority/write_working/prune`) that let the agent actively read and write its own memory during a session. Enabled by default. TUI integration via `/memories list|add|edit|clear`. `memory_write` supports `merge: true` to append content while preserving existing frontmatter.
+
+- **Memory Overlay & Reliability** — Directive priority (`priority: high` in topic frontmatter) auto-injects up to 3 high-priority directives into the agent's context. Bounded overlay caps developer instructions at 3500 chars. Compaction survival protocol instructs the agent to checkpoint key state before context compression.
 
 This directly addresses roadmap item 3 (better memory mechanics).
 
@@ -248,15 +250,17 @@ Codex CLI 是开源的，但上游仓库当前对外部代码贡献采用 invita
 
 ### 3. 合并 memory 子系统
 
-来自 commits `9f800e44`、`a46f1e68`：
+来自 commits `9f800e44`、`a46f1e68`、`f8987ce`：
 
-借鉴 Claude Code 和 oh-my-codex，新增三个子系统：
+借鉴 Claude Code 和 oh-my-codex，新增四个子系统：
 
 - **AGENTS.md 层级加载** — 从四个作用域加载指令文件（Managed → User → Project → Local），支持 `@include` 指令展开（10 层深度限制、循环检测）、YAML frontmatter 解析、mtime 缓存。在 session 启动时注入 user instructions。
 
-- **Notepad 分区系统** — 结构化草稿本（`~/.codex/memories/notepad.md`），三个分区：PRIORITY（自动注入 developer 上下文，≤500 字）、WORKING MEMORY（时间戳条目，可自动修剪）、MANUAL（永久笔记）。使用原子写入保证崩溃安全。
+- **Notepad 分区系统** — 结构化草稿本（`~/.codex/memories/notepad.md`），三个分区：PRIORITY（自动注入 developer 上下文，≤500 字）、WORKING MEMORY（时间戳条目，可自动修剪）、MANUAL（永久笔记）。使用原子写入 + 目录锁（PID 过期检测）保证崩溃安全和并发安全。
 
-- **Memory CRUD 内置工具** — 8 个内置工具（`memory_read/write/add_note/search`、`notepad_read/write_priority/write_working/prune`），让 agent 在 session 中主动读写自己的 memory。通过 `MemoryTool` feature flag 控制。TUI 集成通过 `/memories list|add|edit|clear` 使用。
+- **Memory CRUD 内置工具** — 8 个内置工具（`memory_read/write/add_note/search`、`notepad_read/write_priority/write_working/prune`），让 agent 在 session 中主动读写自己的 memory。默认启用。TUI 集成通过 `/memories list|add|edit|clear` 使用。`memory_write` 支持 `merge: true` 追加内容不覆盖已有记录。
+
+- **Memory Overlay 与可靠性** — 指令优先级（topic frontmatter 中 `priority: high`）自动注入最多 3 条高优先级指令到 agent 上下文。Bounded overlay 限制 developer instructions 上限 3500 字符。上下文压缩生存协议指示 agent 在压缩前主动保存关键状态。
 
 直接完成了路线图第 3 项（更好的 memory 机制）。
 
