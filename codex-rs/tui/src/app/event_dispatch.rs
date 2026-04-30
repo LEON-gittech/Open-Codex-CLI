@@ -343,6 +343,35 @@ impl App {
                 ));
                 tui.frame_requester().schedule_frame();
             }
+            AppEvent::ExportTranscript { path } => {
+                let transcript = self.export_transcript_markdown();
+                let tx = self.app_event_tx.clone();
+                tokio::spawn(async move {
+                    if let Some(parent) = path.parent()
+                        && let Err(err) = tokio::fs::create_dir_all(parent).await
+                    {
+                        let _ = tx.send(AppEvent::MemoryCommandResult {
+                            text: format!("Failed to create export directory: {}", err),
+                            is_error: true,
+                        });
+                        return;
+                    }
+                    match tokio::fs::write(&path, transcript).await {
+                        Ok(()) => {
+                            let _ = tx.send(AppEvent::MemoryCommandResult {
+                                text: format!("Exported session to {}.", path.display()),
+                                is_error: false,
+                            });
+                        }
+                        Err(err) => {
+                            let _ = tx.send(AppEvent::MemoryCommandResult {
+                                text: format!("Failed to export session: {}", err),
+                                is_error: true,
+                            });
+                        }
+                    }
+                });
+            }
             AppEvent::OpenAppLink {
                 app_id,
                 title,

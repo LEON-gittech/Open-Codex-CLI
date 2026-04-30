@@ -39,6 +39,7 @@ pub enum SlashCommand {
     Side,
     // Undo,
     Copy,
+    Export,
     Diff,
     Mention,
     Status,
@@ -87,6 +88,7 @@ impl SlashCommand {
             // SlashCommand::Undo => "ask Codex to undo a turn",
             SlashCommand::Quit | SlashCommand::Exit => "exit Codex",
             SlashCommand::Copy => "copy last response as markdown",
+            SlashCommand::Export => "export current session transcript to a file",
             SlashCommand::Diff => "show git diff (including untracked files)",
             SlashCommand::Mention => "mention a file",
             SlashCommand::Skills => "use skills to improve how Codex performs specific tasks",
@@ -149,6 +151,7 @@ impl SlashCommand {
                 | SlashCommand::Resume
                 | SlashCommand::SandboxReadRoot
                 | SlashCommand::Memories
+                | SlashCommand::Export
         )
     }
 
@@ -156,7 +159,11 @@ impl SlashCommand {
     pub fn available_in_side_conversation(self) -> bool {
         matches!(
             self,
-            SlashCommand::Copy | SlashCommand::Diff | SlashCommand::Mention | SlashCommand::Status
+            SlashCommand::Copy
+                | SlashCommand::Export
+                | SlashCommand::Diff
+                | SlashCommand::Mention
+                | SlashCommand::Status
         )
     }
 
@@ -186,6 +193,7 @@ impl SlashCommand {
             | SlashCommand::MemoryUpdate => false,
             SlashCommand::Diff
             | SlashCommand::Copy
+            | SlashCommand::Export
             | SlashCommand::Rename
             | SlashCommand::Mention
             | SlashCommand::Skills
@@ -262,4 +270,11 @@ mod tests {
             Ok(SlashCommand::AutoReview)
         );
     }
+
+    #[test]
+    fn export_command_supports_inline_args() {
+        assert!(SlashCommand::Export.supports_inline_args());
+        assert!(SlashCommand::Export.available_during_task());
+    }
 }
+

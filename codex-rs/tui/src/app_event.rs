@@ -248,6 +248,11 @@ pub(crate) enum AppEvent {
     /// Result of computing a `/diff` command.
     DiffResult(String),
 
+    /// Export the current session transcript to the provided path.
+    ExportTranscript {
+        path: PathBuf,
+    },
+
     /// Open the app link view in the bottom pane.
     OpenAppLink {
         app_id: String,

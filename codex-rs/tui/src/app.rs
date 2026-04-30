@@ -572,6 +572,13 @@ pub(crate) struct App {
     pending_plugin_enabled_writes: HashMap<String, Option<bool>>,
 }
 
+fn line_to_string(line: &Line<'static>) -> String {
+    line.spans
+        .iter()
+        .map(|span| span.content.as_ref())
+        .collect::<String>()
+}
+
 fn active_turn_not_steerable_turn_error(error: &TypedRequestError) -> Option<AppServerTurnError> {
     let TypedRequestError::Server { source, .. } = error else {
         return None;
@@ -1166,6 +1173,39 @@ impl App {
             }
         }
         Ok(AppRunControl::Continue)
+    }
+}
+
+impl App {
+    pub(crate) fn export_transcript_markdown(&self) -> String {
+        const EXPORT_WIDTH: u16 = 240;
+
+        let mut lines: Vec<String> = Vec::new();
+        let mut first = true;
+        for cell in &self.transcript_cells {
+            let transcript_lines = cell.transcript_lines(EXPORT_WIDTH);
+            if transcript_lines.is_empty() {
+                continue;
+            }
+            if !cell.is_stream_continuation() && !first {
+                lines.push(String::new());
+            }
+            lines.extend(transcript_lines.iter().map(line_to_string));
+            first = false;
+        }
+
+        if let Some(active_lines) = self.chat_widget.active_cell_transcript_lines(EXPORT_WIDTH) {
+            if !lines.is_empty() {
+                lines.push(String::new());
+            }
+            lines.extend(active_lines.iter().map(line_to_string));
+        }
+
+        let mut transcript = lines.join("\n");
+        if !transcript.ends_with('\n') {
+            transcript.push('\n');
+        }
+        transcript
     }
 }
 

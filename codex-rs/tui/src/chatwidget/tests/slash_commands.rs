@@ -1304,6 +1304,41 @@ async fn slash_copy_state_tracks_plan_item_completion() {
 }
 
 #[tokio::test]
+async fn slash_export_with_path_requests_transcript_export() {
+    let (mut chat, mut rx, mut op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    let tempdir = tempdir().unwrap();
+    chat.config.cwd = tempdir.path().to_path_buf().abs();
+
+    submit_composer_text(&mut chat, "/export talk.md");
+
+    assert_matches!(
+        rx.try_recv(),
+        Ok(AppEvent::ExportTranscript { path }) if path == tempdir.path().join("talk.md")
+    );
+    assert_matches!(op_rx.try_recv(), Err(TryRecvError::Empty));
+    assert_eq!(recall_latest_after_clearing(&mut chat), "/export talk.md");
+}
+
+#[tokio::test]
+async fn slash_export_without_path_shows_usage() {
+    let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+
+    submit_composer_text(&mut chat, "/export");
+
+    let cells = drain_insert_history(&mut rx);
+    let rendered = cells
+        .iter()
+        .map(|cell| lines_to_single_string(cell))
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        rendered.contains("Usage: /export <path>"),
+        "expected usage message, got: {rendered:?}"
+    );
+    assert_eq!(recall_latest_after_clearing(&mut chat), "/export");
+}
+
+#[tokio::test]
 async fn slash_copy_reports_when_no_agent_response_exists() {
     let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
 

@@ -105,6 +105,26 @@ fn test_absolute_path(path: &str) -> AbsolutePathBuf {
 }
 
 #[tokio::test]
+async fn export_transcript_markdown_renders_committed_cells() {
+    let mut app = make_test_app().await;
+    app.transcript_cells = vec![
+        Arc::new(UserHistoryCell {
+            message: "hello".to_string(),
+            text_elements: Vec::new(),
+            local_image_paths: Vec::new(),
+            remote_image_urls: Vec::new(),
+        }),
+        Arc::new(PlainHistoryCell::new(vec![Line::from("world")])),
+    ];
+
+    let rendered = app.export_transcript_markdown();
+
+    assert!(rendered.contains("hello"));
+    assert!(rendered.contains("world"));
+    assert!(rendered.ends_with('\n'));
+}
+
+#[tokio::test]
 async fn handle_mcp_inventory_result_clears_committed_loading_cell() {
     let mut app = make_test_app().await;
     app.transcript_cells

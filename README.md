@@ -82,6 +82,26 @@ Four new subsystems inspired by Claude Code and oh-my-codex:
 
 This directly addresses roadmap item 3 (better memory mechanics).
 
+### 4. Open Codex-aware update detection and upgrade prompts
+
+From commit `e1e88af89d`:
+
+- switches npm/bun update detection from upstream Codex metadata to the fork package `@leonw24/open-codex`
+- updates upgrade commands and release notes links so prompts point to Open Codex instead of `@openai/codex`
+- keeps the runtime check aligned with the actual package users install from npm
+
+This is a fork-correctness patch: update notifications should describe the Open Codex release a user can actually install, not the upstream Codex CLI release stream.
+
+### 5. Session export inside the TUI
+
+From recent fork-specific changes:
+
+- adds `/export <path>` for the current session transcript
+- supports user-chosen filenames like `/export talk.md` or `/export talk.txt`
+- writes a markdown transcript suitable for debugging, archival, and sharing
+
+This brings a Claude Code-style export flow into the TUI without requiring external scripts or manual transcript scraping.
+
 ## Maintenance Philosophy
 
 This fork is maintained with a conservative strategy:
@@ -109,29 +129,25 @@ The near-term roadmap is intentionally focused on a few CLI-facing improvements:
 
 Improve the Codex CLI status line so it can surface token throughput directly, instead of only showing coarse task state. The aim is to make model responsiveness easier to judge in real time.
 
-### 2. Session export
+### 2. ~~Session export~~ ✅ Completed
 
-Implement a Claude Code-style export flow for the current session, so a user can export the active session record in a reusable format. The goal is to make debugging, sharing, and archival much easier.
+Implemented as a Claude Code-style `/export` flow for the current session, with user-defined filenames like `/export talk.txt` or `/export talk.md`. This now covers the debugging, sharing, and archival use case directly inside the TUI.
 
 ### 3. ~~Better memory mechanics~~ ✅ Completed
 
 Implemented as the consolidated memory subsystem (see Current Delta section 3 above). Remaining improvements tracked below.
 
-### 5. AutoDream background daemon
-
-Replace the startup-blocking Phase 2 consolidation with a 3-gate background consolidator (time ≥ 24h, ≥ 5 new sessions, no lock), using a 4-phase merge pipeline: Orient → Gather → Consolidate → Prune. Inspired by Claude Code's AutoDream.
-
-### 6. Notepad TUI sidebar
-
-Show notepad sections in the TUI sidebar so users can view and edit memory context without running `/memories` commands.
-
-### 7. Memory versioning
-
-Keep a lightweight changelog of topic edits so agents can reason about what changed and when.
-
 ### 4. Better Zellij ergonomics
 
 Continue improving the Codex CLI experience under `zellij`, especially around rendering, layout, contrast, and other interaction details that behave differently from plain terminal sessions or `tmux`.
+
+### Next focus areas
+
+- **Background AutoDream-style consolidation** — move consolidation fully off the startup path and replace it with a background 3-gate consolidator (time ≥ 24h, ≥ 5 new sessions, no lock), using a 4-phase pipeline: Orient → Gather → Consolidate → Prune.
+- **Notepad TUI sidebar** — surface notepad sections directly in the TUI sidebar so memory context can be viewed and edited without routing everything through `/memories`.
+- **Memory versioning** — keep a lightweight changelog for topic edits so agents can reason about what changed and when.
+- **More proactive subagent parallel planning** — let the agent split work and dispatch parallel subagents more aggressively instead of stepping through tasks strictly serially.
+- **Claude Code-style background execution** — automatically send long-running commands and agent work to the background rather than keeping the main process occupied by foreground waiting and polling.
 
 ## Community
 
@@ -264,6 +280,26 @@ Codex CLI 是开源的，但上游仓库当前对外部代码贡献采用 invita
 
 直接完成了路线图第 3 项（更好的 memory 机制）。
 
+### 4. 面向 Open Codex 的版本检测与升级提示
+
+来自 commit `e1e88af89d`：
+
+- 把 npm/bun 更新检测从 upstream Codex 元数据切换到 fork 的 `@leonw24/open-codex`
+- 更新升级命令与 release notes 链接，使提示指向 Open Codex，而不是 `@openai/codex`
+- 让运行时版本提醒与用户实际通过 npm 安装的包保持一致
+
+这是一个 fork 正确性修复：版本提醒应该描述用户真正能安装的 Open Codex 版本，而不是 upstream Codex CLI 的发布流。
+
+### 5. TUI 内建 session 导出
+
+来自最近几条 fork 自有改动：
+
+- 为当前 session 增加 `/export <path>`
+- 支持用户自定义文件名，例如 `/export talk.md` 或 `/export talk.txt`
+- 导出 markdown transcript，便于调试、归档和分享
+
+这让类似 Claude Code 的会话导出能力直接进入 TUI，而不需要额外脚本或手工抓 transcript。
+
 ## 维护思路
 
 这个 fork 的维护策略是偏保守的：
@@ -291,29 +327,25 @@ Codex CLI 是开源的，但上游仓库当前对外部代码贡献采用 invita
 
 改进 Codex CLI 的 status line，让它可以直接展示 token 吞吐，而不只是显示比较粗粒度的任务状态，便于更直观判断模型响应效率。
 
-### 2. Session export
+### 2. ~~Session export~~ ✅ 已完成
 
-实现类似 Claude Code 的 session 导出能力，让用户可以把当前会话记录导出成可复用格式，方便调试、归档和分享。
+已实现类似 Claude Code 的 `/export` 会话导出能力，支持用户自定义文件名，例如 `/export talk.txt` 或 `/export talk.md`。当前已经覆盖调试、归档、分享这一类核心使用场景。
 
 ### 3. ~~更好的 memory 机制~~ ✅ 已完成
 
 已实现为合并 memory 子系统（见上方当前差异第 3 项）。后续改进见下方。
 
-### 5. AutoDream 后台守护进程
-
-用 3-gate 后台合并器（时间 ≥ 24h、≥ 5 个新 session、无锁）替代启动时阻塞的 Phase 2 合并，使用 4 阶段合并管线：Orient → Gather → Consolidate → Prune。借鉴 Claude Code 的 AutoDream。
-
-### 6. Notepad TUI 侧边栏
-
-在 TUI 侧边栏展示 notepad 分区，让用户无需运行 `/memories` 命令即可查看和编辑 memory 上下文。
-
-### 7. Memory 版本管理
-
-为 topic 编辑维护轻量级变更日志，让 agent 能推理内容何时发生了什么变化。
-
 ### 4. 更好的 Zellij 使用体验
 
 继续针对 `zellij` 下的 Codex CLI 使用体验做优化，包括渲染、布局、对比度，以及其他与普通 terminal 或 `tmux` 表现不同的交互细节。
+
+### 下一阶段重点
+
+- **后台化的 AutoDream 式 consolidation** — 把 consolidation 完整移出启动路径，改为后台 3-gate 合并器（时间 ≥ 24h、≥ 5 个新 session、无锁），并使用 4 阶段管线：Orient → Gather → Consolidate → Prune。
+- **Notepad TUI 侧边栏** — 直接在 TUI 侧边栏展示 notepad 分区，让用户无需总是通过 `/memories` 查看和编辑 memory 上下文。
+- **Memory 版本管理** — 为 topic 编辑维护轻量级变更日志，让 agent 能推理内容何时发生了什么变化。
+- **更主动的 subagent 并行规划** — 让 agent 能更积极地拆分任务并并行派发 subagent，而不是严格串行地一步步推进。
+- **Claude Code 风格的后台执行** — 自动把长时间运行的命令和 agent 工作放到后台，而不是长时间占用主进程做前台等待或轮询。
 
 ## 社区协作
 

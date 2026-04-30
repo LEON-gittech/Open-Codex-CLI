@@ -31,6 +31,7 @@ const SIDE_REVIEW_UNAVAILABLE_MESSAGE: &str =
 const SIDE_SLASH_COMMAND_UNAVAILABLE_HINT: &str = "Press Esc to return to the main thread first.";
 const GOAL_USAGE: &str = "Usage: /goal <objective>";
 const GOAL_USAGE_HINT: &str = "Example: /goal improve benchmark coverage";
+const EXPORT_USAGE: &str = "Usage: /export <path>";
 
 impl ChatWidget {
     /// Dispatch a bare slash command and record its staged local-history entry.
@@ -319,6 +320,9 @@ impl ChatWidget {
             SlashCommand::Copy => {
                 self.copy_last_agent_markdown();
             }
+            SlashCommand::Export => {
+                self.add_error_message(EXPORT_USAGE.to_string());
+            }
             SlashCommand::Diff => {
                 self.add_diff_in_progress();
                 let tx = self.app_event_tx.clone();
@@ -570,6 +574,11 @@ impl ChatWidget {
                 "verbose" => self.add_mcp_output(McpServerStatusDetail::Full),
                 _ => self.add_error_message("Usage: /mcp [verbose]".to_string()),
             },
+            SlashCommand::Export if !trimmed.is_empty() => {
+                self.app_event_tx.send(AppEvent::ExportTranscript {
+                    path: self.config.cwd.join(trimmed).to_path_buf(),
+                });
+            }
             SlashCommand::Rename if !trimmed.is_empty() => {
                 if !self.ensure_thread_rename_allowed() {
                     return;
@@ -1003,6 +1012,7 @@ impl ChatWidget {
             | SlashCommand::DebugConfig
             | SlashCommand::Ps
             | SlashCommand::Stop
+            | SlashCommand::Export
             | SlashCommand::MemoryDrop
             | SlashCommand::MemoryUpdate
             | SlashCommand::Mcp
