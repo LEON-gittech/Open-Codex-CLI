@@ -579,7 +579,7 @@ impl HistoryCell for UpdateAvailableHistoryCell {
         let release_notes_url = self
             .update_action
             .map(UpdateAction::release_notes_url)
-            .unwrap_or("https://github.com/openai/codex/releases/latest");
+            .unwrap_or("https://github.com/LEON-gittech/codex");
         let update_instruction = if let Some(update_action) = self.update_action {
             line!["Run ", update_action.command_str().cyan(), " to update."]
         } else {

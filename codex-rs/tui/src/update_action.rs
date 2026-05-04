@@ -4,7 +4,6 @@ use codex_install_context::InstallContext;
 use codex_install_context::StandalonePlatform;
 
 const OPEN_CODEX_RELEASE_NOTES_URL: &str = "https://github.com/LEON-gittech/codex";
-const UPSTREAM_CODEX_RELEASE_NOTES_URL: &str = "https://github.com/openai/codex/releases/latest";
 
 /// Update action the CLI should perform after the TUI exits.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -54,12 +53,7 @@ impl UpdateAction {
     }
 
     pub fn release_notes_url(self) -> &'static str {
-        match self {
-            UpdateAction::NpmGlobalLatest | UpdateAction::BunGlobalLatest => OPEN_CODEX_RELEASE_NOTES_URL,
-            UpdateAction::BrewUpgrade
-            | UpdateAction::StandaloneUnix
-            | UpdateAction::StandaloneWindows => UPSTREAM_CODEX_RELEASE_NOTES_URL,
-        }
+        OPEN_CODEX_RELEASE_NOTES_URL
     }
 
     /// Returns string representation of the command-line arguments for invoking the update.
@@ -143,7 +137,15 @@ mod tests {
         );
         assert_eq!(
             UpdateAction::BrewUpgrade.release_notes_url(),
-            UPSTREAM_CODEX_RELEASE_NOTES_URL
+            OPEN_CODEX_RELEASE_NOTES_URL
+        );
+        assert_eq!(
+            UpdateAction::StandaloneUnix.release_notes_url(),
+            OPEN_CODEX_RELEASE_NOTES_URL
+        );
+        assert_eq!(
+            UpdateAction::StandaloneWindows.release_notes_url(),
+            OPEN_CODEX_RELEASE_NOTES_URL
         );
     }
 

@@ -4,7 +4,7 @@ assertion_line: 3296
 expression: rendered
 ---
 ╭──────────────────────────────────────────────────────────╮
-│ ✨ Update available! CURRENT_VERSION -> NEXT_VERSION        │
+│ ✨ Update available! CURRENT_VERSION -> NEXT_VERSION             │
 │ Run npm install -g @leonw24/open-codex@latest to update. │
 │                                                          │
 │ See full release notes:                                  │
