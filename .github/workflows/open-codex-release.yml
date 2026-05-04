@@ -182,13 +182,11 @@ jobs:
             dist/npm/*.tgz
             dist/release/*
 
-  package-release:
+  package-npm:
     needs:
       - tag-check
       - build-linux
     runs-on: ubuntu-24.04
-    permissions:
-      contents: write
     outputs:
       version: ${{ needs.tag-check.outputs.version }}
       npm_tag: ${{ needs.tag-check.outputs.npm_tag }}
@@ -216,29 +214,14 @@ jobs:
             --release-version "${RELEASE_VERSION}" \
             --staging-dir "${RUNNER_TEMP}/npm-stage-codex" \
             --pack-output "dist/npm/codex-npm-${RELEASE_VERSION}.tgz"
-      - name: Generate release notes from tag commit message
-        shell: bash
-        run: |
-          set -euo pipefail
-          notes_path="${RUNNER_TEMP}/release-notes.md"
-          git log -1 --format=%B "${{ needs.tag-check.outputs.ref }}" > "${notes_path}"
-          echo >> "${notes_path}"
-          echo "RELEASE_NOTES=${notes_path}" >> "$GITHUB_ENV"
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@153bb8e04406b158c6c84fc1615b65b24149a1fe # v2
+      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
         with:
-          name: ${{ needs.tag-check.outputs.version }}
-          tag_name: ${{ env.RELEASE_TAG }}
-          target_commitish: ${{ needs.tag-check.outputs.ref }}
-          body_path: ${{ env.RELEASE_NOTES }}
-          files: |
-            dist/npm/*.tgz
-            dist/release/*
-          prerelease: ${{ contains(needs.tag-check.outputs.version, '-') }}
+          name: open-codex-npm-${{ needs.tag-check.outputs.version }}
+          path: dist/npm/*.tgz
 
   publish-npm:
-    needs: package-release
-    if: ${{ needs.package-release.outputs.should_publish_npm == 'true' }}
+    needs: package-npm
+    if: ${{ needs.package-npm.outputs.should_publish_npm == 'true' }}
     runs-on: ubuntu-24.04
     permissions:
       id-token: write
@@ -259,8 +242,8 @@ jobs:
           find dist/artifacts -type f -name '*.tgz' -path '*/npm/*' -exec cp {} dist/npm/ \;
       - name: Publish Linux npm packages
         env:
-          VERSION: ${{ needs.package-release.outputs.version }}
-          NPM_TAG: ${{ needs.package-release.outputs.npm_tag }}
+          VERSION: ${{ needs.package-npm.outputs.version }}
+          NPM_TAG: ${{ needs.package-npm.outputs.npm_tag }}
         run: |
           set -euo pipefail
           prefix=""
