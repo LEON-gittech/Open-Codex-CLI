@@ -1,0 +1,316 @@
+name: open-codex-release
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Release tag to publish, for example rust-v0.125.7"
+        required: true
+        type: string
+  push:
+    tags:
+      - "rust-v*.*.*"
+
+concurrency:
+  group: open-codex-release-${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
+
+jobs:
+  tag-check:
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      ref: ${{ steps.version.outputs.ref }}
+      npm_tag: ${{ steps.npm.outputs.npm_tag }}
+      should_publish_npm: ${{ steps.npm.outputs.should_publish }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+      - name: Validate release tag and version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="${RELEASE_TAG}"
+          if [[ ! "${tag}" =~ ^rust-v[0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta)(\.[0-9]+)?)?$ ]]; then
+            echo "Invalid release tag: ${tag}" >&2
+            exit 1
+          fi
+
+          version="${tag#rust-v}"
+          cargo_ver="$(grep -m1 '^version' codex-rs/Cargo.toml | sed -E 's/version *= *"([^"]+)".*/\1/')"
+          package_ver="$(node -p "require('./codex-cli/package.json').version")"
+
+          if [[ "${version}" != "${cargo_ver}" ]]; then
+            echo "Tag ${version} does not match Cargo.toml ${cargo_ver}" >&2
+            exit 1
+          fi
+          if [[ "${version}" != "${package_ver}" ]]; then
+            echo "Tag ${version} does not match codex-cli/package.json ${package_ver}" >&2
+            exit 1
+          fi
+
+          ref="$(git rev-parse HEAD)"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "ref=${ref}" >> "$GITHUB_OUTPUT"
+      - name: Determine npm publish settings
+        id: npm
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          if [[ "${VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "should_publish=true" >> "$GITHUB_OUTPUT"
+            echo "npm_tag=" >> "$GITHUB_OUTPUT"
+          elif [[ "${VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+-alpha\.[0-9]+$ ]]; then
+            echo "should_publish=true" >> "$GITHUB_OUTPUT"
+            echo "npm_tag=alpha" >> "$GITHUB_OUTPUT"
+          else
+            echo "should_publish=false" >> "$GITHUB_OUTPUT"
+            echo "npm_tag=" >> "$GITHUB_OUTPUT"
+          fi
+
+  build-linux:
+    needs: tag-check
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: codex-rs
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            target: x86_64-unknown-linux-musl
+            rg_platform: linux-x86_64
+            platform_package: codex-linux-x64
+            npm_tarball: codex-npm-linux-x64-${{ needs.tag-check.outputs.version }}.tgz
+          - runner: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-musl
+            rg_platform: linux-aarch64
+            platform_package: codex-linux-arm64
+            npm_tarball: codex-npm-linux-arm64-${{ needs.tag-check.outputs.version }}.tgz
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          ref: ${{ needs.tag-check.outputs.ref }}
+      - uses: dtolnay/rust-toolchain@a0b273b48ed29de4470960879e8381ff45632f26 # 1.93.0
+        with:
+          targets: ${{ matrix.target }}
+      - name: Use hermetic Cargo home
+        run: |
+          set -euo pipefail
+          cargo_home="${GITHUB_WORKSPACE}/.cargo-home"
+          mkdir -p "${cargo_home}/bin"
+          echo "CARGO_HOME=${cargo_home}" >> "$GITHUB_ENV"
+          echo "${cargo_home}/bin" >> "$GITHUB_PATH"
+          : > "${cargo_home}/config.toml"
+      - name: Install Zig
+        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2
+        with:
+          version: 0.14.0
+      - name: Install musl build tools
+        env:
+          TARGET: ${{ matrix.target }}
+        run: bash "${GITHUB_WORKSPACE}/.github/scripts/install-musl-build-tools.sh"
+      - name: Build codex
+        run: cargo build --target ${{ matrix.target }} --release --bin codex
+      - name: Stage native vendor payload
+        shell: bash
+        env:
+          RG_PLATFORM: ${{ matrix.rg_platform }}
+        run: |
+          set -euo pipefail
+          vendor="${GITHUB_WORKSPACE}/vendor/${{ matrix.target }}"
+          mkdir -p "${vendor}/codex" "${vendor}/path"
+          cp "target/${{ matrix.target }}/release/codex" "${vendor}/codex/codex"
+          chmod 0755 "${vendor}/codex/codex"
+
+          python3 - <<'PY'
+          import json
+          import os
+          import shutil
+          import tarfile
+          import tempfile
+          import urllib.request
+          from pathlib import Path
+
+          manifest = json.loads(Path(os.environ["GITHUB_WORKSPACE"]).joinpath("codex-cli/bin/rg").read_text())
+          platform = os.environ["RG_PLATFORM"]
+          info = manifest["platforms"][platform]
+          url = info["providers"][0]["url"]
+          member = info["path"]
+          dest = Path(os.environ["GITHUB_WORKSPACE"]) / "vendor" / "${{ matrix.target }}" / "path" / "rg"
+          with tempfile.TemporaryDirectory() as tmp:
+              archive = Path(tmp) / "rg.tar.gz"
+              with urllib.request.urlopen(url, timeout=60) as response, archive.open("wb") as out:
+                  shutil.copyfileobj(response, out)
+              with tarfile.open(archive, "r:gz") as tar:
+                  tar.extract(member, path=tmp, filter="data")
+              shutil.move(str(Path(tmp) / member), dest)
+          dest.chmod(0o755)
+          PY
+      - name: Stage platform npm package
+        env:
+          RELEASE_VERSION: ${{ needs.tag-check.outputs.version }}
+        run: |
+          python3 "${GITHUB_WORKSPACE}/codex-cli/scripts/build_npm_package.py" \
+            --package "${{ matrix.platform_package }}" \
+            --release-version "${RELEASE_VERSION}" \
+            --vendor-src "${GITHUB_WORKSPACE}/vendor" \
+            --staging-dir "${RUNNER_TEMP}/npm-stage-${{ matrix.platform_package }}" \
+            --pack-output "${GITHUB_WORKSPACE}/dist/npm/${{ matrix.npm_tarball }}"
+      - name: Compress release binary
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "${GITHUB_WORKSPACE}/dist/release"
+          cp "target/${{ matrix.target }}/release/codex" "${GITHUB_WORKSPACE}/dist/release/codex-${{ matrix.target }}"
+          tar -C "${GITHUB_WORKSPACE}/dist/release" -czf "${GITHUB_WORKSPACE}/dist/release/codex-${{ matrix.target }}.tar.gz" "codex-${{ matrix.target }}"
+          zstd -T0 -19 --rm "${GITHUB_WORKSPACE}/dist/release/codex-${{ matrix.target }}"
+      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
+        with:
+          name: open-codex-linux-${{ matrix.target }}
+          path: |
+            dist/npm/*.tgz
+            dist/release/*
+
+  package-release:
+    needs:
+      - tag-check
+      - build-linux
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    outputs:
+      version: ${{ needs.tag-check.outputs.version }}
+      npm_tag: ${{ needs.tag-check.outputs.npm_tag }}
+      should_publish_npm: ${{ needs.tag-check.outputs.should_publish_npm }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          ref: ${{ needs.tag-check.outputs.ref }}
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          path: dist/artifacts
+      - name: Collect artifacts
+        run: |
+          set -euo pipefail
+          mkdir -p dist/npm dist/release
+          find dist/artifacts -type f -name '*.tgz' -path '*/npm/*' -exec cp {} dist/npm/ \;
+          find dist/artifacts -type f \( -name '*.zst' -o -name '*.tar.gz' \) -path '*/release/*' -exec cp {} dist/release/ \;
+      - name: Stage root npm package
+        env:
+          RELEASE_VERSION: ${{ needs.tag-check.outputs.version }}
+          CODEX_NPM_PLATFORM_PACKAGES: codex-linux-x64,codex-linux-arm64
+        run: |
+          python3 codex-cli/scripts/build_npm_package.py \
+            --package codex \
+            --release-version "${RELEASE_VERSION}" \
+            --staging-dir "${RUNNER_TEMP}/npm-stage-codex" \
+            --pack-output "dist/npm/codex-npm-${RELEASE_VERSION}.tgz"
+      - name: Generate release notes from tag commit message
+        shell: bash
+        run: |
+          set -euo pipefail
+          notes_path="${RUNNER_TEMP}/release-notes.md"
+          git log -1 --format=%B "${{ needs.tag-check.outputs.ref }}" > "${notes_path}"
+          echo >> "${notes_path}"
+          echo "RELEASE_NOTES=${notes_path}" >> "$GITHUB_ENV"
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@153bb8e04406b158c6c84fc1615b65b24149a1fe # v2
+        with:
+          name: ${{ needs.tag-check.outputs.version }}
+          tag_name: ${{ env.RELEASE_TAG }}
+          target_commitish: ${{ needs.tag-check.outputs.ref }}
+          body_path: ${{ env.RELEASE_NOTES }}
+          files: |
+            dist/npm/*.tgz
+            dist/release/*
+          prerelease: ${{ contains(needs.tag-check.outputs.version, '-') }}
+
+  publish-npm:
+    needs: package-release
+    if: ${{ needs.package-release.outputs.should_publish_npm == 'true' }}
+    runs-on: ubuntu-24.04
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          path: dist/artifacts
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6
+        with:
+          node-version: 24
+          registry-url: "https://registry.npmjs.org"
+          scope: "@leonw24"
+      - name: Collect npm tarballs
+        run: |
+          set -euo pipefail
+          mkdir -p dist/npm
+          find dist/artifacts -type f -name '*.tgz' -path '*/npm/*' -exec cp {} dist/npm/ \;
+      - name: Publish Linux npm packages
+        env:
+          VERSION: ${{ needs.package-release.outputs.version }}
+          NPM_TAG: ${{ needs.package-release.outputs.npm_tag }}
+        run: |
+          set -euo pipefail
+          prefix=""
+          if [[ -n "${NPM_TAG}" ]]; then
+            prefix="${NPM_TAG}-"
+          fi
+
+          tarballs=(
+            "dist/npm/codex-npm-linux-x64-${VERSION}.tgz"
+            "dist/npm/codex-npm-linux-arm64-${VERSION}.tgz"
+            "dist/npm/codex-npm-${VERSION}.tgz"
+          )
+
+          for tarball in "${tarballs[@]}"; do
+            if [[ ! -f "${tarball}" ]]; then
+              echo "Missing npm tarball: ${tarball}" >&2
+              exit 1
+            fi
+          done
+
+          for tarball in "${tarballs[@]}"; do
+            filename="$(basename "${tarball}")"
+            tag="${NPM_TAG}"
+            case "${filename}" in
+              codex-npm-linux-x64-"${VERSION}".tgz)
+                tag="${prefix}linux-x64"
+                ;;
+              codex-npm-linux-arm64-"${VERSION}".tgz)
+                tag="${prefix}linux-arm64"
+                ;;
+            esac
+
+            publish_cmd=(npm publish "${GITHUB_WORKSPACE}/${tarball}")
+            if [[ -n "${tag}" ]]; then
+              publish_cmd+=(--tag "${tag}")
+            fi
+
+            echo "+ ${publish_cmd[*]}"
+            set +e
+            publish_output="$("${publish_cmd[@]}" 2>&1)"
+            publish_status=$?
+            set -e
+            echo "${publish_output}"
+
+            if [[ ${publish_status} -eq 0 ]]; then
+              continue
+            fi
+            if grep -qiE "previously published|cannot publish over|version already exists" <<< "${publish_output}"; then
+              echo "Skipping already-published package version for ${filename}"
+              continue
+            fi
+            exit "${publish_status}"
+          done
