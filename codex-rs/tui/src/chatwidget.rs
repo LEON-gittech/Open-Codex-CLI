@@ -316,6 +316,7 @@ use crate::status_indicator_widget::STATUS_DETAILS_DEFAULT_MAX_LINES;
 use crate::status_indicator_widget::StatusDetailsCapitalization;
 use crate::text_formatting::truncate_text;
 use crate::tui::FrameRequester;
+mod background_agents;
 mod goal_status;
 use self::goal_status::GoalStatusState;
 #[cfg(test)]
@@ -4070,6 +4071,7 @@ impl ChatWidget {
         ) {
             self.on_collab_event(cell);
         }
+        background_agents::sync_collab_agent_background_activity(self, &item);
     }
 
     pub(crate) fn handle_history_entry_response(&mut self, event: HistoryLookupResponse) {

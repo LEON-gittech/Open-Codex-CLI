@@ -4,6 +4,7 @@
 //! entries, and the fast-switch keyboard shortcuts. Higher-level coordination, such as deciding
 //! which thread becomes active or when a thread closes, stays in [`crate::app::App`].
 
+use crate::history_cell::HistoryCell;
 use crate::history_cell::PlainHistoryCell;
 use crate::render::line_utils::prefix_lines;
 use crate::text_formatting::truncate_text;
@@ -58,6 +59,43 @@ struct AgentLabel<'a> {
 pub(crate) struct SpawnRequestSummary {
     pub(crate) model: String,
     pub(crate) reasoning_effort: ReasoningEffortConfig,
+}
+
+#[derive(Debug)]
+pub(crate) struct CollabAgentActivityCell {
+    thread_id: ThreadId,
+    lines: Vec<Line<'static>>,
+}
+
+impl CollabAgentActivityCell {
+    pub(crate) fn new(
+        thread_id: ThreadId,
+        status: &CollabAgentState,
+        metadata: &AgentMetadata,
+    ) -> Self {
+        Self {
+            thread_id,
+            lines: collab_agent_activity_lines(thread_id, status, metadata),
+        }
+    }
+
+    pub(crate) fn thread_id(&self) -> ThreadId {
+        self.thread_id
+    }
+
+    pub(crate) fn update(&mut self, status: &CollabAgentState, metadata: &AgentMetadata) {
+        self.lines = collab_agent_activity_lines(self.thread_id, status, metadata);
+    }
+}
+
+impl HistoryCell for CollabAgentActivityCell {
+    fn display_lines(&self, _width: u16) -> Vec<Line<'static>> {
+        self.lines.clone()
+    }
+
+    fn raw_lines(&self) -> Vec<Line<'static>> {
+        crate::history_cell::plain_lines(self.lines.clone())
+    }
 }
 
 pub(crate) fn agent_picker_status_dot_spans(is_closed: bool) -> Vec<Span<'static>> {
@@ -397,6 +435,18 @@ fn collab_event(title: Line<'static>, details: Vec<Line<'static>>) -> PlainHisto
         lines.extend(prefix_lines(details, "  └ ".dim(), "    ".into()));
     }
     PlainHistoryCell::new(lines)
+}
+
+fn collab_agent_activity_lines(
+    thread_id: ThreadId,
+    status: &CollabAgentState,
+    metadata: &AgentMetadata,
+) -> Vec<Line<'static>> {
+    let mut spans = vec![Span::from("• ").dim()];
+    spans.extend(agent_label_spans(agent_label(thread_id, metadata)));
+    spans.push(Span::from(": ").dim());
+    spans.extend(status_summary_spans(status));
+    vec![spans.into()]
 }
 
 fn title_text(title: impl Into<String>) -> Line<'static> {
