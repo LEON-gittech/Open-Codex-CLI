@@ -739,9 +739,9 @@ async fn ctrl_b_backgrounds_active_exec_without_submitting_core_op() {
 
     chat.on_exec_command_output_delta("call-bg", "still running\n");
     let backgrounded_exec = chat
-        .backgrounded_active_cell
-        .as_ref()
-        .and_then(|cell| cell.as_any().downcast_ref::<ExecCell>())
+        .background_activities
+        .back()
+        .and_then(|activity| activity.cell.as_any().downcast_ref::<ExecCell>())
         .expect("backgrounded exec cell");
     assert_eq!(
         backgrounded_exec
@@ -807,6 +807,45 @@ async fn down_foregrounds_backgrounded_active_exec_without_submitting_core_op() 
     assert!(combined.contains("sleep 5"));
     assert!(combined.contains("done"));
     assert_eq!(combined.matches("sleep 5").count(), 1);
+}
+
+#[tokio::test]
+async fn multiple_backgrounded_execs_complete_independently() {
+    let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    handle_turn_started(&mut chat, "turn-1");
+    let first = begin_exec(&mut chat, "call-bg-1", "sleep 1");
+    chat.handle_key_event(KeyEvent::new(KeyCode::Char('b'), KeyModifiers::CONTROL));
+    assert_eq!(chat.background_activities.len(), 1);
+
+    chat.on_task_started();
+    let second = begin_exec(&mut chat, "call-bg-2", "sleep 2");
+    chat.handle_key_event(KeyEvent::new(KeyCode::Char('b'), KeyModifiers::CONTROL));
+    assert_eq!(chat.background_activities.len(), 2);
+
+    end_exec(&mut chat, first, "first done\n", "", /*exit_code*/ 0);
+    assert_eq!(chat.background_activities.len(), 1);
+    let first_cells = drain_insert_history(&mut rx);
+    let first_text = first_cells
+        .iter()
+        .map(|lines| lines_to_single_string(lines))
+        .collect::<String>();
+    assert!(first_text.contains("sleep 1"));
+    assert!(first_text.contains("first done"));
+    assert!(
+        !first_text.contains("sleep 2"),
+        "completing the first background exec should not flush the second: {first_text}"
+    );
+
+    end_exec(&mut chat, second, "second done\n", "", /*exit_code*/ 0);
+    assert!(chat.background_activities.is_empty());
+    let second_cells = drain_insert_history(&mut rx);
+    let second_text = second_cells
+        .iter()
+        .map(|lines| lines_to_single_string(lines))
+        .collect::<String>();
+    assert!(second_text.contains("sleep 2"));
+    assert!(second_text.contains("second done"));
+    assert_eq!(second_text.matches("sleep 2").count(), 1);
 }
 
 #[tokio::test]

@@ -748,7 +748,8 @@ pub(crate) struct ChatWidget {
     codex_op_target: CodexOpTarget,
     bottom_pane: BottomPane,
     active_cell: Option<Box<dyn HistoryCell>>,
-    backgrounded_active_cell: Option<Box<dyn HistoryCell>>,
+    background_activities: VecDeque<BackgroundActivity>,
+    next_background_activity_id: u64,
     /// Monotonic-ish counter used to invalidate transcript overlay caching.
     ///
     /// The transcript overlay appends a cached "live tail" for the current active cell. Most
@@ -1041,6 +1042,12 @@ pub(crate) struct ChatWidget {
     realtime_conversation: RealtimeConversationUiState,
     last_rendered_user_message_display: Option<UserMessageDisplay>,
     last_non_retry_error: Option<(String, String)>,
+}
+
+#[derive(Debug)]
+struct BackgroundActivity {
+    id: u64,
+    cell: Box<dyn HistoryCell>,
 }
 
 #[cfg_attr(not(test), allow(dead_code))]
@@ -2574,8 +2581,9 @@ impl ChatWidget {
         self.suppressed_exec_calls.clear();
         self.last_unified_wait = None;
         self.unified_exec_wait_streak = None;
-        if let Some(cell) = self.backgrounded_active_cell.take() {
-            self.add_boxed_history(cell);
+        let background_activities = self.background_activities.drain(..).collect::<Vec<_>>();
+        for activity in background_activities {
+            self.add_boxed_history(activity.cell);
         }
         self.request_redraw();
 
@@ -3749,13 +3757,12 @@ impl ChatWidget {
 
     fn on_exec_command_output_delta(&mut self, call_id: &str, delta: &str) {
         self.track_unified_exec_output_chunk(call_id, delta.as_bytes());
-        if let Some(cell) = self
-            .backgrounded_active_cell
-            .as_mut()
-            .and_then(|c| c.as_any_mut().downcast_mut::<ExecCell>())
-            && cell.append_output(call_id, delta)
-        {
-            return;
+        for activity in &mut self.background_activities {
+            if let Some(cell) = activity.cell.as_any_mut().downcast_mut::<ExecCell>()
+                && cell.append_output(call_id, delta)
+            {
+                return;
+            }
         }
         if !self.bottom_pane.is_task_running() {
             return;
@@ -4395,7 +4402,7 @@ impl ChatWidget {
     pub(crate) fn handle_command_execution_completed_now(&mut self, item: ThreadItem) {
         enum ExecEndTarget {
             // A previously foreground exec cell was detached from the live composer with Ctrl-B.
-            BackgroundedTracked,
+            BackgroundedTracked(usize),
             // Normal case: the active exec cell already tracks this call id.
             ActiveTracked,
             // We have an active exec group, but it does not contain this call id. Render the end
@@ -4440,13 +4447,15 @@ impl ChatWidget {
         let is_unified_exec_interaction =
             matches!(source, ExecCommandSource::UnifiedExecInteraction);
         let is_user_shell = source == ExecCommandSource::UserShell;
-        let backgrounded_tracks_call = self
-            .backgrounded_active_cell
-            .as_ref()
-            .and_then(|cell| cell.as_any().downcast_ref::<ExecCell>())
-            .is_some_and(|exec_cell| exec_cell.iter_calls().any(|call| call.call_id == id));
-        let end_target = if backgrounded_tracks_call {
-            ExecEndTarget::BackgroundedTracked
+        let backgrounded_activity_index = self.background_activities.iter().position(|activity| {
+            activity
+                .cell
+                .as_any()
+                .downcast_ref::<ExecCell>()
+                .is_some_and(|exec_cell| exec_cell.iter_calls().any(|call| call.call_id == id))
+        });
+        let end_target = if let Some(index) = backgrounded_activity_index {
+            ExecEndTarget::BackgroundedTracked(index)
         } else {
             match self.active_cell.as_ref() {
                 Some(cell) => match cell.as_any().downcast_ref::<ExecCell>() {
@@ -4479,16 +4488,17 @@ impl ChatWidget {
         };
 
         match end_target {
-            ExecEndTarget::BackgroundedTracked => {
-                if let Some(mut cell) = self.backgrounded_active_cell.take()
-                    && let Some(exec_cell) = cell.as_any_mut().downcast_mut::<ExecCell>()
+            ExecEndTarget::BackgroundedTracked(index) => {
+                if let Some(mut activity) = self.background_activities.remove(index)
+                    && let Some(exec_cell) = activity.cell.as_any_mut().downcast_mut::<ExecCell>()
                 {
                     let completed = exec_cell.complete_call(&id, output, duration);
                     debug_assert!(completed, "backgrounded exec cell should contain {id}");
                     if exec_cell.should_flush() {
-                        self.add_boxed_history(cell);
+                        self.add_boxed_history(activity.cell);
                     } else {
-                        self.backgrounded_active_cell = Some(cell);
+                        let insert_index = index.min(self.background_activities.len());
+                        self.background_activities.insert(insert_index, activity);
                     }
                 }
             }
@@ -4976,7 +4986,8 @@ impl ChatWidget {
                 skills: None,
             }),
             active_cell,
-            backgrounded_active_cell: None,
+            background_activities: VecDeque::new(),
+            next_background_activity_id: 0,
             active_cell_revision: 0,
             raw_output_mode: config.tui_raw_output_mode,
             config,
@@ -6844,8 +6855,9 @@ impl ChatWidget {
         if let Some(cell) = self.active_cell.take() {
             self.finalize_boxed_cell_as_failed(cell);
         }
-        if let Some(cell) = self.backgrounded_active_cell.take() {
-            self.finalize_boxed_cell_as_failed(cell);
+        let background_activities = self.background_activities.drain(..).collect::<Vec<_>>();
+        for activity in background_activities {
+            self.finalize_boxed_cell_as_failed(activity.cell);
         }
     }
 
@@ -10380,11 +10392,11 @@ impl ChatWidget {
         }
 
         self.flush_unified_exec_wait_streak();
-        if let Some(cell) = self.backgrounded_active_cell.take() {
-            self.add_boxed_history(cell);
-        }
-        self.backgrounded_active_cell = self.active_cell.take();
-        if self.backgrounded_active_cell.is_some() {
+        if let Some(cell) = self.active_cell.take() {
+            let id = self.next_background_activity_id;
+            self.next_background_activity_id = self.next_background_activity_id.wrapping_add(1);
+            self.background_activities
+                .push_back(BackgroundActivity { id, cell });
             self.bump_active_cell_revision();
         }
         self.task_backgrounded = true;
@@ -10405,8 +10417,16 @@ impl ChatWidget {
         }
 
         if self.active_cell.is_none() {
-            self.active_cell = self.backgrounded_active_cell.take();
-            if self.active_cell.is_some() {
+            let newest_index = self
+                .background_activities
+                .iter()
+                .enumerate()
+                .max_by_key(|(_, activity)| activity.id)
+                .map(|(index, _)| index);
+            if let Some(index) = newest_index
+                && let Some(activity) = self.background_activities.remove(index)
+            {
+                self.active_cell = Some(activity.cell);
                 self.bump_active_cell_revision();
             }
         }
