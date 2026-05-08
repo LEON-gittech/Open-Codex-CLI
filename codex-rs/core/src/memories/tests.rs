@@ -1597,6 +1597,7 @@ mod claudemd_notepad_integration {
             r#type: "project".to_string(),
             keywords: vec!["microservice".to_string(), "api".to_string()],
             source: "agent".to_string(),
+            priority: None,
             updated_at: Some(Utc::now()),
         };
         write_topic(&root, "architecture", &fm1, "Use microservice pattern for API gateway")
@@ -1609,6 +1610,7 @@ mod claudemd_notepad_integration {
             r#type: "project".to_string(),
             keywords: vec!["pytest".to_string(), "unit-test".to_string()],
             source: "agent".to_string(),
+            priority: None,
             updated_at: Some(Utc::now()),
         };
         write_topic(&root, "testing", &fm2, "Use pytest with fixtures for unit tests")
@@ -1653,6 +1655,7 @@ mod claudemd_notepad_integration {
             r#type: "project".to_string(),
             keywords: vec!["rust".to_string(), "tokio".to_string()],
             source: "agent".to_string(),
+            priority: None,
             updated_at: Some(Utc::now()),
         };
         write_topic(&root, "conventions", &fm, "Always use tokio::spawn for async tasks")
@@ -1697,14 +1700,16 @@ mod claudemd_notepad_integration {
     }
 
     #[tokio::test]
-    async fn memory_prompt_injects_notepad_priority() {
+    async fn memory_prompt_does_not_inject_notepad_priority() {
         let env = TestEnv::new();
         let codex_home = env.codex_home_abs();
 
-        // Set up notepad priority
         let root = memory_root(&codex_home);
         tokio::fs::create_dir_all(&root).await.unwrap();
         notepad::write_priority(&root, "Critical: deploy hotfix before EOD")
+            .await
+            .unwrap();
+        tokio::fs::write(root.join("memory_summary.md"), "Durable summary")
             .await
             .unwrap();
 
@@ -1715,11 +1720,11 @@ mod claudemd_notepad_integration {
         )
         .await;
 
-        assert!(result.is_some(), "Should return Some when notepad priority exists");
+        assert!(result.is_some(), "Should return Some when memory summary exists");
         let instructions = result.unwrap();
         assert!(
-            instructions.contains("Critical: deploy hotfix before EOD"),
-            "Developer instructions should contain notepad priority content"
+            !instructions.contains("Critical: deploy hotfix before EOD"),
+            "Developer instructions should not contain notepad priority content"
         );
     }
 }

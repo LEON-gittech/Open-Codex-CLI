@@ -36,6 +36,8 @@ use crate::create_list_dir_tool;
 use crate::create_list_mcp_resource_templates_tool;
 use crate::create_list_mcp_resources_tool;
 use crate::create_local_shell_tool;
+use crate::create_memory_read_tool;
+use crate::create_memory_search_tool;
 use crate::create_read_mcp_resource_tool;
 use crate::create_report_agent_job_result_tool;
 use crate::create_request_permissions_tool;
@@ -43,14 +45,6 @@ use crate::create_request_user_input_tool;
 use crate::create_resume_agent_tool;
 use crate::create_send_input_tool_v1;
 use crate::create_send_message_tool;
-use crate::create_memory_read_tool;
-use crate::create_memory_write_tool;
-use crate::create_memory_add_note_tool;
-use crate::create_memory_search_tool;
-use crate::create_notepad_read_tool;
-use crate::create_notepad_write_priority_tool;
-use crate::create_notepad_write_working_tool;
-use crate::create_notepad_prune_tool;
 use crate::create_shell_command_tool;
 use crate::create_shell_tool;
 use crate::create_spawn_agent_tool_v1;
@@ -257,59 +251,11 @@ pub fn build_tool_registry_plan(
         plan.register_handler("memory_read", ToolHandlerKind::MemoryRead);
 
         plan.push_spec(
-            create_memory_write_tool(),
-            /*supports_parallel_tool_calls*/ false,
-            config.code_mode_enabled,
-        );
-        plan.register_handler("memory_write", ToolHandlerKind::MemoryWrite);
-
-        plan.push_spec(
-            create_memory_add_note_tool(),
-            /*supports_parallel_tool_calls*/ false,
-            config.code_mode_enabled,
-        );
-        plan.register_handler("memory_add_note", ToolHandlerKind::MemoryAddNote);
-
-        plan.push_spec(
             create_memory_search_tool(),
             /*supports_parallel_tool_calls*/ true,
             config.code_mode_enabled,
         );
         plan.register_handler("memory_search", ToolHandlerKind::MemorySearch);
-
-        plan.push_spec(
-            create_notepad_read_tool(),
-            /*supports_parallel_tool_calls*/ true,
-            config.code_mode_enabled,
-        );
-        plan.register_handler("notepad_read", ToolHandlerKind::NotepadRead);
-
-        plan.push_spec(
-            create_notepad_write_priority_tool(),
-            /*supports_parallel_tool_calls*/ false,
-            config.code_mode_enabled,
-        );
-        plan.register_handler(
-            "notepad_write_priority",
-            ToolHandlerKind::NotepadWritePriority,
-        );
-
-        plan.push_spec(
-            create_notepad_write_working_tool(),
-            /*supports_parallel_tool_calls*/ false,
-            config.code_mode_enabled,
-        );
-        plan.register_handler(
-            "notepad_write_working",
-            ToolHandlerKind::NotepadWriteWorking,
-        );
-
-        plan.push_spec(
-            create_notepad_prune_tool(),
-            /*supports_parallel_tool_calls*/ false,
-            config.code_mode_enabled,
-        );
-        plan.register_handler("notepad_prune", ToolHandlerKind::NotepadPrune);
     }
 
     plan.push_spec(

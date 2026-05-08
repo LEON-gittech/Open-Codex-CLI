@@ -102,3 +102,35 @@ async fn build_memory_tool_developer_instructions_renders_embedded_template() {
         1
     );
 }
+
+#[tokio::test]
+async fn build_memory_tool_developer_instructions_omits_disabled_write_tools() {
+    let temp = tempdir().unwrap();
+    let codex_home = temp.path().abs();
+    let memories_dir = codex_home.join("memories");
+    tokio_fs::create_dir_all(&memories_dir).await.unwrap();
+    tokio_fs::write(
+        memories_dir.join("memory_summary.md"),
+        "Short memory summary for tests.",
+    )
+    .await
+    .unwrap();
+
+    let instructions = build_memory_tool_developer_instructions(&codex_home, "")
+        .await
+        .unwrap();
+
+    for disabled_tool in [
+        "memory_write",
+        "memory_add_note",
+        "notepad_read",
+        "notepad_write_priority",
+        "notepad_write_working",
+        "notepad_prune",
+    ] {
+        assert!(
+            !instructions.contains(disabled_tool),
+            "instructions should not mention disabled tool {disabled_tool}"
+        );
+    }
+}
