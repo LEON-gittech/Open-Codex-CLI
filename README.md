@@ -66,21 +66,19 @@ From commits `5800f4e9f` and `0b299d9bd`:
 
 This is a correctness-focused patch: the UI should not render output from the wrong turn, even when retry, replay, or stream timing gets messy.
 
-### 3. Consolidated memory subsystem
+### 3. Active memory staging on upstream memories
 
-From commits `9f800e44`, `a46f1e68`, `f8987ce`:
+The earlier fork-only memory subsystem has been removed so the fork stays aligned with upstream's memory architecture. The current memory change is intentionally narrow:
 
-Four new subsystems inspired by Claude Code and oh-my-codex:
+- **Upstream memory remains the source of truth** — Codex still uses upstream `memory_summary.md`, `MEMORY.md`, topic files, skills, and `extensions/ad_hoc` consolidation. The `memories` feature keeps the upstream experimental gate and is disabled by default.
 
-- **AGENTS.md Hierarchical Loading** — Loads instruction files from four scopes (Managed → User → Project → Local), with `@include` directive expansion (10-depth limit, circular detection), YAML frontmatter parsing, and mtime-based caching. Injected into user instructions at session start.
+- **Active staging tool** — When the memory feature is enabled, Codex exposes `memory_stage_update`. It writes a small ad-hoc note under `~/.codex/memories/extensions/ad_hoc/notes/` for upstream consolidation and stages the same content into the current session.
 
-- **Notepad Section System** — A structured scratchpad (`~/.codex/memories/notepad.md`) with three sections: PRIORITY (auto-injected into developer context, ≤500 chars), WORKING MEMORY (timestamped session notes, auto-prunable), and MANUAL (permanent notes). Uses atomic writes with directory-based file locking (PID stale detection) for crash safety and concurrent access safety.
+- **Session Memory Overlay** — Staged entries are injected as a bounded developer-context overlay for the current session, so newly saved information can affect the next turn without waiting for a new session or background consolidation. The overlay is emitted only when its revision changes.
 
-- **Memory CRUD Tools** — Eight built-in tools (`memory_read/write/add_note/search`, `notepad_read/write_priority/write_working/prune`) that let the agent actively read and write its own memory during a session. Enabled by default. TUI integration via `/memories list|add|edit|clear`. `memory_write` supports `merge: true` to append content while preserving existing frontmatter.
+- **Removed conflicting fork behavior** — The old direct durable write tools, notepad file, topic frontmatter priority system, merge-write path, and custom AGENTS.md hierarchy are no longer part of the memory implementation.
 
-- **Memory Overlay & Reliability** — Directive priority (`priority: high` in topic frontmatter) auto-injects up to 3 high-priority directives into the agent's context. Bounded overlay caps developer instructions at 3500 chars. Compaction survival protocol instructs the agent to checkpoint key state before context compression.
-
-This directly addresses roadmap item 3 (better memory mechanics).
+This addresses the active-update gap while keeping durable memory storage and consolidation compatible with upstream.
 
 ### 4. Open Codex-aware update detection and upgrade prompts
 
@@ -133,9 +131,9 @@ Improve the Codex CLI status line so it can surface token throughput directly, i
 
 Implemented as a Claude Code-style `/export` flow for the current session, with user-defined filenames like `/export talk.txt` or `/export talk.md`. This now covers the debugging, sharing, and archival use case directly inside the TUI.
 
-### 3. ~~Better memory mechanics~~ ✅ Completed
+### 3. Better memory mechanics
 
-Implemented as the consolidated memory subsystem (see Current Delta section 3 above). Remaining improvements tracked below.
+Active memory staging is implemented on top of upstream memories (see Current Delta section 3 above). Broader durable-memory behavior should continue to follow upstream so fork changes stay additive.
 
 ### 4. Better Zellij ergonomics
 
@@ -144,7 +142,7 @@ Continue improving the Codex CLI experience under `zellij`, especially around re
 ### Next focus areas
 
 - **Background AutoDream-style consolidation** — move consolidation fully off the startup path and replace it with a background 3-gate consolidator (time ≥ 24h, ≥ 5 new sessions, no lock), using a 4-phase pipeline: Orient → Gather → Consolidate → Prune.
-- **Notepad TUI sidebar** — surface notepad sections directly in the TUI sidebar so memory context can be viewed and edited without routing everything through `/memories`.
+- **Memory staging UI** — surface staged session-memory entries in the TUI so the user can inspect what is currently overlaid before upstream consolidation picks it up.
 - **Memory versioning** — keep a lightweight changelog for topic edits so agents can reason about what changed and when.
 - **More proactive subagent parallel planning** — let the agent split work and dispatch parallel subagents more aggressively instead of stepping through tasks strictly serially.
 - **Claude Code-style background execution** — automatically send long-running commands and agent work to the background rather than keeping the main process occupied by foreground waiting and polling.
@@ -264,21 +262,19 @@ Codex CLI 是开源的，但上游仓库当前对外部代码贡献采用 invita
 
 这是一个偏正确性的修复：即使在 retry、replay、stream 时序比较复杂的情况下，UI 也不应该把错误 turn 的输出渲染出来。
 
-### 3. 合并 memory 子系统
+### 3. 基于 upstream memories 的主动 memory staging
 
-来自 commits `9f800e44`、`a46f1e68`、`f8987ce`：
+之前 fork-only 的 memory 子系统已经移除，以保持和 upstream memory 架构对齐。当前 memory 改动刻意收窄：
 
-借鉴 Claude Code 和 oh-my-codex，新增四个子系统：
+- **upstream memory 仍是事实来源** — Codex 继续使用 upstream 的 `memory_summary.md`、`MEMORY.md`、topic 文件、skills 和 `extensions/ad_hoc` consolidation。`memories` feature 保留 upstream 的 experimental gate，默认不启用。
 
-- **AGENTS.md 层级加载** — 从四个作用域加载指令文件（Managed → User → Project → Local），支持 `@include` 指令展开（10 层深度限制、循环检测）、YAML frontmatter 解析、mtime 缓存。在 session 启动时注入 user instructions。
+- **主动 staging tool** — 启用 memory feature 后，Codex 暴露 `memory_stage_update`。它会把小型 ad-hoc note 写到 `~/.codex/memories/extensions/ad_hoc/notes/`，供 upstream consolidation 后续吸收，同时把同一内容 staged 到当前 session。
 
-- **Notepad 分区系统** — 结构化草稿本（`~/.codex/memories/notepad.md`），三个分区：PRIORITY（自动注入 developer 上下文，≤500 字）、WORKING MEMORY（时间戳条目，可自动修剪）、MANUAL（永久笔记）。使用原子写入 + 目录锁（PID 过期检测）保证崩溃安全和并发安全。
+- **Session Memory Overlay** — staged entries 会作为有预算上限的 developer-context overlay 注入当前 session，让新保存的信息不用等新 session 或后台 consolidation 就能影响下一轮。overlay 只在 revision 变化时发出。
 
-- **Memory CRUD 内置工具** — 8 个内置工具（`memory_read/write/add_note/search`、`notepad_read/write_priority/write_working/prune`），让 agent 在 session 中主动读写自己的 memory。默认启用。TUI 集成通过 `/memories list|add|edit|clear` 使用。`memory_write` 支持 `merge: true` 追加内容不覆盖已有记录。
+- **已移除冲突 fork 行为** — 旧的直接 durable write tools、notepad 文件、topic frontmatter priority、merge-write 路径、自定义 AGENTS.md hierarchy 都不再属于当前 memory 实现。
 
-- **Memory Overlay 与可靠性** — 指令优先级（topic frontmatter 中 `priority: high`）自动注入最多 3 条高优先级指令到 agent 上下文。Bounded overlay 限制 developer instructions 上限 3500 字符。上下文压缩生存协议指示 agent 在压缩前主动保存关键状态。
-
-直接完成了路线图第 3 项（更好的 memory 机制）。
+这补上了主动更新缺口，同时保持 durable memory 存储和 consolidation 与 upstream 兼容。
 
 ### 4. 面向 Open Codex 的版本检测与升级提示
 
@@ -331,9 +327,9 @@ Codex CLI 是开源的，但上游仓库当前对外部代码贡献采用 invita
 
 已实现类似 Claude Code 的 `/export` 会话导出能力，支持用户自定义文件名，例如 `/export talk.txt` 或 `/export talk.md`。当前已经覆盖调试、归档、分享这一类核心使用场景。
 
-### 3. ~~更好的 memory 机制~~ ✅ 已完成
+### 3. 更好的 memory 机制
 
-已实现为合并 memory 子系统（见上方当前差异第 3 项）。后续改进见下方。
+当前已在 upstream memories 之上实现主动 memory staging（见上方当前差异第 3 项）。更广义的 durable-memory 行为应继续跟随 upstream，fork 侧只保留增量补充。
 
 ### 4. 更好的 Zellij 使用体验
 
@@ -342,7 +338,7 @@ Codex CLI 是开源的，但上游仓库当前对外部代码贡献采用 invita
 ### 下一阶段重点
 
 - **后台化的 AutoDream 式 consolidation** — 把 consolidation 完整移出启动路径，改为后台 3-gate 合并器（时间 ≥ 24h、≥ 5 个新 session、无锁），并使用 4 阶段管线：Orient → Gather → Consolidate → Prune。
-- **Notepad TUI 侧边栏** — 直接在 TUI 侧边栏展示 notepad 分区，让用户无需总是通过 `/memories` 查看和编辑 memory 上下文。
+- **Memory staging UI** — 在 TUI 中展示当前 staged session-memory entries，让用户能检查当前 overlay 中有什么，再等待 upstream consolidation 吸收。
 - **Memory 版本管理** — 为 topic 编辑维护轻量级变更日志，让 agent 能推理内容何时发生了什么变化。
 - **更主动的 subagent 并行规划** — 让 agent 能更积极地拆分任务并并行派发 subagent，而不是严格串行地一步步推进。
 - **Claude Code 风格的后台执行** — 自动把长时间运行的命令和 agent 工作放到后台，而不是长时间占用主进程做前台等待或轮询。
