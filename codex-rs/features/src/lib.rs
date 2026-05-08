@@ -795,7 +795,7 @@ pub const FEATURES: &[FeatureSpec] = &[
             menu_description: "Allow Codex to create new memories from conversations and bring relevant memories into new conversations.",
             announcement: "NEW: Codex can now generate and use memories. Try it now with `/memories`",
         },
-        default_enabled: true,
+        default_enabled: false,
     },
     FeatureSpec {
         id: Feature::BuiltInMcp,
