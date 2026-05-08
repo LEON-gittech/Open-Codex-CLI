@@ -111,6 +111,9 @@ pub(crate) enum StatusLineItem {
     /// Total output tokens generated.
     TotalOutputTokens,
 
+    /// Session-average input/output token throughput.
+    TokenThroughput,
+
     /// Full session UUID.
     SessionId,
 
@@ -162,6 +165,7 @@ impl StatusLineItem {
             StatusLineItem::UsedTokens => "Total tokens used in session (omitted when zero)",
             StatusLineItem::TotalInputTokens => "Total input tokens used in session",
             StatusLineItem::TotalOutputTokens => "Total output tokens used in session",
+            StatusLineItem::TokenThroughput => "Session-average input/output tokens per second",
             StatusLineItem::SessionId => {
                 "Current session identifier (omitted until session starts)"
             }
@@ -193,6 +197,7 @@ impl StatusLineItem {
             StatusLineItem::UsedTokens => StatusSurfacePreviewItem::UsedTokens,
             StatusLineItem::TotalInputTokens => StatusSurfacePreviewItem::TotalInputTokens,
             StatusLineItem::TotalOutputTokens => StatusSurfacePreviewItem::TotalOutputTokens,
+            StatusLineItem::TokenThroughput => StatusSurfacePreviewItem::TokenThroughput,
             StatusLineItem::SessionId => StatusSurfacePreviewItem::SessionId,
             StatusLineItem::FastMode => StatusSurfacePreviewItem::FastMode,
             StatusLineItem::RawOutput => StatusSurfacePreviewItem::RawOutput,
@@ -437,6 +442,18 @@ mod tests {
         assert_eq!(
             "branch-changes".parse::<StatusLineItem>(),
             Ok(StatusLineItem::BranchChanges)
+        );
+    }
+
+    #[test]
+    fn token_throughput_is_selectable_id() {
+        assert_eq!(
+            "token-throughput".parse::<StatusLineItem>(),
+            Ok(StatusLineItem::TokenThroughput)
+        );
+        assert_eq!(
+            StatusLineItem::TokenThroughput.to_string(),
+            "token-throughput"
         );
     }
 

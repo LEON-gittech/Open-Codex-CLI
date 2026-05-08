@@ -133,6 +133,133 @@ async fn token_usage_update_uses_runtime_context_window() {
 }
 
 #[tokio::test]
+async fn token_throughput_status_line_uses_session_average_usage_and_duration() {
+    let (mut chat, _rx, _ops) = make_chatwidget_manual(/*model_override*/ None).await;
+    let first_usage = TokenUsage {
+        input_tokens: 120,
+        output_tokens: 30,
+        total_tokens: 150,
+        ..TokenUsage::default()
+    };
+    let first_token_info = TokenUsageInfo {
+        total_token_usage: first_usage.clone(),
+        last_token_usage: first_usage,
+        model_context_window: Some(128_000),
+    };
+    let second_usage = TokenUsage {
+        input_tokens: 80,
+        output_tokens: 70,
+        total_tokens: 150,
+        ..TokenUsage::default()
+    };
+
+    assert_eq!(
+        chat.status_line_value_for_item(crate::bottom_pane::StatusLineItem::TokenThroughput),
+        Some("in -- / out -- tok/s".to_string())
+    );
+
+    handle_turn_started(&mut chat, "turn-throughput");
+    handle_token_count(&mut chat, Some(first_token_info));
+    handle_turn_completed(
+        &mut chat,
+        "turn-throughput",
+        /*duration_ms*/ Some(3_000),
+    );
+
+    assert_eq!(
+        chat.status_line_value_for_item(crate::bottom_pane::StatusLineItem::TokenThroughput),
+        Some("in 40.0 / out 10.0 tok/s".to_string())
+    );
+
+    let second_token_info = TokenUsageInfo {
+        total_token_usage: second_usage.clone(),
+        last_token_usage: second_usage,
+        model_context_window: Some(128_000),
+    };
+    handle_turn_started(&mut chat, "turn-throughput-2");
+    handle_token_count(&mut chat, Some(second_token_info));
+    handle_turn_completed(
+        &mut chat,
+        "turn-throughput-2",
+        /*duration_ms*/ Some(1_000),
+    );
+
+    assert_eq!(
+        chat.status_line_value_for_item(crate::bottom_pane::StatusLineItem::TokenThroughput),
+        Some("in 50.0 / out 25.0 tok/s".to_string())
+    );
+}
+
+#[tokio::test]
+async fn token_throughput_status_line_handles_duration_before_usage() {
+    let (mut chat, _rx, _ops) = make_chatwidget_manual(/*model_override*/ None).await;
+    let usage = TokenUsage {
+        input_tokens: 75,
+        output_tokens: 25,
+        total_tokens: 100,
+        ..TokenUsage::default()
+    };
+    let token_info = TokenUsageInfo {
+        total_token_usage: usage.clone(),
+        last_token_usage: usage,
+        model_context_window: Some(128_000),
+    };
+
+    handle_turn_started(&mut chat, "turn-throughput");
+    handle_turn_completed(
+        &mut chat,
+        "turn-throughput",
+        /*duration_ms*/ Some(2_500),
+    );
+    handle_token_count(&mut chat, Some(token_info));
+
+    assert_eq!(
+        chat.status_line_value_for_item(crate::bottom_pane::StatusLineItem::TokenThroughput),
+        Some("in 30.0 / out 10.0 tok/s".to_string())
+    );
+}
+
+#[tokio::test]
+async fn token_throughput_status_line_merges_overlapping_active_intervals() {
+    let (mut chat, _rx, _ops) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.record_completed_turn_timing_for_throughput(
+        "turn-a".to_string(),
+        /*started_at*/ Some(100),
+        /*completed_at*/ Some(110),
+        /*duration_ms*/ Some(10_000),
+    );
+    chat.record_token_usage_for_throughput(
+        "turn-a".to_string(),
+        TokenUsage {
+            input_tokens: 100,
+            output_tokens: 100,
+            total_tokens: 200,
+            ..TokenUsage::default()
+        },
+    );
+    chat.record_completed_turn_timing_for_throughput(
+        "turn-b".to_string(),
+        /*started_at*/ Some(105),
+        /*completed_at*/ Some(115),
+        /*duration_ms*/ Some(10_000),
+    );
+    chat.record_token_usage_for_throughput(
+        "turn-b".to_string(),
+        TokenUsage {
+            input_tokens: 50,
+            output_tokens: 25,
+            total_tokens: 75,
+            ..TokenUsage::default()
+        },
+    );
+
+    assert_eq!(
+        chat.status_line_value_for_item(crate::bottom_pane::StatusLineItem::TokenThroughput),
+        Some("in 10.0 / out 8.3 tok/s".to_string())
+    );
+}
+
+#[tokio::test]
 async fn status_line_git_summary_items_render_values() {
     let (mut chat, _rx, _ops) = make_chatwidget_manual(/*model_override*/ None).await;
     chat.status_line_git_summary = Some(StatusLineGitSummary {

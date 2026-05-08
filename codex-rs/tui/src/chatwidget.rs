@@ -349,6 +349,10 @@ mod side;
 mod status_surfaces;
 use self::status_surfaces::CachedProjectRootName;
 use self::status_surfaces::TerminalTitleStatusKind;
+mod token_throughput;
+use self::token_throughput::TokenThroughput;
+use self::token_throughput::TokenThroughputSample;
+use self::token_throughput::TokenThroughputTiming;
 mod user_messages;
 use self::user_messages::PendingSteerCompareKey;
 use self::user_messages::UserMessageDisplay;
@@ -779,6 +783,10 @@ pub(crate) struct ChatWidget {
     status_account_display: Option<StatusAccountDisplay>,
     runtime_model_provider_base_url: Option<String>,
     token_info: Option<TokenUsageInfo>,
+    token_throughput: Option<TokenThroughput>,
+    token_throughput_samples: Vec<TokenThroughputSample>,
+    token_throughput_usage_by_turn: HashMap<String, TokenUsage>,
+    token_throughput_timing_by_turn: HashMap<String, TokenThroughputTiming>,
     rate_limit_snapshots_by_limit_id: BTreeMap<String, RateLimitSnapshotDisplay>,
     refreshing_status_outputs: Vec<(u64, StatusHistoryHandle)>,
     next_status_refresh_request_id: u64,
@@ -2875,8 +2883,17 @@ impl ChatWidget {
                 self.bottom_pane
                     .set_context_window(/*percent*/ None, /*used_tokens*/ None);
                 self.token_info = None;
+                self.token_throughput = None;
+                self.token_throughput_samples.clear();
+                self.token_throughput_usage_by_turn.clear();
+                self.token_throughput_timing_by_turn.clear();
             }
         }
+    }
+
+    fn set_token_info_for_turn(&mut self, turn_id: String, info: TokenUsageInfo) {
+        self.record_token_usage_for_throughput(turn_id, info.last_token_usage.clone());
+        self.apply_token_info(info);
     }
 
     fn apply_token_info(&mut self, info: TokenUsageInfo) {
@@ -2884,6 +2901,41 @@ impl ChatWidget {
         let used_tokens = self.context_used_tokens(&info, percent.is_some());
         self.bottom_pane.set_context_window(percent, used_tokens);
         self.token_info = Some(info);
+    }
+
+    fn record_token_usage_for_throughput(&mut self, turn_id: String, usage: TokenUsage) {
+        if let Some(timing) = self.token_throughput_timing_by_turn.remove(&turn_id) {
+            self.push_token_throughput_sample(usage, timing);
+            return;
+        }
+
+        self.token_throughput_usage_by_turn.insert(turn_id, usage);
+    }
+
+    fn record_completed_turn_timing_for_throughput(
+        &mut self,
+        turn_id: String,
+        started_at: Option<i64>,
+        completed_at: Option<i64>,
+        duration_ms: Option<i64>,
+    ) {
+        let Some(timing) = TokenThroughputTiming::from_turn(started_at, completed_at, duration_ms)
+        else {
+            self.token_throughput_usage_by_turn.remove(&turn_id);
+            return;
+        };
+        if let Some(usage) = self.token_throughput_usage_by_turn.remove(&turn_id) {
+            self.push_token_throughput_sample(usage, timing);
+            return;
+        }
+
+        self.token_throughput_timing_by_turn.insert(turn_id, timing);
+    }
+
+    fn push_token_throughput_sample(&mut self, usage: TokenUsage, timing: TokenThroughputTiming) {
+        self.token_throughput_samples
+            .push(TokenThroughputSample::new(usage, timing));
+        self.token_throughput = TokenThroughput::from_samples(&self.token_throughput_samples);
     }
 
     fn context_remaining_percent(&self, info: &TokenUsageInfo) -> Option<i64> {
@@ -5015,6 +5067,10 @@ impl ChatWidget {
             status_account_display,
             runtime_model_provider_base_url,
             token_info: None,
+            token_throughput: None,
+            token_throughput_samples: Vec::new(),
+            token_throughput_usage_by_turn: HashMap::new(),
+            token_throughput_timing_by_turn: HashMap::new(),
             rate_limit_snapshots_by_limit_id: BTreeMap::new(),
             refreshing_status_outputs: Vec::new(),
             next_status_refresh_request_id: 0,
@@ -6349,9 +6405,12 @@ impl ChatWidget {
         }
         match notification {
             ServerNotification::ThreadTokenUsageUpdated(notification) => {
-                self.set_token_info(Some(token_usage_info_from_app_server(
-                    notification.token_usage,
-                )));
+                let token_info = token_usage_info_from_app_server(notification.token_usage);
+                if from_replay {
+                    self.set_token_info(Some(token_info));
+                } else {
+                    self.set_token_info_for_turn(notification.turn_id, token_info);
+                }
             }
             ServerNotification::ThreadNameUpdated(notification) => {
                 match ThreadId::from_string(&notification.thread_id) {
@@ -6638,6 +6697,14 @@ impl ChatWidget {
         }
         match notification.turn.status {
             TurnStatus::Completed => {
+                if replay_kind.is_none() {
+                    self.record_completed_turn_timing_for_throughput(
+                        notification.turn.id.clone(),
+                        notification.turn.started_at,
+                        notification.turn.completed_at,
+                        notification.turn.duration_ms,
+                    );
+                }
                 self.last_non_retry_error = None;
                 self.on_task_complete(
                     /*last_agent_message*/ None,
