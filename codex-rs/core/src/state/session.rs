@@ -10,6 +10,8 @@ use crate::context_manager::ContextManager;
 use crate::session::PreviousTurnSettings;
 use crate::session::session::SessionConfiguration;
 use crate::session_startup_prewarm::SessionStartupPrewarmHandle;
+use crate::state::SessionMemoryOverlay;
+use crate::state::SessionMemoryOverlaySnapshot;
 use codex_protocol::protocol::RateLimitSnapshot;
 use codex_protocol::protocol::TokenUsage;
 use codex_protocol::protocol::TokenUsageInfo;
@@ -32,6 +34,8 @@ pub(crate) struct SessionState {
     pub(crate) startup_prewarm: Option<SessionStartupPrewarmHandle>,
     pub(crate) active_connector_selection: HashSet<String>,
     pub(crate) pending_session_start_source: Option<codex_hooks::SessionStartSource>,
+    pub(crate) memory_overlay: SessionMemoryOverlay,
+    pub(crate) last_injected_memory_overlay_revision: u64,
     granted_permissions: Option<AdditionalPermissionProfile>,
     next_turn_is_first: bool,
 }
@@ -51,6 +55,8 @@ impl SessionState {
             startup_prewarm: None,
             active_connector_selection: HashSet::new(),
             pending_session_start_source: None,
+            memory_overlay: SessionMemoryOverlay::default(),
+            last_injected_memory_overlay_revision: 0,
             granted_permissions: None,
             next_turn_is_first: true,
         }
@@ -109,6 +115,20 @@ impl SessionState {
 
     pub(crate) fn reference_context_item(&self) -> Option<TurnContextItem> {
         self.history.reference_context_item()
+    }
+
+    pub(crate) fn stage_memory_overlay_entry(
+        &mut self,
+        content: String,
+        reason: Option<String>,
+        created_at_unix_ms: i64,
+    ) -> SessionMemoryOverlaySnapshot {
+        self.memory_overlay
+            .stage(content, reason, created_at_unix_ms)
+    }
+
+    pub(crate) fn memory_overlay_snapshot(&self) -> SessionMemoryOverlaySnapshot {
+        self.memory_overlay.snapshot()
     }
 
     // Token/rate limit helpers

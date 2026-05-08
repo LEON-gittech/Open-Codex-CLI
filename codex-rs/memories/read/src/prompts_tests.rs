@@ -33,3 +33,44 @@ async fn build_memory_tool_developer_instructions_renders_embedded_template() {
         1
     );
 }
+
+#[tokio::test]
+async fn build_memory_tool_developer_instructions_can_include_session_overlay() {
+    let temp = tempdir().unwrap();
+    let codex_home = AbsolutePathBuf::from_absolute_path(temp.path()).unwrap();
+    let memories_dir = codex_home.join("memories");
+    tokio_fs::create_dir_all(&memories_dir).await.unwrap();
+    tokio_fs::write(memories_dir.join("memory_summary.md"), "Durable summary.")
+        .await
+        .unwrap();
+
+    let instructions = build_memory_tool_developer_instructions_with_session_overlay(
+        &codex_home,
+        Some("Prefer the active overlay in this session."),
+    )
+    .await
+    .unwrap();
+
+    assert!(instructions.contains("Durable summary."));
+    assert!(instructions.contains("## Session Memory Overlay"));
+    assert!(instructions.contains("Prefer the active overlay in this session."));
+}
+
+#[tokio::test]
+async fn build_memory_tool_developer_instructions_allows_overlay_without_summary() {
+    let temp = tempdir().unwrap();
+    let codex_home = AbsolutePathBuf::from_absolute_path(temp.path()).unwrap();
+    tokio_fs::create_dir_all(codex_home.join("memories"))
+        .await
+        .unwrap();
+
+    let instructions = build_memory_tool_developer_instructions_with_session_overlay(
+        &codex_home,
+        Some("Freshly staged memory."),
+    )
+    .await
+    .unwrap();
+
+    assert!(instructions.contains("## Session Memory Overlay"));
+    assert!(instructions.contains("Freshly staged memory."));
+}

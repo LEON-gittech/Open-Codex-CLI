@@ -12,6 +12,7 @@ pub mod usage;
 use codex_utils_absolute_path::AbsolutePathBuf;
 
 pub use prompts::build_memory_tool_developer_instructions;
+pub use prompts::build_memory_tool_developer_instructions_with_session_overlay;
 
 const MEMORY_TOOL_DEVELOPER_INSTRUCTIONS_SUMMARY_TOKEN_LIMIT: usize = 5_000;
 

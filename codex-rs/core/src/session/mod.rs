@@ -2594,6 +2594,7 @@ impl Session {
             collaboration_mode,
             base_instructions,
             session_source,
+            memory_overlay,
         ) = {
             let state = self.state.lock().await;
             (
@@ -2602,6 +2603,7 @@ impl Session {
                 state.session_configuration.collaboration_mode.clone(),
                 state.session_configuration.base_instructions.clone(),
                 state.session_configuration.session_source.clone(),
+                state.memory_overlay_snapshot(),
             )
         };
         if let Some(model_switch_message) =
@@ -2644,7 +2646,11 @@ impl Session {
         if turn_context.features.enabled(Feature::MemoryTool)
             && turn_context.config.memories.use_memories
             && let Some(memory_prompt) =
-                build_memory_tool_developer_instructions(&turn_context.config.codex_home, "").await
+                build_memory_tool_developer_instructions_with_session_overlay(
+                    &turn_context.config.codex_home,
+                    memory_overlay.rendered.as_deref(),
+                )
+                .await
         {
             developer_sections.push(memory_prompt);
         }
@@ -2810,6 +2816,30 @@ impl Session {
         state.reference_context_item()
     }
 
+    pub(crate) async fn stage_memory_update(
+        &self,
+        content: String,
+        reason: Option<String>,
+    ) -> crate::state::SessionMemoryOverlaySnapshot {
+        let mut state = self.state.lock().await;
+        state.stage_memory_overlay_entry(content, reason, now_unix_timestamp_ms())
+    }
+
+    async fn memory_overlay_update_item(&self) -> Option<ResponseItem> {
+        let snapshot = {
+            let state = self.state.lock().await;
+            let snapshot = state.memory_overlay_snapshot();
+            if snapshot.revision <= state.last_injected_memory_overlay_revision {
+                return None;
+            }
+            snapshot
+        };
+        let rendered = snapshot.rendered?;
+        crate::context_manager::updates::build_developer_update_item(vec![format!(
+            "## Session Memory Overlay\n{rendered}"
+        )])
+    }
+
     /// Persist the latest turn context snapshot for the first real user turn and for
     /// steady-state turns that emit model-visible context updates.
     ///
@@ -2836,8 +2866,16 @@ impl Session {
             self.build_initial_context(turn_context).await
         } else {
             // Steady-state path: append only context diffs to minimize token overhead.
-            self.build_settings_update_items(reference_context_item.as_ref(), turn_context)
-                .await
+            let mut context_items = self
+                .build_settings_update_items(reference_context_item.as_ref(), turn_context)
+                .await;
+            if turn_context.features.enabled(Feature::MemoryTool)
+                && turn_context.config.memories.use_memories
+                && let Some(memory_overlay_update) = self.memory_overlay_update_item().await
+            {
+                context_items.push(memory_overlay_update);
+            }
+            context_items
         };
         let turn_context_item = turn_context.to_turn_context_item();
         if !context_items.is_empty() {
@@ -2852,6 +2890,8 @@ impl Session {
         // Advance the in-memory diff baseline even when this turn emitted no model-visible
         // context items. This keeps later runtime diffing aligned with the current turn state.
         let mut state = self.state.lock().await;
+        let memory_overlay_revision = state.memory_overlay_snapshot().revision;
+        state.last_injected_memory_overlay_revision = memory_overlay_revision;
         state.set_reference_context_item(Some(turn_context_item));
     }
 
@@ -3337,7 +3377,7 @@ pub(crate) fn emit_subagent_session_started(
     });
 }
 
-use codex_memories_read::build_memory_tool_developer_instructions;
+use codex_memories_read::build_memory_tool_developer_instructions_with_session_overlay;
 
 /// Builds the hook engine for one config snapshot, including any enabled plugin hooks.
 async fn build_hooks_for_config(

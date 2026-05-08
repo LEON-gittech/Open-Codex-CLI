@@ -28,18 +28,32 @@ fn parse_embedded_template(source: &'static str, template_name: &str) -> Templat
 pub async fn build_memory_tool_developer_instructions(
     codex_home: &AbsolutePathBuf,
 ) -> Option<String> {
+    build_memory_tool_developer_instructions_with_session_overlay(codex_home, None).await
+}
+
+pub async fn build_memory_tool_developer_instructions_with_session_overlay(
+    codex_home: &AbsolutePathBuf,
+    session_overlay: Option<&str>,
+) -> Option<String> {
     let base_path = memory_root(codex_home);
     let memory_summary_path = base_path.join("memory_summary.md");
-    let memory_summary = fs::read_to_string(&memory_summary_path)
+    let mut memory_summary = fs::read_to_string(&memory_summary_path)
         .await
-        .ok()?
+        .unwrap_or_default()
         .trim()
         .to_string();
-    let memory_summary = truncate_text(
+    memory_summary = truncate_text(
         &memory_summary,
         TruncationPolicy::Tokens(MEMORY_TOOL_DEVELOPER_INSTRUCTIONS_SUMMARY_TOKEN_LIMIT),
     );
-    if memory_summary.is_empty() {
+    if let Some(session_overlay) = session_overlay
+        .map(str::trim)
+        .filter(|overlay| !overlay.is_empty())
+    {
+        memory_summary.push_str("\n\n## Session Memory Overlay\n");
+        memory_summary.push_str(session_overlay);
+    }
+    if memory_summary.trim().is_empty() {
         return None;
     }
     let base_path = base_path.display().to_string();

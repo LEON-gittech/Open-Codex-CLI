@@ -12,6 +12,7 @@ use crate::tools::handlers::ListMcpResourceTemplatesHandler;
 use crate::tools::handlers::ListMcpResourcesHandler;
 use crate::tools::handlers::LocalShellHandler;
 use crate::tools::handlers::McpHandler;
+use crate::tools::handlers::MemoryStageUpdateHandler;
 use crate::tools::handlers::PlanHandler;
 use crate::tools::handlers::ReadMcpResourceHandler;
 use crate::tools::handlers::RequestPermissionsHandler;
@@ -199,6 +200,10 @@ pub fn build_tool_registry_builder(
         builder.register_handler(Arc::new(GetGoalHandler));
         builder.register_handler(Arc::new(CreateGoalHandler));
         builder.register_handler(Arc::new(UpdateGoalHandler));
+    }
+
+    if config.memory_tools_enabled {
+        builder.register_handler(Arc::new(MemoryStageUpdateHandler));
     }
 
     builder.register_handler(Arc::new(RequestUserInputHandler {

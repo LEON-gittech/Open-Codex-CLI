@@ -292,7 +292,7 @@ fn memory_tool_feature_does_not_expose_direct_durable_write_tools() {
         &[],
     );
 
-    assert_contains_tool_names(&tools, &["memory_read", "memory_search"]);
+    assert_contains_tool_names(&tools, &["memory_stage_update"]);
     for write_tool in [
         "memory_write",
         "memory_add_note",

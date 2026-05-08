@@ -6114,6 +6114,42 @@ async fn build_initial_context_uses_previous_realtime_state() {
     );
 }
 
+#[tokio::test]
+async fn build_initial_context_includes_session_memory_overlay() {
+    let (session, turn_context, _rx_event) = make_session_and_context_with_auth_and_config_and_rx(
+        CodexAuth::from_api_key("Test API Key"),
+        Vec::new(),
+        |config| {
+            let _ = config.features.enable(Feature::MemoryTool);
+        },
+    )
+    .await;
+    let memories_dir = turn_context.config.codex_home.join("memories");
+    tokio::fs::create_dir_all(&memories_dir).await.unwrap();
+    tokio::fs::write(
+        memories_dir.join("memory_summary.md"),
+        "Durable memory summary.",
+    )
+    .await
+    .unwrap();
+    session
+        .stage_memory_update(
+            "Use the staged memory overlay in this session.".to_string(),
+            Some("test".to_string()),
+        )
+        .await;
+
+    let initial_context = session.build_initial_context(turn_context.as_ref()).await;
+
+    let developer_texts = developer_input_texts(&initial_context);
+    assert!(
+        developer_texts
+            .iter()
+            .any(|text| text.contains("Use the staged memory overlay in this session.")),
+        "expected initial context to include session memory overlay, got {developer_texts:?}"
+    );
+}
+
 async fn make_multi_agent_v2_usage_hint_test_session(
     enable_multi_agent_v2: bool,
 ) -> (Arc<Session>, Arc<TurnContext>) {
