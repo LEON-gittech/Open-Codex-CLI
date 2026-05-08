@@ -226,8 +226,8 @@ async fn wait_completion_clears_foregrounded_agent_activity() {
             turn_id: "turn-1".to_string(),
             completed_at_ms: 0,
             item: AppServerThreadItem::CollabAgentToolCall {
-                id: "wait-1".to_string(),
-                tool: AppServerCollabAgentTool::Wait,
+                id: "agent-status-1".to_string(),
+                tool: AppServerCollabAgentTool::StatusUpdate,
                 status: AppServerCollabAgentToolCallStatus::Completed,
                 sender_thread_id: sender_thread_id.to_string(),
                 receiver_thread_ids: vec![spawned_thread_id.to_string()],

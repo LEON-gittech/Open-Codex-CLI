@@ -13,6 +13,9 @@ use crate::thread_status::ThreadWatchManager;
 use codex_app_server_protocol::AccountRateLimitsUpdatedNotification;
 use codex_app_server_protocol::AdditionalPermissionProfile as V2AdditionalPermissionProfile;
 use codex_app_server_protocol::CodexErrorInfo as V2CodexErrorInfo;
+use codex_app_server_protocol::CollabAgentState;
+use codex_app_server_protocol::CollabAgentTool;
+use codex_app_server_protocol::CollabAgentToolCallStatus;
 use codex_app_server_protocol::CommandAction as V2ParsedCommand;
 use codex_app_server_protocol::CommandExecutionApprovalDecision;
 use codex_app_server_protocol::CommandExecutionRequestApprovalParams;
@@ -90,6 +93,7 @@ use codex_protocol::ThreadId;
 use codex_protocol::items::parse_hook_prompt_message;
 use codex_protocol::models::AdditionalPermissionProfile as CoreAdditionalPermissionProfile;
 use codex_protocol::plan_tool::UpdatePlanArgs;
+use codex_protocol::protocol::AgentStatus;
 use codex_protocol::protocol::CodexErrorInfo as CoreCodexErrorInfo;
 use codex_protocol::protocol::Event;
 use codex_protocol::protocol::EventMsg;
@@ -831,9 +835,29 @@ pub(crate) async fn apply_bespoke_event_handling(
             // Deprecated MCP tool-call events are still fanned out for legacy clients.
             // App-server v2 receives the canonical TurnItem::McpToolCall lifecycle instead.
         }
+        EventMsg::CollabAgentSpawnEnd(end_event) => {
+            let child_thread_id = end_event.new_thread_id;
+            let sender_thread_id = end_event.sender_thread_id;
+            let notification = item_event_to_server_notification(
+                EventMsg::CollabAgentSpawnEnd(end_event),
+                &conversation_id.to_string(),
+                &event_turn_id,
+            );
+            outgoing.send_server_notification(notification).await;
+            if let Some(child_thread_id) = child_thread_id {
+                maybe_start_collab_agent_status_watcher(
+                    Arc::clone(&thread_manager),
+                    outgoing.clone(),
+                    conversation_id,
+                    event_turn_id,
+                    sender_thread_id,
+                    child_thread_id,
+                )
+                .await;
+            }
+        }
         msg @ (EventMsg::DynamicToolCallResponse(_)
         | EventMsg::CollabAgentSpawnBegin(_)
-        | EventMsg::CollabAgentSpawnEnd(_)
         | EventMsg::CollabAgentInteractionBegin(_)
         | EventMsg::CollabAgentInteractionEnd(_)
         | EventMsg::CollabWaitingBegin(_)
@@ -2058,6 +2082,64 @@ fn now_unix_timestamp_ms() -> i64 {
         .unwrap_or_default()
 }
 
+fn is_live_agent_status(status: &AgentStatus) -> bool {
+    matches!(status, AgentStatus::PendingInit | AgentStatus::Running)
+}
+
+fn collab_agent_status_update_call_status(status: &AgentStatus) -> CollabAgentToolCallStatus {
+    match status {
+        AgentStatus::Errored(_) | AgentStatus::NotFound => CollabAgentToolCallStatus::Failed,
+        AgentStatus::PendingInit
+        | AgentStatus::Running
+        | AgentStatus::Interrupted
+        | AgentStatus::Completed(_)
+        | AgentStatus::Shutdown => CollabAgentToolCallStatus::Completed,
+    }
+}
+
+async fn maybe_start_collab_agent_status_watcher(
+    thread_manager: Arc<ThreadManager>,
+    outgoing: ThreadScopedOutgoingMessageSender,
+    parent_thread_id: ThreadId,
+    turn_id: String,
+    sender_thread_id: ThreadId,
+    child_thread_id: ThreadId,
+) {
+    let Ok(child_thread) = thread_manager.get_thread(child_thread_id).await else {
+        return;
+    };
+    let mut status_rx = child_thread.subscribe_status();
+    tokio::spawn(async move {
+        let mut status = status_rx.borrow().clone();
+        while is_live_agent_status(&status) {
+            if status_rx.changed().await.is_err() {
+                return;
+            }
+            status = status_rx.borrow().clone();
+        }
+        let child_thread_id = child_thread_id.to_string();
+        let notification = ItemCompletedNotification {
+            thread_id: parent_thread_id.to_string(),
+            turn_id,
+            completed_at_ms: now_unix_timestamp_ms(),
+            item: ThreadItem::CollabAgentToolCall {
+                id: format!("agent-status:{child_thread_id}"),
+                tool: CollabAgentTool::StatusUpdate,
+                status: collab_agent_status_update_call_status(&status),
+                sender_thread_id: sender_thread_id.to_string(),
+                receiver_thread_ids: vec![child_thread_id.clone()],
+                prompt: None,
+                model: None,
+                reasoning_effort: None,
+                agents_states: HashMap::from([(child_thread_id, CollabAgentState::from(status))]),
+            },
+        };
+        outgoing
+            .send_server_notification(ServerNotification::ItemCompleted(notification))
+            .await;
+    });
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2117,6 +2199,35 @@ mod tests {
 
     const TEST_TURN_COMPLETED_AT: i64 = 1_716_000_456;
     const TEST_TURN_DURATION_MS: i64 = 1_234;
+
+    #[test]
+    fn agent_status_update_call_status_marks_failures() {
+        assert_eq!(
+            collab_agent_status_update_call_status(&AgentStatus::Errored("boom".to_string())),
+            CollabAgentToolCallStatus::Failed
+        );
+        assert_eq!(
+            collab_agent_status_update_call_status(&AgentStatus::NotFound),
+            CollabAgentToolCallStatus::Failed
+        );
+        assert_eq!(
+            collab_agent_status_update_call_status(&AgentStatus::Completed(Some(
+                "done".to_string()
+            ))),
+            CollabAgentToolCallStatus::Completed
+        );
+        assert_eq!(
+            collab_agent_status_update_call_status(&AgentStatus::Interrupted),
+            CollabAgentToolCallStatus::Completed
+        );
+    }
+
+    #[test]
+    fn interrupted_agent_status_is_not_live_for_background_updates() {
+        assert!(is_live_agent_status(&AgentStatus::PendingInit));
+        assert!(is_live_agent_status(&AgentStatus::Running));
+        assert!(!is_live_agent_status(&AgentStatus::Interrupted));
+    }
 
     async fn recv_broadcast_message(
         rx: &mut mpsc::Receiver<OutgoingEnvelope>,

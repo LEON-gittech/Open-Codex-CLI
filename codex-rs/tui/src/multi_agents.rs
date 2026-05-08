@@ -294,6 +294,7 @@ pub(crate) fn tool_call_history_cell(
                 ))
             }
         }
+        CollabAgentTool::StatusUpdate => None,
         CollabAgentTool::CloseAgent => {
             if matches!(status, CollabAgentToolCallStatus::InProgress) {
                 return None;

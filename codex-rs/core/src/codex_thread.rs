@@ -293,7 +293,7 @@ impl CodexThread {
         self.codex.agent_status().await
     }
 
-    pub(crate) fn subscribe_status(&self) -> watch::Receiver<AgentStatus> {
+    pub fn subscribe_status(&self) -> watch::Receiver<AgentStatus> {
         self.codex.agent_status.clone()
     }
 

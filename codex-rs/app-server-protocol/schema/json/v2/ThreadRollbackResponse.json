@@ -199,7 +199,8 @@
         "sendInput",
         "resumeAgent",
         "wait",
-        "closeAgent"
+        "closeAgent",
+        "statusUpdate"
       ],
       "type": "string"
     },

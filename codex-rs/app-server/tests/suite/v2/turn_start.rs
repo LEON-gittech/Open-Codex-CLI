@@ -2758,6 +2758,45 @@ async fn turn_start_emits_spawn_agent_item_with_model_metadata_v2() -> Result<()
     assert_eq!(turn_completed.thread_id, thread.id);
     assert_eq!(turn_completed.turn.id, turn.turn.id);
 
+    let child_status_completed = timeout(DEFAULT_READ_TIMEOUT, async {
+        loop {
+            let completed_notif = mcp
+                .read_stream_until_notification_message("item/completed")
+                .await?;
+            let completed: ItemCompletedNotification =
+                serde_json::from_value(completed_notif.params.expect("item/completed params"))?;
+            if completed.thread_id != thread.id {
+                continue;
+            }
+            if let ThreadItem::CollabAgentToolCall { tool, .. } = &completed.item
+                && *tool == CollabAgentTool::StatusUpdate
+            {
+                return Ok::<ThreadItem, anyhow::Error>(completed.item);
+            }
+        }
+    })
+    .await??;
+    let ThreadItem::CollabAgentToolCall {
+        tool,
+        status,
+        sender_thread_id,
+        receiver_thread_ids,
+        agents_states,
+        ..
+    } = child_status_completed
+    else {
+        unreachable!("loop ensures a collab agent status update");
+    };
+    assert_eq!(tool, CollabAgentTool::StatusUpdate);
+    assert_eq!(status, CollabAgentToolCallStatus::Completed);
+    assert_eq!(sender_thread_id, thread.id);
+    assert_eq!(receiver_thread_ids, vec![receiver_thread_id.clone()]);
+    let agent_state = agents_states
+        .get(&receiver_thread_id)
+        .expect("status update should include child status");
+    assert_eq!(agent_state.status, CollabAgentStatus::Completed);
+    assert_eq!(agent_state.message.as_deref(), Some("child done"));
+
     Ok(())
 }
 
