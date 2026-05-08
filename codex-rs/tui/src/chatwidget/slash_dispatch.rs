@@ -5,6 +5,7 @@
 //! dispatch step and records the staged entry once the command has been handled, so
 //! slash-command recall follows the same submitted-input rule as ordinary text.
 
+use super::goal_validation::GoalObjectiveValidationSource;
 use super::*;
 use crate::app_event::ThreadGoalSetMode;
 use crate::bottom_pane::prompt_args::parse_slash_name;
@@ -31,7 +32,7 @@ const SIDE_REVIEW_UNAVAILABLE_MESSAGE: &str =
 const SIDE_SLASH_COMMAND_UNAVAILABLE_HINT: &str = "Press Esc to return to the main thread first.";
 const GOAL_USAGE: &str = "Usage: /goal <objective>";
 const GOAL_USAGE_HINT: &str = "Example: /goal improve benchmark coverage";
-const EXPORT_USAGE: &str = "Usage: /export <path>";
+const RAW_USAGE: &str = "Usage: /raw [on|off]";
 
 impl ChatWidget {
     /// Dispatch a bare slash command and record its staged local-history entry.
@@ -102,6 +103,11 @@ impl ChatWidget {
         };
 
         self.request_side_conversation(parent_thread_id, /*user_message*/ None);
+    }
+
+    fn emit_raw_output_mode_changed(&self, enabled: bool) {
+        self.app_event_tx
+            .send(AppEvent::RawOutputModeChanged { enabled });
     }
 
     pub(super) fn dispatch_command(&mut self, cmd: SlashCommand) {
@@ -179,12 +185,7 @@ impl ChatWidget {
                 self.open_model_popup();
             }
             SlashCommand::Fast => {
-                let next_tier = if matches!(self.current_service_tier(), Some(ServiceTier::Fast)) {
-                    None
-                } else {
-                    Some(ServiceTier::Fast)
-                };
-                self.set_service_tier_selection(next_tier);
+                self.toggle_fast_mode_from_ui();
             }
             SlashCommand::Realtime => {
                 if !self.realtime_conversation_enabled() {
@@ -238,11 +239,14 @@ impl ChatWidget {
             SlashCommand::Agent | SlashCommand::MultiAgents => {
                 self.app_event_tx.send(AppEvent::OpenAgentPicker);
             }
-            SlashCommand::Approvals => {
-                self.open_permissions_popup();
-            }
             SlashCommand::Permissions => {
                 self.open_permissions_popup();
+            }
+            SlashCommand::Vim => {
+                self.toggle_vim_mode_and_notify();
+            }
+            SlashCommand::Keymap => {
+                self.open_keymap_picker();
             }
             SlashCommand::ElevateSandbox => {
                 #[cfg(target_os = "windows")]
@@ -314,28 +318,35 @@ impl ChatWidget {
             SlashCommand::Logout => {
                 self.app_event_tx.send(AppEvent::Logout);
             }
-            // SlashCommand::Undo => {
-            //     self.app_event_tx.send(AppEvent::CodexOp(Op::Undo));
-            // }
             SlashCommand::Copy => {
                 self.copy_last_agent_markdown();
             }
-            SlashCommand::Export => {
-                self.add_error_message(EXPORT_USAGE.to_string());
+            SlashCommand::Raw => {
+                let enabled = self.toggle_raw_output_mode_and_notify();
+                self.emit_raw_output_mode_changed(enabled);
             }
             SlashCommand::Diff => {
                 self.add_diff_in_progress();
                 let tx = self.app_event_tx.clone();
+                let runner = self.workspace_command_runner.clone();
+                let cwd = self
+                    .current_cwd
+                    .clone()
+                    .unwrap_or_else(|| self.config.cwd.to_path_buf());
                 tokio::spawn(async move {
-                    let text = match get_git_diff().await {
-                        Ok((is_git_repo, diff_text)) => {
-                            if is_git_repo {
-                                diff_text
-                            } else {
-                                "`/diff` — _not inside a git repository_".to_string()
+                    let text = match runner {
+                        Some(runner) => match get_git_diff(runner.as_ref(), &cwd).await {
+                            Ok((is_git_repo, diff_text)) => {
+                                if is_git_repo {
+                                    diff_text
+                                } else {
+                                    "`/diff` — _not inside a git repository_".to_string()
+                                }
                             }
-                        }
-                        Err(e) => format!("Failed to compute diff: {e}"),
+                            Err(e) => format!("Failed to compute diff: {e}"),
+                        },
+                        None => "Failed to compute diff: workspace command runner unavailable"
+                            .to_string(),
                     };
                     tx.send(AppEvent::DiffResult(text));
                 });
@@ -345,6 +356,9 @@ impl ChatWidget {
             }
             SlashCommand::Skills => {
                 self.open_skills_menu();
+            }
+            SlashCommand::Hooks => {
+                self.add_hooks_output();
             }
             SlashCommand::Status => {
                 if self.should_prefetch_rate_limits() {
@@ -360,6 +374,9 @@ impl ChatWidget {
                         /*refreshing_rate_limits*/ false, /*request_id*/ None,
                     );
                 }
+            }
+            SlashCommand::Ide => {
+                self.handle_ide_command();
             }
             SlashCommand::DebugConfig => {
                 self.add_debug_config_output();
@@ -410,8 +427,8 @@ impl ChatWidget {
             SlashCommand::TestApproval => {
                 use std::collections::HashMap;
 
-                use codex_protocol::protocol::ApplyPatchApprovalRequestEvent;
-                use codex_protocol::protocol::FileChange;
+                use crate::approval_events::ApplyPatchApprovalRequestEvent;
+                use crate::diff_model::FileChange;
 
                 self.on_apply_patch_approval_request(
                     "1".to_string(),
@@ -475,6 +492,12 @@ impl ChatWidget {
         let trimmed = args.trim();
         if trimmed.is_empty() {
             self.dispatch_command(cmd);
+            return;
+        }
+
+        if cmd == SlashCommand::Goal
+            && !self.goal_objective_with_pending_pastes_is_allowed(&args, &text_elements)
+        {
             return;
         }
 
@@ -570,15 +593,38 @@ impl ChatWidget {
                     }
                 }
             }
+            SlashCommand::Ide => {
+                self.handle_ide_command_args(trimmed);
+            }
             SlashCommand::Mcp => match trimmed.to_ascii_lowercase().as_str() {
                 "verbose" => self.add_mcp_output(McpServerStatusDetail::Full),
                 _ => self.add_error_message("Usage: /mcp [verbose]".to_string()),
             },
-            SlashCommand::Export if !trimmed.is_empty() => {
-                self.app_event_tx.send(AppEvent::ExportTranscript {
-                    path: self.config.cwd.join(trimmed).to_path_buf(),
-                });
-            }
+            SlashCommand::Keymap => match trimmed.to_ascii_lowercase().as_str() {
+                "" => self.open_keymap_picker(),
+                "debug" => {
+                    match crate::keymap::RuntimeKeymap::from_config(&self.config.tui_keymap) {
+                        Ok(runtime_keymap) => self.open_keymap_debug(&runtime_keymap),
+                        Err(err) => {
+                            self.add_error_message(format!(
+                                "Invalid `tui.keymap` configuration: {err}"
+                            ));
+                        }
+                    }
+                }
+                _ => self.add_error_message("Usage: /keymap [debug]".to_string()),
+            },
+            SlashCommand::Raw => match trimmed.to_ascii_lowercase().as_str() {
+                "on" => {
+                    self.set_raw_output_mode_and_notify(/*enabled*/ true);
+                    self.emit_raw_output_mode_changed(/*enabled*/ true);
+                }
+                "off" => {
+                    self.set_raw_output_mode_and_notify(/*enabled*/ false);
+                    self.emit_raw_output_mode_changed(/*enabled*/ false);
+                }
+                _ => self.add_error_message(RAW_USAGE.to_string()),
+            },
             SlashCommand::Rename if !trimmed.is_empty() => {
                 if !self.ensure_thread_rename_allowed() {
                     return;
@@ -623,7 +669,7 @@ impl ChatWidget {
                 let control_command = match trimmed.to_ascii_lowercase().as_str() {
                     "clear" => Some(GoalControlCommand::Clear),
                     "pause" => Some(GoalControlCommand::SetStatus(AppThreadGoalStatus::Paused)),
-                    "unpause" => Some(GoalControlCommand::SetStatus(AppThreadGoalStatus::Active)),
+                    "resume" => Some(GoalControlCommand::SetStatus(AppThreadGoalStatus::Active)),
                     _ => None,
                 };
                 if let Some(command) = control_command {
@@ -661,6 +707,13 @@ impl ChatWidget {
                     if source == SlashCommandDispatchSource::Live {
                         self.bottom_pane.drain_pending_submission_state();
                     }
+                    return;
+                }
+                let validation_source = match source {
+                    SlashCommandDispatchSource::Live => GoalObjectiveValidationSource::Live,
+                    SlashCommandDispatchSource::Queued => GoalObjectiveValidationSource::Queued,
+                };
+                if !self.goal_objective_is_allowed(objective, validation_source) {
                     return;
                 }
                 let Some(thread_id) = self.thread_id else {
@@ -711,9 +764,8 @@ impl ChatWidget {
                 self.request_side_conversation(parent_thread_id, Some(user_message));
             }
             SlashCommand::Review if !trimmed.is_empty() => {
-                self.submit_op(AppCommand::review(ReviewRequest {
-                    target: ReviewTarget::Custom { instructions: args },
-                    user_facing_hint: None,
+                self.submit_op(AppCommand::review(ReviewTarget::Custom {
+                    instructions: args,
                 }));
             }
             SlashCommand::Resume if !trimmed.is_empty() => {
@@ -723,175 +775,6 @@ impl ChatWidget {
             SlashCommand::SandboxReadRoot if !trimmed.is_empty() => {
                 self.app_event_tx
                     .send(AppEvent::BeginWindowsSandboxGrantReadRoot { path: args });
-            }
-            SlashCommand::Memories if !trimmed.is_empty() => {
-                let parts: Vec<&str> = trimmed.splitn(2, ' ').collect();
-                let subcmd = parts[0].to_ascii_lowercase();
-                let arg = parts.get(1).map(|s| s.trim()).unwrap_or("");
-                let codex_home = self.config.codex_home.clone();
-                let tx = self.app_event_tx.clone();
-                match subcmd.as_str() {
-                    "list" => {
-                        tokio::spawn(async move {
-                            let root = codex_home.join("memories");
-                            let topics_dir = root.join("topics");
-                            let mut items = Vec::new();
-                            if let Ok(mut rd) = tokio::fs::read_dir(&topics_dir).await {
-                                while let Ok(Some(entry)) = rd.next_entry().await {
-                                    let path = entry.path();
-                                    if path.extension().and_then(|e| e.to_str()) != Some("md") {
-                                        continue;
-                                    }
-                                    if let Ok(content) = tokio::fs::read_to_string(&path).await {
-                                        let (name, desc) = parse_memory_topic_header(&content);
-                                        items.push(format!("- {}: {}", name, desc));
-                                    }
-                                }
-                            }
-                            let text = if items.is_empty() {
-                                "No memory topics found. Use `/memories add <topic>` to create one.".to_string()
-                            } else {
-                                items.join("\n")
-                            };
-                            let _ = tx.send(AppEvent::MemoryCommandResult { text, is_error: false });
-                        });
-                    }
-                    "add" if !arg.is_empty() => {
-                        let topic_name = arg.to_string();
-                        tokio::spawn(async move {
-                            let root = codex_home.join("memories");
-                            let topics_dir = root.join("topics");
-                            if let Err(err) = tokio::fs::create_dir_all(&topics_dir).await {
-                                let _ = tx.send(AppEvent::MemoryCommandResult {
-                                    text: format!("Failed to create topics directory: {}", err),
-                                    is_error: true,
-                                });
-                                return;
-                            }
-                            let safe_name = topic_name.to_lowercase()
-                                .replace(' ', "_")
-                                .replace(|c: char| !c.is_alphanumeric() && c != '_' && c != '-', "");
-                            if safe_name.is_empty() {
-                                let _ = tx.send(AppEvent::MemoryCommandResult {
-                                    text: "Invalid topic name.".to_string(),
-                                    is_error: true,
-                                });
-                                return;
-                            }
-                            let path = topics_dir.join(format!("{}.md", safe_name));
-                            let seed = format!(
-                                "---\nname: {}\ndescription: \ntype: project\nkeywords: []\nsource: user\n---\n\n",
-                                topic_name
-                            );
-                            match crate::external_editor::resolve_editor_command() {
-                                Ok(cmd) => {
-                                    match crate::external_editor::run_editor(&seed, &cmd).await {
-                                        Ok(content) => {
-                                            if let Err(err) = tokio::fs::write(&path, content).await {
-                                                let _ = tx.send(AppEvent::MemoryCommandResult {
-                                                    text: format!("Failed to write topic: {}", err),
-                                                    is_error: true,
-                                                });
-                                            } else {
-                                                let _ = tx.send(AppEvent::MemoryCommandResult {
-                                                    text: format!("Memory topic '{}' saved to {}.", topic_name, path.display()),
-                                                    is_error: false,
-                                                });
-                                            }
-                                        }
-                                        Err(err) => {
-                                            let _ = tx.send(AppEvent::MemoryCommandResult {
-                                                text: format!("Editor error: {}", err),
-                                                is_error: true,
-                                            });
-                                        }
-                                    }
-                                }
-                                Err(err) => {
-                                    let _ = tx.send(AppEvent::MemoryCommandResult {
-                                        text: format!("No editor configured: {}", err),
-                                        is_error: true,
-                                    });
-                                }
-                            }
-                        });
-                    }
-                    "edit" if !arg.is_empty() => {
-                        let topic_name = arg.to_string();
-                        tokio::spawn(async move {
-                            let root = codex_home.join("memories");
-                            let topics_dir = root.join("topics");
-                            let safe_name = topic_name.to_lowercase()
-                                .replace(' ', "_")
-                                .replace(|c: char| !c.is_alphanumeric() && c != '_' && c != '-', "");
-                            let path = topics_dir.join(format!("{}.md", safe_name));
-                            let seed = match tokio::fs::read_to_string(&path).await {
-                                Ok(existing) => existing,
-                                Err(_) => format!(
-                                    "---\nname: {}\ndescription: \ntype: project\nkeywords: []\nsource: user\n---\n\n",
-                                    topic_name
-                                ),
-                            };
-                            match crate::external_editor::resolve_editor_command() {
-                                Ok(cmd) => {
-                                    match crate::external_editor::run_editor(&seed, &cmd).await {
-                                        Ok(content) => {
-                                            if let Err(err) = tokio::fs::write(&path, content).await {
-                                                let _ = tx.send(AppEvent::MemoryCommandResult {
-                                                    text: format!("Failed to write topic: {}", err),
-                                                    is_error: true,
-                                                });
-                                            } else {
-                                                let _ = tx.send(AppEvent::MemoryCommandResult {
-                                                    text: format!("Memory topic '{}' updated.", topic_name),
-                                                    is_error: false,
-                                                });
-                                            }
-                                        }
-                                        Err(err) => {
-                                            let _ = tx.send(AppEvent::MemoryCommandResult {
-                                                text: format!("Editor error: {}", err),
-                                                is_error: true,
-                                            });
-                                        }
-                                    }
-                                }
-                                Err(err) => {
-                                    let _ = tx.send(AppEvent::MemoryCommandResult {
-                                        text: format!("No editor configured: {}", err),
-                                        is_error: true,
-                                    });
-                                }
-                            }
-                        });
-                    }
-                    "clear" => {
-                        tokio::spawn(async move {
-                            let root = codex_home.join("memories");
-                            let topics_dir = root.join("topics");
-                            let mut count = 0usize;
-                            if let Ok(mut rd) = tokio::fs::read_dir(&topics_dir).await {
-                                while let Ok(Some(entry)) = rd.next_entry().await {
-                                    let path = entry.path();
-                                    if path.extension().and_then(|e| e.to_str()) == Some("md") {
-                                        if let Ok(()) = tokio::fs::remove_file(&path).await {
-                                            count += 1;
-                                        }
-                                    }
-                                }
-                            }
-                            let _ = tx.send(AppEvent::MemoryCommandResult {
-                                text: format!("Cleared {} memory topic(s).", count),
-                                is_error: false,
-                            });
-                        });
-                    }
-                    _ => {
-                        self.add_error_message(
-                            "Usage: /memories [list|add <topic>|edit <topic>|clear]".to_string(),
-                        );
-                    }
-                }
             }
             _ => self.dispatch_command(cmd),
         }
@@ -965,6 +848,11 @@ impl ChatWidget {
             rest_offset + leading_trimmed,
             &text_elements,
         );
+        if cmd == SlashCommand::Goal
+            && !self.goal_objective_is_allowed(trimmed_rest, GoalObjectiveValidationSource::Queued)
+        {
+            return QueueDrain::Continue;
+        }
         self.dispatch_prepared_command_with_args(
             cmd,
             PreparedSlashCommandArgs {
@@ -1008,11 +896,11 @@ impl ChatWidget {
         }
         match cmd {
             SlashCommand::Fast
+            | SlashCommand::Ide
             | SlashCommand::Status
             | SlashCommand::DebugConfig
             | SlashCommand::Ps
             | SlashCommand::Stop
-            | SlashCommand::Export
             | SlashCommand::MemoryDrop
             | SlashCommand::MemoryUpdate
             | SlashCommand::Mcp
@@ -1020,6 +908,8 @@ impl ChatWidget {
             | SlashCommand::Plugins
             | SlashCommand::Rollout
             | SlashCommand::Copy
+            | SlashCommand::Raw
+            | SlashCommand::Vim
             | SlashCommand::Diff
             | SlashCommand::Rename
             | SlashCommand::TestApproval => QueueDrain::Continue,
@@ -1039,9 +929,9 @@ impl ChatWidget {
             | SlashCommand::Goal
             | SlashCommand::Collab
             | SlashCommand::Side
+            | SlashCommand::Keymap
             | SlashCommand::Agent
             | SlashCommand::MultiAgents
-            | SlashCommand::Approvals
             | SlashCommand::Permissions
             | SlashCommand::ElevateSandbox
             | SlashCommand::SandboxReadRoot
@@ -1053,6 +943,7 @@ impl ChatWidget {
             | SlashCommand::Logout
             | SlashCommand::Mention
             | SlashCommand::Skills
+            | SlashCommand::Hooks
             | SlashCommand::Title
             | SlashCommand::Statusline
             | SlashCommand::Theme => QueueDrain::Stop,
@@ -1105,32 +996,4 @@ impl ChatWidget {
         self.bottom_pane.drain_pending_submission_state();
         false
     }
-}
-
-/// Parse a minimal topic header from markdown with YAML frontmatter.
-/// Returns (name, description) – description falls back to empty string.
-fn parse_memory_topic_header(content: &str) -> (String, String) {
-    let trimmed = content.trim_start();
-    let mut name = String::new();
-    let mut description = String::new();
-    if let Some(rest) = trimmed.strip_prefix("---") {
-        if let Some(end) = rest.find("\n---") {
-            let yaml = &rest[..end];
-            for line in yaml.lines() {
-                if let Some((key, val)) = line.split_once(':') {
-                    let key = key.trim();
-                    let val = val.trim().trim_matches('"').trim_matches('\'');
-                    if key == "name" {
-                        name = val.to_string();
-                    } else if key == "description" {
-                        description = val.to_string();
-                    }
-                }
-            }
-        }
-    }
-    if name.is_empty() {
-        name = "Untitled".to_string();
-    }
-    (name, description)
 }
