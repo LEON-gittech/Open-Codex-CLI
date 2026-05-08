@@ -11,6 +11,7 @@ use chrono::DateTime;
 use chrono::Duration;
 use chrono::Utc;
 use codex_login::default_client::create_client;
+use serde::Deserialize;
 use serde::Serialize;
 use std::path::Path;
 use std::path::PathBuf;
@@ -69,7 +70,10 @@ fn read_version_info(version_file: &Path) -> anyhow::Result<VersionInfo> {
     Ok(serde_json::from_str(&contents)?)
 }
 
-async fn check_for_update(version_file: &Path, _action: Option<UpdateAction>) -> anyhow::Result<()> {
+async fn check_for_update(
+    version_file: &Path,
+    _action: Option<UpdateAction>,
+) -> anyhow::Result<()> {
     let package_info = create_client()
         .get(npm_registry::PACKAGE_URL)
         .send()

@@ -38,8 +38,12 @@ impl UpdateAction {
     /// Returns the list of command-line arguments for invoking the update.
     pub fn command_args(self) -> (&'static str, &'static [&'static str]) {
         match self {
-            UpdateAction::NpmGlobalLatest => ("npm", &["install", "-g", "@leonw24/open-codex@latest"]),
-            UpdateAction::BunGlobalLatest => ("bun", &["install", "-g", "@leonw24/open-codex@latest"]),
+            UpdateAction::NpmGlobalLatest => {
+                ("npm", &["install", "-g", "@leonw24/open-codex@latest"])
+            }
+            UpdateAction::BunGlobalLatest => {
+                ("bun", &["install", "-g", "@leonw24/open-codex@latest"])
+            }
             UpdateAction::BrewUpgrade => ("brew", &["upgrade", "--cask", "codex"]),
             UpdateAction::StandaloneUnix => (
                 "sh",
@@ -167,4 +171,3 @@ mod tests {
         );
     }
 }
-
