@@ -720,6 +720,96 @@ async fn unified_exec_wait_status_header_updates_on_late_command_display() {
 }
 
 #[tokio::test]
+async fn ctrl_b_backgrounds_active_exec_without_submitting_core_op() {
+    let (mut chat, mut rx, mut op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    handle_turn_started(&mut chat, "turn-1");
+    let exec = begin_exec(&mut chat, "call-bg", "sleep 5");
+
+    assert!(chat.is_task_running_for_test());
+    assert!(chat.active_cell.is_some());
+
+    chat.handle_key_event(KeyEvent::new(KeyCode::Char('b'), KeyModifiers::CONTROL));
+
+    assert!(!chat.is_task_running_for_test());
+    assert!(chat.active_cell.is_none());
+    assert!(
+        op_rx.try_recv().is_err(),
+        "backgrounding is a TUI-only action and must not submit a core op"
+    );
+
+    chat.on_exec_command_output_delta("call-bg", "still running\n");
+    let backgrounded_exec = chat
+        .backgrounded_active_cell
+        .as_ref()
+        .and_then(|cell| cell.as_any().downcast_ref::<ExecCell>())
+        .expect("backgrounded exec cell");
+    assert_eq!(
+        backgrounded_exec
+            .iter_calls()
+            .find(|call| call.call_id == "call-bg")
+            .and_then(|call| call.output.as_ref())
+            .map(|output| output.aggregated_output.as_str()),
+        Some("still running\n")
+    );
+
+    end_exec(&mut chat, exec, "still running\n", "", /*exit_code*/ 0);
+    assert!(
+        !chat.is_task_running_for_test(),
+        "background command completion must not foreground the task again"
+    );
+
+    let cells = drain_insert_history(&mut rx);
+    let combined = cells
+        .iter()
+        .map(|lines| lines_to_single_string(lines))
+        .collect::<String>();
+    assert!(
+        combined.contains("sleep 5"),
+        "backgrounded active exec should be preserved in history, got:\n{combined}"
+    );
+    assert!(
+        combined.contains("still running"),
+        "backgrounded active exec should keep streamed output, got:\n{combined}"
+    );
+    assert_eq!(
+        combined.matches("sleep 5").count(),
+        1,
+        "backgrounded active exec should render once after completion, got:\n{combined}"
+    );
+}
+
+#[tokio::test]
+async fn down_foregrounds_backgrounded_active_exec_without_submitting_core_op() {
+    let (mut chat, mut rx, mut op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    handle_turn_started(&mut chat, "turn-1");
+    let exec = begin_exec(&mut chat, "call-bg", "sleep 5");
+
+    chat.handle_key_event(KeyEvent::new(KeyCode::Char('b'), KeyModifiers::CONTROL));
+    assert!(!chat.is_task_running_for_test());
+    assert!(chat.active_cell.is_none());
+
+    chat.handle_key_event(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+
+    assert!(chat.is_task_running_for_test());
+    assert!(chat.active_cell.is_some());
+    assert!(
+        op_rx.try_recv().is_err(),
+        "foregrounding a backgrounded exec is a TUI-only action"
+    );
+
+    end_exec(&mut chat, exec, "done\n", "", /*exit_code*/ 0);
+
+    let cells = drain_insert_history(&mut rx);
+    let combined = cells
+        .iter()
+        .map(|lines| lines_to_single_string(lines))
+        .collect::<String>();
+    assert!(combined.contains("sleep 5"));
+    assert!(combined.contains("done"));
+    assert_eq!(combined.matches("sleep 5").count(), 1);
+}
+
+#[tokio::test]
 async fn unified_exec_waiting_multiple_empty_snapshots() {
     let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
     chat.on_task_started();
