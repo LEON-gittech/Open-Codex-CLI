@@ -493,6 +493,12 @@ strip = "symbols"
 # See https://github.com/openai/codex/issues/1411 for details.
 codegen-units = 1
 
+[profile.release-fast]
+inherits = "release"
+lto = "off"
+strip = false
+codegen-units = 32
+
 [profile.profiling]
 inherits = "release"
 debug = "full"
