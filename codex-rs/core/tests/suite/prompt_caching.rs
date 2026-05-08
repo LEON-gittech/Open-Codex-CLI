@@ -18,6 +18,7 @@ use codex_protocol::protocol::Op;
 use codex_protocol::user_input::UserInput;
 use core_test_support::TempDirExt;
 use core_test_support::responses::ev_completed;
+use core_test_support::responses::ev_function_call;
 use core_test_support::responses::ev_response_created;
 use core_test_support::responses::mount_sse_once;
 use core_test_support::responses::sse;
@@ -383,6 +384,143 @@ async fn prefixes_context_and_instructions_once_and_consistently_across_requests
         "expected cached prefix to be reused"
     );
     assert_eq!(input2[input1.len()], text_user_input("hello 2".to_string()));
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn memory_overlay_update_keeps_prompt_cache_key_and_injects_once() -> anyhow::Result<()> {
+    skip_if_no_network!(Ok(()));
+
+    let server = start_mock_server().await;
+    let call_id = "memory-stage-call";
+    let stage_args = serde_json::json!({
+        "content": "Remember that cache-sensitive overlays must stay incremental.",
+        "reason": "cache regression test"
+    })
+    .to_string();
+    let req1 = mount_sse_once(
+        &server,
+        sse(vec![
+            ev_response_created("resp-1"),
+            ev_function_call(call_id, "memory_stage_update", &stage_args),
+            ev_completed("resp-1"),
+        ]),
+    )
+    .await;
+    let req2 = mount_sse_once(
+        &server,
+        sse(vec![ev_response_created("resp-2"), ev_completed("resp-2")]),
+    )
+    .await;
+    let req3 = mount_sse_once(
+        &server,
+        sse(vec![ev_response_created("resp-3"), ev_completed("resp-3")]),
+    )
+    .await;
+    let req4 = mount_sse_once(
+        &server,
+        sse(vec![ev_response_created("resp-4"), ev_completed("resp-4")]),
+    )
+    .await;
+
+    let TestCodex { codex, config, .. } = test_codex()
+        .with_config(|config| {
+            config
+                .features
+                .enable(Feature::MemoryTool)
+                .expect("test config should allow feature update");
+        })
+        .build(&server)
+        .await?;
+    let memories_dir = config.codex_home.join("memories");
+    tokio::fs::create_dir_all(&memories_dir).await?;
+    tokio::fs::write(
+        memories_dir.join("memory_summary.md"),
+        "Durable memory summary.",
+    )
+    .await?;
+
+    codex
+        .submit(Op::UserInput {
+            environments: None,
+            items: vec![UserInput::Text {
+                text: "stage a memory".into(),
+                text_elements: Vec::new(),
+            }],
+            final_output_json_schema: None,
+            responsesapi_client_metadata: None,
+        })
+        .await?;
+    wait_for_event(&codex, |ev| matches!(ev, EventMsg::TurnComplete(_))).await;
+
+    codex
+        .submit(Op::UserInput {
+            environments: None,
+            items: vec![UserInput::Text {
+                text: "use the staged memory".into(),
+                text_elements: Vec::new(),
+            }],
+            final_output_json_schema: None,
+            responsesapi_client_metadata: None,
+        })
+        .await?;
+    wait_for_event(&codex, |ev| matches!(ev, EventMsg::TurnComplete(_))).await;
+
+    codex
+        .submit(Op::UserInput {
+            environments: None,
+            items: vec![UserInput::Text {
+                text: "continue without new memory".into(),
+                text_elements: Vec::new(),
+            }],
+            final_output_json_schema: None,
+            responsesapi_client_metadata: None,
+        })
+        .await?;
+    wait_for_event(&codex, |ev| matches!(ev, EventMsg::TurnComplete(_))).await;
+
+    let body1 = req1.single_request().body_json();
+    let body2 = req2.single_request().body_json();
+    let body3 = req3.single_request().body_json();
+    let body4 = req4.single_request().body_json();
+
+    assert_eq!(
+        body1["prompt_cache_key"], body2["prompt_cache_key"],
+        "tool continuation should keep the stable cache key"
+    );
+    assert_eq!(
+        body1["prompt_cache_key"], body3["prompt_cache_key"],
+        "staged memory overlay should not alter the stable cache key"
+    );
+    assert_eq!(
+        body1["prompt_cache_key"], body4["prompt_cache_key"],
+        "turns after overlay injection should keep the stable cache key"
+    );
+
+    let input1 = serde_json::to_string(&body1["input"])?;
+    assert!(
+        !input1.contains("## Session Memory Overlay"),
+        "overlay should not be present before the tool stages memory: {input1}"
+    );
+
+    let input3 = serde_json::to_string(&body3["input"])?;
+    assert!(
+        input3.contains("Remember that cache-sensitive overlays must stay incremental."),
+        "expected staged memory overlay in the next user turn: {input3}"
+    );
+    assert_eq!(
+        input3.matches("## Session Memory Overlay").count(),
+        1,
+        "overlay should be injected exactly once after staging: {input3}"
+    );
+
+    let input4 = serde_json::to_string(&body4["input"])?;
+    assert_eq!(
+        input4.matches("## Session Memory Overlay").count(),
+        1,
+        "overlay should not be re-injected without a new revision: {input4}"
+    );
 
     Ok(())
 }
