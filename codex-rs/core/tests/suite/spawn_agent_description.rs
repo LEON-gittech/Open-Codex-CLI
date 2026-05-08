@@ -200,20 +200,26 @@ async fn spawn_agent_description_lists_visible_models_and_reasoning_efforts() ->
         "hidden picker model should be omitted from spawn_agent description: {description:?}"
     );
     assert!(
-        description.contains(
+        !description.contains(
             "Only use `spawn_agent` if and only if the user explicitly asks for sub-agents, delegation, or parallel agent work."
         ),
-        "expected explicit authorization rule in spawn_agent description: {description:?}"
+        "spawn_agent description should not require explicit user authorization: {description:?}"
     );
     assert!(
         description.contains(
-            "Requests for depth, thoroughness, research, investigation, or detailed codebase analysis do not count as permission to spawn."
+            "For non-trivial tasks, first decide whether the work has independent axes that can run in parallel."
         ),
-        "expected non-authorization clarification in spawn_agent description: {description:?}"
+        "expected parallel-first guidance in spawn_agent description: {description:?}"
     );
     assert!(
         description.contains(
-            "Agent-role guidance below only helps choose which agent to use after spawning is already authorized; it never authorizes spawning by itself."
+            "spawn_agent starts work in the background; after spawning, continue useful local work instead of immediately polling by default."
+        ),
+        "expected background execution guidance in spawn_agent description: {description:?}"
+    );
+    assert!(
+        description.contains(
+            "Agent-role guidance helps choose which agent to use after you decide delegation is appropriate."
         ),
         "expected agent-role clarification in spawn_agent description: {description:?}"
     );

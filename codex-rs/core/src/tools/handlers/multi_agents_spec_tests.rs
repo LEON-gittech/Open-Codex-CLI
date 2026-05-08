@@ -193,6 +193,22 @@ fn followup_task_tool_requires_message_and_has_no_output_schema() {
 }
 
 #[test]
+fn wait_agent_tool_v1_discourages_default_polling() {
+    let ToolSpec::Function(ResponsesApiTool { description, .. }) =
+        create_wait_agent_tool_v1(WaitAgentTimeoutOptions {
+            default_timeout_ms: 30_000,
+            min_timeout_ms: 10_000,
+            max_timeout_ms: 3_600_000,
+        })
+    else {
+        panic!("wait_agent should be a function tool");
+    };
+    assert!(description.contains(
+        "Use wait_agent only when blocked on an agent result or when explicitly checking background progress."
+    ));
+}
+
+#[test]
 fn wait_agent_tool_v2_uses_timeout_only_summary_output() {
     let ToolSpec::Function(ResponsesApiTool {
         description,
@@ -219,6 +235,9 @@ fn wait_agent_tool_v2_uses_timeout_only_summary_output() {
     assert!(properties.contains_key("timeout_ms"));
     assert!(description.contains(
         "Does not return the content; returns either a summary of which agents have updates (if any)"
+    ));
+    assert!(description.contains(
+        "Use wait_agent only when blocked on an agent result or when explicitly checking background progress."
     ));
     assert_eq!(
         properties
