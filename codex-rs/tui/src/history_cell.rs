@@ -360,6 +360,10 @@ fn trim_trailing_blank_lines(mut lines: Vec<Line<'static>>) -> Vec<Line<'static>
     lines
 }
 
+fn user_message_divider_line(width: u16, style: Style) -> Line<'static> {
+    Line::from("─".repeat(usize::from(width))).style(style)
+}
+
 impl HistoryCell for UserHistoryCell {
     fn display_lines(&self, width: u16) -> Vec<Line<'static>> {
         let wrap_width = width
@@ -420,7 +424,7 @@ impl HistoryCell for UserHistoryCell {
             return Vec::new();
         }
 
-        let mut lines: Vec<Line<'static>> = vec![Line::from("").style(style)];
+        let mut lines: Vec<Line<'static>> = vec![user_message_divider_line(width, style)];
 
         if let Some(wrapped_remote_images) = wrapped_remote_images {
             lines.extend(prefix_lines(
@@ -441,7 +445,7 @@ impl HistoryCell for UserHistoryCell {
             ));
         }
 
-        lines.push(Line::from("").style(style));
+        lines.push(user_message_divider_line(width, style));
         lines
     }
 
@@ -5290,6 +5294,23 @@ mod tests {
     }
 
     #[test]
+    fn user_history_cell_has_top_and_bottom_dividers() {
+        let cell = UserHistoryCell {
+            message: "hello".to_string(),
+            text_elements: Vec::new(),
+            local_image_paths: Vec::new(),
+            remote_image_urls: Vec::new(),
+        };
+
+        let width: u16 = 12;
+        let rendered = render_lines(&cell.display_lines(width));
+        let divider = "─".repeat(usize::from(width));
+
+        assert_eq!(rendered.first(), Some(&divider));
+        assert_eq!(rendered.last(), Some(&divider));
+    }
+
+    #[test]
     fn user_history_cell_renders_remote_image_urls() {
         let cell = UserHistoryCell {
             message: "describe these".to_string(),
@@ -5376,7 +5397,7 @@ mod tests {
             .rev()
             .take_while(|line| line.trim().is_empty())
             .count();
-        assert_eq!(trailing_blank_count, 1);
+        assert_eq!(trailing_blank_count, 0);
         assert!(rendered.iter().any(|line| line.contains("line one")));
     }
 
@@ -5399,7 +5420,7 @@ mod tests {
             .rev()
             .take_while(|line| line.trim().is_empty())
             .count();
-        assert_eq!(trailing_blank_count, 1);
+        assert_eq!(trailing_blank_count, 0);
         assert!(rendered.iter().any(|line| line.contains("tokenized")));
     }
 

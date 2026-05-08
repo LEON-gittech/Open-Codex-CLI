@@ -4528,7 +4528,6 @@ impl ChatComposer {
         Block::default()
             .borders(Borders::TOP | Borders::BOTTOM)
             .style(style)
-            .border_style(Style::default().fg(ratatui::style::Color::White))
             .render_ref(composer_rect, buf);
         if !remote_images_rect.is_empty() {
             Paragraph::new(self.remote_images_lines(remote_images_rect.width))

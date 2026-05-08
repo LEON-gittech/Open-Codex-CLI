@@ -282,6 +282,12 @@ pub(crate) enum AppEvent {
     /// Result of computing a `/diff` command.
     DiffResult(String),
 
+    /// Write the visible transcript to a markdown file.
+    #[allow(dead_code)]
+    ExportTranscript {
+        path: PathBuf,
+    },
+
     /// Open the app link view in the bottom pane.
     OpenAppLink {
         app_id: String,
@@ -849,6 +855,12 @@ pub(crate) enum AppEvent {
 
     /// Launch the external editor after a normal draw has completed.
     LaunchExternalEditor,
+
+    /// Result of an async memory-related command.
+    MemoryCommandResult {
+        text: String,
+        is_error: bool,
+    },
 
     /// Async update of the current git branch for status line rendering.
     StatusLineBranchUpdated {
