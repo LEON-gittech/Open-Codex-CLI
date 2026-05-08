@@ -11,6 +11,157 @@ use codex_app_server_protocol::SandboxPolicy;
 use pretty_assertions::assert_eq;
 
 #[tokio::test]
+async fn stale_agent_delta_is_ignored_after_new_turn_starts() {
+    let (mut chat, mut rx, _ops) = make_chatwidget_manual(/*model_override*/ None).await;
+
+    handle_turn_started(&mut chat, "turn-1");
+    handle_turn_started(&mut chat, "turn-2");
+    drain_insert_history(&mut rx);
+
+    chat.handle_server_notification(
+        ServerNotification::AgentMessageDelta(
+            codex_app_server_protocol::AgentMessageDeltaNotification {
+                thread_id: chat.thread_id.map(|id| id.to_string()).unwrap_or_default(),
+                turn_id: "turn-1".to_string(),
+                item_id: "msg-1".to_string(),
+                delta: "stale output".to_string(),
+            },
+        ),
+        /*replay_kind*/ None,
+    );
+
+    assert!(
+        drain_insert_history(&mut rx).is_empty(),
+        "stale delta should not emit history cells"
+    );
+}
+
+#[tokio::test]
+async fn stale_agent_delta_is_ignored_after_new_turn_is_submitted_before_turn_started() {
+    let (mut chat, mut rx, _ops) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.thread_id = Some(ThreadId::new());
+
+    handle_turn_started(&mut chat, "turn-1");
+    handle_turn_completed(&mut chat, "turn-1", /*duration_ms*/ None);
+    drain_insert_history(&mut rx);
+
+    chat.submit_user_message(UserMessage::from("new query"));
+    assert!(
+        chat.user_turn_pending_start,
+        "new user turn should be pending before TurnStarted arrives"
+    );
+    drain_insert_history(&mut rx);
+
+    chat.handle_server_notification(
+        ServerNotification::AgentMessageDelta(
+            codex_app_server_protocol::AgentMessageDeltaNotification {
+                thread_id: chat.thread_id.map(|id| id.to_string()).unwrap_or_default(),
+                turn_id: "turn-1".to_string(),
+                item_id: "msg-1".to_string(),
+                delta: "late stale output".to_string(),
+            },
+        ),
+        /*replay_kind*/ None,
+    );
+
+    assert!(
+        drain_insert_history(&mut rx).is_empty(),
+        "late stale delta should not emit history cells after a new turn is submitted"
+    );
+}
+
+#[tokio::test]
+async fn stale_plan_and_reasoning_deltas_are_ignored_after_new_turn_starts() {
+    let (mut chat, mut rx, _ops) = make_chatwidget_manual(/*model_override*/ None).await;
+
+    handle_turn_started(&mut chat, "turn-1");
+    handle_turn_started(&mut chat, "turn-2");
+    drain_insert_history(&mut rx);
+
+    let thread_id = chat.thread_id.map(|id| id.to_string()).unwrap_or_default();
+    chat.handle_server_notification(
+        ServerNotification::PlanDelta(codex_app_server_protocol::PlanDeltaNotification {
+            thread_id: thread_id.clone(),
+            turn_id: "turn-1".to_string(),
+            item_id: "plan-1".to_string(),
+            delta: "- stale plan".to_string(),
+        }),
+        /*replay_kind*/ None,
+    );
+    chat.handle_server_notification(
+        ServerNotification::ReasoningSummaryTextDelta(ReasoningSummaryTextDeltaNotification {
+            thread_id,
+            turn_id: "turn-1".to_string(),
+            item_id: "reasoning-1".to_string(),
+            delta: "**stale reasoning**".to_string(),
+            summary_index: 0,
+        }),
+        /*replay_kind*/ None,
+    );
+
+    assert!(
+        drain_insert_history(&mut rx).is_empty(),
+        "stale deltas should not emit history cells"
+    );
+    assert!(
+        chat.plan_delta_buffer.is_empty(),
+        "stale plan delta should be ignored"
+    );
+    assert!(
+        chat.reasoning_buffer.is_empty(),
+        "stale reasoning delta should be ignored"
+    );
+}
+
+#[tokio::test]
+async fn stale_turn_completion_does_not_end_current_turn() {
+    let (mut chat, _rx, _ops) = make_chatwidget_manual(/*model_override*/ None).await;
+
+    handle_turn_started(&mut chat, "turn-1");
+    handle_turn_started(&mut chat, "turn-2");
+    handle_turn_completed(&mut chat, "turn-1", /*duration_ms*/ None);
+
+    assert!(
+        chat.agent_turn_running,
+        "stale completion should not end the current turn"
+    );
+    assert_eq!(chat.last_turn_id.as_deref(), Some("turn-2"));
+}
+
+#[tokio::test]
+async fn stale_completed_agent_item_is_ignored_after_new_turn_starts() {
+    let (mut chat, mut rx, _ops) = make_chatwidget_manual(/*model_override*/ None).await;
+
+    handle_turn_started(&mut chat, "turn-1");
+    handle_turn_started(&mut chat, "turn-2");
+    drain_insert_history(&mut rx);
+
+    chat.handle_server_notification(
+        ServerNotification::ItemCompleted(ItemCompletedNotification {
+            thread_id: chat.thread_id.map(|id| id.to_string()).unwrap_or_default(),
+            turn_id: "turn-1".to_string(),
+            completed_at_ms: 0,
+            item: AppServerThreadItem::AgentMessage {
+                id: "agent-msg-1".to_string(),
+                text: "stale completed item".to_string(),
+                phase: None,
+                memory_citation: None,
+            },
+        }),
+        /*replay_kind*/ None,
+    );
+
+    assert!(
+        drain_insert_history(&mut rx).is_empty(),
+        "stale completed item should not emit history cells"
+    );
+    assert!(
+        chat.last_agent_markdown_text().is_none(),
+        "stale completed item should not overwrite copy source"
+    );
+}
+
+#[tokio::test]
 async fn resumed_initial_messages_render_history() {
     let (mut chat, mut rx, _ops) = make_chatwidget_manual(/*model_override*/ None).await;
 
