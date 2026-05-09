@@ -18,6 +18,10 @@
 </p>
 
 <p align="center">
+  <img src="./.github/open-codex-cli-unleashed.png" alt="Open Codex CLI unleashed banner" width="960" />
+</p>
+
+<p align="center">
   GitHub README does not allow JavaScript-based language toggles, so this page uses collapsible language sections as the practical equivalent.
 </p>
 
@@ -39,30 +43,31 @@ The goal of **Open Codex CLI** is not to diverge for the sake of divergence. The
 - solve real Codex CLI usage problems I run into, whether they are bugs or features worth borrowing from Claude Code
 - keep improving the Codex CLI experience under `zellij` (**Fuck Off Tmux!**)
 
-## Current Delta vs. Latest Upstream Codex CLI
+## Current Delta and Roadmap vs. Latest Upstream Codex CLI
 
 This fork is currently based on the latest upstream `openai/codex` and adds a small set of focused CLI improvements from recent fork-specific commits:
 
-### 1. Better transcript contrast in the TUI for Zellij
+### 1. General user-query highlighting in the TUI
 
-From commit `598bebc6b`:
+From commit `c652bb8db1`:
 
-- improves visual distinction between user-authored content and assistant-rendered content when Codex CLI is used inside `zellij`
-- adjusts the TUI styling path used by user message rendering for the `zellij` case
-- targets a real readability issue in `zellij`; this is not the same problem in a normal terminal session or in `tmux`
+- adds a shared `user_message_style()` for user-authored query surfaces instead of a Zellij-only transcript contrast path
+- applies the same terminal-background-aware user-query highlight to the chat composer panel and to committed `UserHistoryCell` messages in chat history
+- wraps historical user queries with top/bottom divider lines and keeps the `User ›` prefix visually distinct, so user prompts are easier to scan in long transcripts
+- keeps the styling adaptive across light and dark terminal backgrounds rather than hardcoding a single foreground/border color
 
-This is a usability-focused patch for the `zellij` environment: the goal is to reduce ambiguity in the chat history without changing the underlying interaction model.
-
-For context: [Zellij](https://github.com/zellij-org/zellij) is a terminal workspace / terminal multiplexer. Compared with `tmux`, it puts more emphasis on a batteries-included user experience, richer pane behavior, built-in layouts, and more discoverable interaction patterns out of the box.
+This is a general TUI readability improvement: the active user query in the chat box and previous user queries in history now share one consistent highlight language, making user-authored turns easier to identify without tying the behavior to `zellij`.
 
 ### 2. Stale turn output protection in the TUI
 
-From commits `5800f4e9f` and `0b299d9bd`:
+From commit `67b06fd086`:
 
-- adds turn-aware filtering for streamed assistant output
-- prevents stale deltas from older turns from leaking into the currently active turn
-- hardens replay and status handling around message deltas, reasoning deltas, and turn completion events
-- adds regression coverage for the stale-turn cases that motivated the fix
+- adds turn-aware filtering at the live TUI notification/render boundary
+- drops stale assistant message, plan, and reasoning deltas when they belong to an older turn
+- drops stale completed assistant/plan/reasoning items from live thread-item notifications
+- ignores stale turn-completion notifications so an old completion cannot end the current turn
+- keeps replay explicitly separate, so resumed thread snapshots can still render historical content
+- adds regression coverage for stale deltas, stale completed items, and stale completions
 
 This is a correctness-focused patch: the UI should not render output from the wrong turn, even when retry, replay, or stream timing gets messy.
 
@@ -100,6 +105,68 @@ From recent fork-specific changes:
 
 This brings a Claude Code-style export flow into the TUI without requiring external scripts or manual transcript scraping.
 
+### 6. Parallel-first subagent planning policy
+
+Implemented through the user-scope `~/.codex/AGENTS.md` instruction layer, with an extracted repo example in [`docs/parallel-first-agent-execution.md`](docs/parallel-first-agent-execution.md):
+
+- overrides Codex's default conservative stance against automatic agent spawning with an explicit, more aggressive subagent policy for complex work
+- classifies non-trivial work by independent investigation, review, test, docs, and validation axes before editing
+- prefers read-only subagents for evidence gathering, with one final implementation lane unless edit boundaries are clearly disjoint
+- sets concrete lane-count guidance, prompt requirements, stop conditions, and final-response evidence requirements
+
+This is an instruction-policy feature rather than a hardcoded scheduler: it enables a more aggressive subagent mechanism while keeping shared-file edits coordinated.
+
+### 7. Nonblocking background execution
+
+From recent fork-specific TUI changes:
+
+- **Terminal commands** — long-running terminal sessions continue in the background instead of keeping the main turn blocked by foreground waiting or polling. Empty `command/exec/write` interactions keep the terminal backgrounded, so normal chat input can be submitted while the shell process continues.
+- **Subagents** — long-running agent work is tracked as background activity after spawn/wait tool calls complete, including agent nickname, role, status, and progress lines when available.
+- **Manual backgrounding** — `Ctrl+B` sends the current active exec/terminal activity to the background without submitting a core op, clearing the foreground task-running UI while preserving streamed output.
+- **Foreground state** — foreground model activity still drives the normal `Working` status, while background work is counted separately in the status line as `bg <n> subagent / <m> terminal`.
+- **Task picker** — pressing `Down` when background work exists opens the bottom-pane background task picker instead of inserting a chat-stream summary. The picker separates `Subagents` and `Terminals`; `Up`/`Down` moves selection, `Enter` opens details, `Left` returns to the list, and `Esc` closes it.
+- **Terminal details** — terminal detail view shows the command and the recent output tail. Pressing `x` in the picker or detail view stops background terminals through the same cleanup path as `/stop`.
+- **Slash commands** — `/ps` prints a chat-history summary of running background terminals, while `/stop` terminates all running background terminal processes for the thread.
+- **Subagent details** — subagent detail view shows agent title, status, and progress. Subagents are inspectable in the background picker and switchable through the agent-thread workflow; `/stop` and picker `x` are terminal-only controls and do not kill subagents.
+- **Completed background work** — completed background exec cells are flushed back into history once they finish, preserving the command and captured output without re-foregrounding the task.
+
+This is the underlying interaction change behind the Claude Code-style behavior: background work stays visible and controllable, but it no longer blocks normal chat flow.
+
+### 8. Status line token throughput visibility (Beta)
+
+From commit `85e937b855`:
+
+- adds a configurable status-line item for session-average input/output token throughput
+- renders as `in <rate> / out <rate> tok/s` when enough token-usage and turn-duration data has been observed
+- falls back to `in -- / out -- tok/s` before a usable sample exists
+- computes a coarse session average from completed turn usage and duration, including interval merging for overlapping active windows
+
+This is intentionally marked **Beta**: the current value is useful as a rough responsiveness signal, but it is not yet an exact real-time throughput metric.
+
+### Near-term roadmap
+
+The near-term roadmap is intentionally focused on a few CLI-facing improvements:
+
+#### 1. ~~Status line throughput visibility~~ ✅ Beta
+
+Initial support is implemented as a beta status-line item. The remaining work is accuracy: the current estimator is session-average and timing-derived, so it should not be treated as precise real-time token throughput yet.
+
+#### 2. ~~Session export~~ ✅ Completed
+
+Implemented as a Claude Code-style `/export` flow for the current session, with user-defined filenames like `/export talk.txt` or `/export talk.md`. This now covers the debugging, sharing, and archival use case directly inside the TUI.
+
+#### 3. Better memory mechanics
+
+Active memory staging is implemented on top of upstream memories (see Current Delta section 3 above). Broader durable-memory behavior should continue to follow upstream so fork changes stay additive.
+
+#### 4. Better Zellij ergonomics
+
+Continue improving the Codex CLI experience under `zellij`, especially around rendering, layout, contrast, and other interaction details that behave differently from plain terminal sessions or `tmux`.
+
+#### Next focus areas
+
+- **Better task management experience**
+
 ## Maintenance Philosophy
 
 This fork is maintained with a conservative strategy:
@@ -118,34 +185,6 @@ In practice, maintenance will follow a straightforward loop:
 4. keep or refine only the patches that still provide clear value
 
 The standard for changes here is simple: if a patch is not worth carrying across upstream merges, it does not belong in the fork.
-
-## Roadmap
-
-The near-term roadmap is intentionally focused on a few CLI-facing improvements:
-
-### 1. Status line throughput visibility
-
-Improve the Codex CLI status line so it can surface token throughput directly, instead of only showing coarse task state. The aim is to make model responsiveness easier to judge in real time.
-
-### 2. ~~Session export~~ ✅ Completed
-
-Implemented as a Claude Code-style `/export` flow for the current session, with user-defined filenames like `/export talk.txt` or `/export talk.md`. This now covers the debugging, sharing, and archival use case directly inside the TUI.
-
-### 3. Better memory mechanics
-
-Active memory staging is implemented on top of upstream memories (see Current Delta section 3 above). Broader durable-memory behavior should continue to follow upstream so fork changes stay additive.
-
-### 4. Better Zellij ergonomics
-
-Continue improving the Codex CLI experience under `zellij`, especially around rendering, layout, contrast, and other interaction details that behave differently from plain terminal sessions or `tmux`.
-
-### Next focus areas
-
-- **Background AutoDream-style consolidation** — move consolidation fully off the startup path and replace it with a background 3-gate consolidator (time ≥ 24h, ≥ 5 new sessions, no lock), using a 4-phase pipeline: Orient → Gather → Consolidate → Prune.
-- **Memory staging UI** — surface staged session-memory entries in the TUI so the user can inspect what is currently overlaid before upstream consolidation picks it up.
-- **Memory versioning** — keep a lightweight changelog for topic edits so agents can reason about what changed and when.
-- **More proactive subagent parallel planning** — let the agent split work and dispatch parallel subagents more aggressively instead of stepping through tasks strictly serially.
-- **Claude Code-style background execution** — automatically send long-running commands and agent work to the background rather than keeping the main process occupied by foreground waiting and polling.
 
 ## Community
 
@@ -235,30 +274,31 @@ Codex CLI 是开源的，但上游仓库当前对外部代码贡献采用 invita
 - 解决我在实际使用 Codex CLI 时遇到的体验问题，不管它们是 bug，还是值得从 Claude Code 借鉴过来的 feature
 - 持续优化 Codex CLI 在 `zellij` 下的使用体验（**Fuck Off Tmux!**）
 
-## 当前相对最新 Upstream Codex CLI 的差异
+## 当前相对最新 Upstream Codex CLI 的差异与路线图
 
 这个 fork 目前基于最新的 `openai/codex`，并在最近几条 fork 自有 commit 的基础上增加了几项聚焦的 CLI 改进：
 
-### 1. 面向 Zellij 的 TUI transcript 对比度优化
+### 1. TUI 中通用的 user query 高亮优化
 
-来自 commit `598bebc6b`：
+来自 commit `c652bb8db1`：
 
-- 改善了在 `zellij` 环境下用户消息与 assistant 输出之间的视觉区分度
-- 调整了 `zellij` 场景下用户消息渲染路径的样式策略
-- 解决的是 `zellij` 下真实存在的可读性问题，而不是普通 terminal 或 `tmux` 下的通用问题
+- 增加共享的 `user_message_style()`，用于 user-authored query surfaces，而不是继续保留 Zellij-only 的 transcript contrast 路径
+- 把同一套 terminal-background-aware user-query highlight 同时用于聊天输入框 panel 和历史聊天里的 `UserHistoryCell`
+- 历史 user query 会带 top/bottom divider lines，并保留醒目的 `User ›` prefix，让长 transcript 里的用户提问更容易扫描
+- 样式会根据 light/dark terminal background 自适应，而不是硬编码单一 foreground/border color
 
-这是一个面向 `zellij` 使用环境的可用性优化，目标是在不改变交互模型的前提下，降低 transcript 阅读时的歧义。
-
-补充说明：[Zellij](https://github.com/zellij-org/zellij) 是一个 terminal workspace / terminal multiplexer。相比 `tmux`，它更强调开箱即用的体验、更丰富的 pane 行为、内建布局能力，以及更容易发现的交互方式。
+这是一个通用 TUI 可读性优化：聊天框中的当前 user query 和历史聊天中的旧 user query 使用一致的高亮语言，让用户输入回合更容易识别，而不再绑定到 `zellij` 场景。
 
 ### 2. TUI 中的 stale turn output 保护
 
-来自 commits `642d306a7` 和 `6c27de579`：
+来自 commit `67b06fd086`：
 
-- 为流式 assistant 输出增加了 turn-aware 过滤
-- 防止旧 turn 的 delta 混入当前 active turn
-- 强化了 replay、reasoning delta、turn completion 等路径下的状态处理
-- 增加了针对 stale-turn 场景的回归测试覆盖
+- 在 live TUI notification/render boundary 增加 turn-aware filtering
+- 丢弃属于旧 turn 的 assistant message、plan、reasoning deltas
+- 丢弃 live thread-item notifications 中属于旧 turn 的 completed assistant/plan/reasoning items
+- 忽略旧 turn 的 completion notification，避免旧 completion 结束当前 turn
+- replay 路径保持独立，resumed thread snapshot 仍然可以渲染历史内容
+- 增加针对 stale deltas、stale completed items、stale completions 的回归测试覆盖
 
 这是一个偏正确性的修复：即使在 retry、replay、stream 时序比较复杂的情况下，UI 也不应该把错误 turn 的输出渲染出来。
 
@@ -296,6 +336,68 @@ Codex CLI 是开源的，但上游仓库当前对外部代码贡献采用 invita
 
 这让类似 Claude Code 的会话导出能力直接进入 TUI，而不需要额外脚本或手工抓 transcript。
 
+### 6. Parallel-first subagent planning policy
+
+通过 user-scope `~/.codex/AGENTS.md` 指令层实现，并在 repo 中抽取了示例文件：[`docs/parallel-first-agent-execution.md`](docs/parallel-first-agent-execution.md)。
+
+- 显式覆盖 Codex 原本对 automatic agent spawning 的保守/禁止姿态，为复杂任务启用更激进的 subagent policy
+- 在编辑前先按 independent investigation、review、test、docs、validation 等轴判断任务是否适合拆分
+- 默认优先使用 read-only subagents 收集证据，除非 edit boundary 明确 disjoint，否则保留一个最终 implementation lane
+- 明确 lane 数量建议、subagent prompt 要求、stop conditions，以及 final response 的 evidence 要求
+
+这不是硬编码 scheduler，而是 instruction-policy feature：它启用了更激进的 subagent 机制，同时避免多个执行 lane 争抢同一批文件。
+
+### 7. 非阻塞后台执行
+
+来自最近几条 fork 自有 TUI 改动：
+
+- **Terminal commands** — 长时间运行的 terminal session 会进入后台继续执行，不再通过前台 waiting / polling 阻塞主 turn。空的 `command/exec/write` 交互会保持 terminal backgrounded，因此 shell process 继续运行时也可以正常提交新的聊天输入。
+- **Subagents** — 长时间运行的 agent work 会在 spawn/wait tool call 完成后作为 background activity 跟踪，能带上 agent nickname、role、status，以及可用的 progress lines。
+- **Manual backgrounding** — `Ctrl+B` 会把当前 active exec/terminal activity 送到后台，不提交 core op，并清掉前台 task-running UI，同时保留后续 streamed output。
+- **Foreground state** — 前台模型活动仍然驱动正常的 `Working` 状态，后台工作则在 status line 中单独计数为 `bg <n> subagent / <m> terminal`。
+- **Task picker** — 有后台任务时按 `Down` 会在底部打开 background task picker，而不是往 chat stream 插入 summary。picker 会区分 `Subagents` 和 `Terminals`；`Up`/`Down` 移动选择，`Enter` 打开详情，`Left` 返回列表，`Esc` 关闭。
+- **Terminal details** — terminal detail view 会显示 command 和最近的 output tail。在 picker 或 detail view 中按 `x` 会通过和 `/stop` 相同的 cleanup path 停止 background terminals。
+- **Slash commands** — `/ps` 会把 running background terminals 的摘要打印到 chat history，`/stop` 会终止当前 thread 下所有 running background terminal processes。
+- **Subagent details** — subagent detail view 会显示 agent title、status 和 progress。Subagents 可以在 background picker 中查看，并通过 agent-thread workflow 切换；`/stop` 和 picker 里的 `x` 都是 terminal-only controls，不会 kill subagents。
+- **Completed background work** — background exec 完成后会把对应 cell 刷回 history，保留 command 和已捕获 output，但不会把任务重新拉回前台。
+
+这是 Claude Code 风格体验背后的本质交互变化：后台工作仍然可见、可管理，但不会阻塞正常聊天流。
+
+### 8. Status line token throughput visibility（Beta）
+
+来自 commit `85e937b855`：
+
+- 增加可配置的 status-line item，用于显示 session-average input/output token throughput
+- 当已经观察到足够的 token usage 和 turn duration 数据时，显示为 `in <rate> / out <rate> tok/s`
+- 在还没有可用 sample 前，回退显示为 `in -- / out -- tok/s`
+- 当前用 completed turn usage 和 duration 计算粗略 session average，并对 overlapping active windows 做 interval merging
+
+这个能力目前标记为 **Beta**：它可以作为粗略 responsiveness signal，但还不是准确的 real-time throughput metric。
+
+### 近期路线图
+
+接下来会优先推进几项面向 CLI 的改进：
+
+#### 1. ~~Status line 中增加 token throughput 可见性~~ ✅ Beta
+
+初步能力已经实现为 beta status-line item。剩余工作是准确性：当前 estimator 是 session-average 且依赖 turn timing，不应该当作精确的 real-time token throughput。
+
+#### 2. ~~Session export~~ ✅ 已完成
+
+已实现类似 Claude Code 的 `/export` 会话导出能力，支持用户自定义文件名，例如 `/export talk.txt` 或 `/export talk.md`。当前已经覆盖调试、归档、分享这一类核心使用场景。
+
+#### 3. 更好的 memory 机制
+
+当前已在 upstream memories 之上实现主动 memory staging（见上方当前差异第 3 项）。更广义的 durable-memory 行为应继续跟随 upstream，fork 侧只保留增量补充。
+
+#### 4. 更好的 Zellij 使用体验
+
+继续针对 `zellij` 下的 Codex CLI 使用体验做优化，包括渲染、布局、对比度，以及其他与普通 terminal 或 `tmux` 表现不同的交互细节。
+
+#### 下一阶段重点
+
+- **更好的 task management 体验**
+
 ## 维护思路
 
 这个 fork 的维护策略是偏保守的：
@@ -314,34 +416,6 @@ Codex CLI 是开源的，但上游仓库当前对外部代码贡献采用 invita
 4. 只保留那些在持续 merge 成本下仍然值得维护的 patch
 
 标准很简单：如果一个 patch 不值得长期跟随 upstream 一起维护，它就不应该存在于这个 fork 中。
-
-## 路线图
-
-接下来会优先推进几项面向 CLI 的改进：
-
-### 1. Status line 中增加 token throughput 可见性
-
-改进 Codex CLI 的 status line，让它可以直接展示 token 吞吐，而不只是显示比较粗粒度的任务状态，便于更直观判断模型响应效率。
-
-### 2. ~~Session export~~ ✅ 已完成
-
-已实现类似 Claude Code 的 `/export` 会话导出能力，支持用户自定义文件名，例如 `/export talk.txt` 或 `/export talk.md`。当前已经覆盖调试、归档、分享这一类核心使用场景。
-
-### 3. 更好的 memory 机制
-
-当前已在 upstream memories 之上实现主动 memory staging（见上方当前差异第 3 项）。更广义的 durable-memory 行为应继续跟随 upstream，fork 侧只保留增量补充。
-
-### 4. 更好的 Zellij 使用体验
-
-继续针对 `zellij` 下的 Codex CLI 使用体验做优化，包括渲染、布局、对比度，以及其他与普通 terminal 或 `tmux` 表现不同的交互细节。
-
-### 下一阶段重点
-
-- **后台化的 AutoDream 式 consolidation** — 把 consolidation 完整移出启动路径，改为后台 3-gate 合并器（时间 ≥ 24h、≥ 5 个新 session、无锁），并使用 4 阶段管线：Orient → Gather → Consolidate → Prune。
-- **Memory staging UI** — 在 TUI 中展示当前 staged session-memory entries，让用户能检查当前 overlay 中有什么，再等待 upstream consolidation 吸收。
-- **Memory 版本管理** — 为 topic 编辑维护轻量级变更日志，让 agent 能推理内容何时发生了什么变化。
-- **更主动的 subagent 并行规划** — 让 agent 能更积极地拆分任务并并行派发 subagent，而不是严格串行地一步步推进。
-- **Claude Code 风格的后台执行** — 自动把长时间运行的命令和 agent 工作放到后台，而不是长时间占用主进程做前台等待或轮询。
 
 ## 社区协作
 
