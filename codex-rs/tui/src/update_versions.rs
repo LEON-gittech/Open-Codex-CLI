@@ -16,6 +16,17 @@ pub(crate) fn is_source_build_version(version: &str) -> bool {
     parse_version(version) == Some((0, 0, 0))
 }
 
+pub(crate) fn should_refresh_update_cache(
+    cached_latest: Option<&str>,
+    cache_is_stale: bool,
+    current_version: &str,
+) -> bool {
+    cache_is_stale
+        || cached_latest
+            .map(|latest| is_newer(latest, current_version) != Some(true))
+            .unwrap_or(true)
+}
+
 fn parse_version(v: &str) -> Option<(u64, u64, u64)> {
     let mut iter = v.trim().split('.');
     let maj = iter.next()?.parse::<u64>().ok()?;
@@ -60,6 +71,15 @@ mod tests {
     fn source_build_version_is_not_checked() {
         assert!(is_source_build_version("0.0.0"));
         assert!(!is_source_build_version("0.1.0"));
+    }
+
+    #[test]
+    fn fresh_cache_at_current_version_should_refresh() {
+        assert!(should_refresh_update_cache(
+            Some("0.129.1"),
+            /*cache_is_stale*/ false,
+            "0.129.1",
+        ));
     }
 
     #[test]

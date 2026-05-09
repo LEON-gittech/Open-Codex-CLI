@@ -7,6 +7,7 @@ use crate::update_action;
 use crate::update_action::UpdateAction;
 use crate::update_versions::is_newer;
 use crate::update_versions::is_source_build_version;
+use crate::update_versions::should_refresh_update_cache;
 use chrono::DateTime;
 use chrono::Duration;
 use chrono::Utc;
@@ -15,6 +16,7 @@ use serde::Deserialize;
 use serde::Serialize;
 use std::path::Path;
 use std::path::PathBuf;
+use std::time::Duration as StdDuration;
 
 use crate::version::CODEX_CLI_VERSION;
 
@@ -27,10 +29,7 @@ pub fn get_upgrade_version(config: &Config) -> Option<String> {
     let version_file = version_filepath(config);
     let info = read_version_info(&version_file).ok();
 
-    if match &info {
-        None => true,
-        Some(info) => info.last_checked_at < Utc::now() - Duration::hours(20),
-    } {
+    if should_refresh_version_info(info.as_ref(), Utc::now()) {
         // Refresh the cached latest version in the background so TUI startup
         // isn’t blocked by a network call. The UI reads the previously cached
         // value (if any) for this run; the next run shows the banner if needed.
@@ -41,13 +40,7 @@ pub fn get_upgrade_version(config: &Config) -> Option<String> {
         });
     }
 
-    info.and_then(|info| {
-        if is_newer(&info.latest_version, CODEX_CLI_VERSION).unwrap_or(false) {
-            Some(info.latest_version)
-        } else {
-            None
-        }
-    })
+    upgrade_version_from_info(info)
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -60,6 +53,8 @@ struct VersionInfo {
 }
 
 const VERSION_FILENAME: &str = "version.json";
+const CACHE_REFRESH_INTERVAL: Duration = Duration::hours(20);
+const STARTUP_UPDATE_CHECK_TIMEOUT: StdDuration = StdDuration::from_secs(3);
 
 fn version_filepath(config: &Config) -> PathBuf {
     config.codex_home.join(VERSION_FILENAME).into_path_buf()
@@ -68,6 +63,24 @@ fn version_filepath(config: &Config) -> PathBuf {
 fn read_version_info(version_file: &Path) -> anyhow::Result<VersionInfo> {
     let contents = std::fs::read_to_string(version_file)?;
     Ok(serde_json::from_str(&contents)?)
+}
+
+fn should_refresh_version_info(info: Option<&VersionInfo>, now: DateTime<Utc>) -> bool {
+    let cache_is_stale = info
+        .map(|info| info.last_checked_at < now - CACHE_REFRESH_INTERVAL)
+        .unwrap_or(true);
+    let cached_latest = info.map(|info| info.latest_version.as_str());
+    should_refresh_update_cache(cached_latest, cache_is_stale, CODEX_CLI_VERSION)
+}
+
+fn upgrade_version_from_info(info: Option<VersionInfo>) -> Option<String> {
+    info.and_then(|info| {
+        if is_newer(&info.latest_version, CODEX_CLI_VERSION).unwrap_or(false) {
+            Some(info.latest_version)
+        } else {
+            None
+        }
+    })
 }
 
 async fn check_for_update(
@@ -101,13 +114,34 @@ async fn check_for_update(
 
 /// Returns the latest version to show in a popup, if it should be shown.
 /// This respects the user's dismissal choice for the current latest version.
-pub fn get_upgrade_version_for_popup(config: &Config) -> Option<String> {
+pub async fn get_upgrade_version_for_popup(config: &Config) -> Option<String> {
     if !config.check_for_update_on_startup || is_source_build_version(CODEX_CLI_VERSION) {
         return None;
     }
 
     let version_file = version_filepath(config);
-    let latest = get_upgrade_version(config)?;
+    let mut info = read_version_info(&version_file).ok();
+    if should_refresh_version_info(info.as_ref(), Utc::now()) {
+        let action = update_action::get_update_action();
+        match tokio::time::timeout(
+            STARTUP_UPDATE_CHECK_TIMEOUT,
+            check_for_update(&version_file, action),
+        )
+        .await
+        {
+            Ok(Ok(())) => {
+                info = read_version_info(&version_file).ok();
+            }
+            Ok(Err(err)) => {
+                tracing::error!("Failed to update version before startup prompt: {err}");
+            }
+            Err(_) => {
+                tracing::error!("Timed out updating version before startup prompt");
+            }
+        }
+    }
+
+    let latest = upgrade_version_from_info(info)?;
     // If the user dismissed this exact version previously, do not show the popup.
     if let Ok(info) = read_version_info(&version_file)
         && info.dismissed_version.as_deref() == Some(latest.as_str())
