@@ -285,7 +285,7 @@ pub(crate) fn tool_call_history_cell(
         }),
         CollabAgentTool::Wait => {
             if matches!(status, CollabAgentToolCallStatus::InProgress) {
-                Some(waiting_begin(receiver_thread_ids, &mut agent_metadata))
+                None
             } else {
                 Some(waiting_end(
                     receiver_thread_ids,
@@ -342,38 +342,6 @@ fn interaction_end(
     if let Some(line) = prompt_line(prompt) {
         details.push(line);
     }
-    collab_event(title, details)
-}
-
-fn waiting_begin(
-    receiver_thread_ids: &[String],
-    agent_metadata: &mut impl FnMut(ThreadId) -> AgentMetadata,
-) -> PlainHistoryCell {
-    let receiver_agents = receiver_thread_ids
-        .iter()
-        .filter_map(|thread_id| parse_thread_id(thread_id))
-        .map(|thread_id| (thread_id, agent_metadata(thread_id)))
-        .collect::<Vec<_>>();
-
-    let title = match receiver_agents.as_slice() {
-        [(thread_id, metadata)] => title_with_agent(
-            "Waiting for",
-            agent_label(*thread_id, metadata),
-            /*spawn_request*/ None,
-        ),
-        [] => title_text("Waiting for agents"),
-        _ => title_text(format!("Waiting for {} agents", receiver_agents.len())),
-    };
-
-    let details = if receiver_agents.len() > 1 {
-        receiver_agents
-            .iter()
-            .map(|(thread_id, metadata)| agent_label_line(agent_label(*thread_id, metadata)))
-            .collect()
-    } else {
-        Vec::new()
-    };
-
     collab_event(title, details)
 }
 
@@ -447,7 +415,22 @@ fn collab_agent_activity_lines(
     spans.extend(agent_label_spans(agent_label(thread_id, metadata)));
     spans.push(Span::from(": ").dim());
     spans.extend(status_summary_spans(status));
-    vec![spans.into()]
+    let mut lines = vec![spans.into()];
+    if matches!(
+        status.status,
+        CollabAgentStatus::PendingInit | CollabAgentStatus::Running
+    ) && let Some(message) = status.message.as_deref()
+    {
+        lines.extend(
+            message
+                .lines()
+                .map(str::trim)
+                .filter(|line| !line.is_empty())
+                .take(4)
+                .map(|line| Line::from(Span::from(line.to_string()))),
+        );
+    }
+    lines
 }
 
 fn title_text(title: impl Into<String>) -> Line<'static> {
@@ -482,10 +465,6 @@ fn agent_label(thread_id: ThreadId, metadata: &AgentMetadata) -> AgentLabel<'_> 
         nickname: metadata.agent_nickname.as_deref(),
         role: metadata.agent_role.as_deref(),
     }
-}
-
-fn agent_label_line(agent: AgentLabel<'_>) -> Line<'static> {
-    agent_label_spans(agent).into()
 }
 
 fn agent_label_spans(agent: AgentLabel<'_>) -> Vec<Span<'static>> {
@@ -726,8 +705,8 @@ mod tests {
             },
             /*cached_spawn_request*/ None,
             |thread_id| metadata_for(thread_id, robie_id, bob_id),
-        )
-        .expect("wait begin item renders");
+        );
+        assert!(waiting.is_none());
 
         let finished = tool_call_history_cell(
             &ThreadItem::CollabAgentToolCall {
@@ -775,7 +754,7 @@ mod tests {
         )
         .expect("close item renders");
 
-        let snapshot = [spawn, send, waiting, finished, close]
+        let snapshot = [spawn, send, finished, close]
             .iter()
             .map(cell_to_text)
             .collect::<Vec<_>>()
@@ -905,6 +884,8 @@ mod tests {
         CollabAgentState {
             status,
             message: message.map(str::to_string),
+            agent_nickname: None,
+            agent_role: None,
         }
     }
 

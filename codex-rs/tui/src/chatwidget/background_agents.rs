@@ -103,10 +103,7 @@ fn sync_collab_agent_activity_state(
             }
         }
 
-        let id = chat.next_background_activity_id;
-        chat.next_background_activity_id = chat.next_background_activity_id.wrapping_add(1);
         chat.background_activities.push_back(BackgroundActivity {
-            id,
             cell: Box::new(multi_agents::CollabAgentActivityCell::new(
                 thread_id, state, &metadata,
             )),
@@ -133,8 +130,6 @@ fn remove_collab_agent_background_activity(chat: &mut ChatWidget, thread_id: Thr
 }
 
 fn refresh_task_backgrounded_from_activity_state(chat: &mut ChatWidget) {
-    chat.task_backgrounded = chat.agent_turn_running
-        && chat.active_cell.is_none()
-        && !chat.background_activities.is_empty();
+    chat.task_backgrounded = chat.should_mark_current_turn_backgrounded();
     chat.update_task_running_state();
 }

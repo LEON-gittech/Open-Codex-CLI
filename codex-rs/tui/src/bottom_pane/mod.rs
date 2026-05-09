@@ -51,6 +51,7 @@ use std::time::Instant;
 mod action_required_title;
 mod app_link_view;
 mod approval_overlay;
+mod background_tasks_view;
 mod mcp_server_elicitation;
 mod multi_select_picker;
 mod request_user_input;
@@ -67,6 +68,10 @@ pub(crate) use app_link_view::AppLinkViewParams;
 pub(crate) use approval_overlay::ApprovalOverlay;
 pub(crate) use approval_overlay::ApprovalRequest;
 pub(crate) use approval_overlay::format_requested_permissions_rule;
+pub(crate) use background_tasks_view::BackgroundTaskItem;
+pub(crate) use background_tasks_view::BackgroundTaskKind;
+pub(crate) use background_tasks_view::BackgroundTasksView;
+pub(crate) use background_tasks_view::BackgroundTasksViewParams;
 pub(crate) use mcp_server_elicitation::McpServerElicitationFormRequest;
 pub(crate) use mcp_server_elicitation::McpServerElicitationOverlay;
 pub(crate) use request_user_input::RequestUserInputOverlay;
@@ -1218,6 +1223,14 @@ impl BottomPane {
 
     pub(crate) fn show_view(&mut self, view: Box<dyn BottomPaneView>) {
         self.push_view(view);
+    }
+
+    pub(crate) fn show_background_tasks_view(&mut self, params: BackgroundTasksViewParams) {
+        self.push_view(Box::new(BackgroundTasksView::new(
+            params,
+            self.thread_id,
+            self.app_event_tx.clone(),
+        )));
     }
 
     /// Called when the agent requests user approval.

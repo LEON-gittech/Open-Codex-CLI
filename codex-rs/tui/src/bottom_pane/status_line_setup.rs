@@ -128,6 +128,9 @@ pub(crate) enum StatusLineItem {
 
     /// Latest checklist task progress from `update_plan` (if available).
     TaskProgress,
+
+    /// Active background subagent and terminal counts.
+    BackgroundTasks,
 }
 
 impl StatusLineItem {
@@ -175,6 +178,7 @@ impl StatusLineItem {
             StatusLineItem::TaskProgress => {
                 "Latest task progress from update_plan (omitted until available)"
             }
+            StatusLineItem::BackgroundTasks => "Active background subagent and terminal counts",
         }
     }
 
@@ -203,6 +207,7 @@ impl StatusLineItem {
             StatusLineItem::RawOutput => StatusSurfacePreviewItem::RawOutput,
             StatusLineItem::ThreadTitle => StatusSurfacePreviewItem::ThreadTitle,
             StatusLineItem::TaskProgress => StatusSurfacePreviewItem::TaskProgress,
+            StatusLineItem::BackgroundTasks => StatusSurfacePreviewItem::BackgroundTasks,
         }
     }
 }

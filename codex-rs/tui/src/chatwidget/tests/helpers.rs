@@ -192,7 +192,6 @@ pub(super) async fn make_chatwidget_manual(
         bottom_pane: bottom,
         active_cell: None,
         background_activities: VecDeque::new(),
-        next_background_activity_id: 0,
         active_cell_revision: 0,
         raw_output_mode: cfg.tui_raw_output_mode,
         config: cfg,
@@ -240,8 +239,6 @@ pub(super) async fn make_chatwidget_manual(
         suppressed_exec_calls: HashSet::new(),
         skills_all: Vec::new(),
         skills_initial_state: None,
-        last_unified_wait: None,
-        unified_exec_wait_streak: None,
         turn_sleep_inhibitor: SleepInhibitor::new(prevent_idle_sleep),
         task_complete_pending: false,
         unified_exec_processes: Vec::new(),
@@ -972,6 +969,10 @@ pub(super) fn begin_unified_exec_startup(
     raw_cmd: &str,
 ) -> AppServerThreadItem {
     let command = vec!["bash".to_string(), "-lc".to_string(), raw_cmd.to_string()];
+    let command_actions = codex_shell_command::parse_command::parse_command(&command)
+        .into_iter()
+        .map(|parsed| AppServerCommandAction::from_core_with_cwd(parsed, &chat.config.cwd))
+        .collect();
     let item = AppServerThreadItem::CommandExecution {
         id: call_id.to_string(),
         command: codex_shell_command::parse_command::shlex_join(&command),
@@ -979,7 +980,7 @@ pub(super) fn begin_unified_exec_startup(
         process_id: Some(process_id.to_string()),
         source: ExecCommandSource::UnifiedExecStartup,
         status: AppServerCommandExecutionStatus::InProgress,
-        command_actions: Vec::new(),
+        command_actions,
         aggregated_output: None,
         exit_code: None,
         duration_ms: None,

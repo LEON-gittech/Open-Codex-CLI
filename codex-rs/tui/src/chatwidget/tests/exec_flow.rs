@@ -245,7 +245,7 @@ async fn preamble_keeps_working_status_snapshot() {
 }
 
 #[tokio::test]
-async fn unified_exec_begin_restores_status_indicator_after_preamble() {
+async fn unified_exec_begin_backgrounds_status_indicator_after_preamble() {
     let (mut chat, _rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
 
     chat.on_task_started();
@@ -258,7 +258,8 @@ async fn unified_exec_begin_restores_status_indicator_after_preamble() {
 
     begin_unified_exec_startup(&mut chat, "call-1", "proc-1", "sleep 2");
 
-    assert_eq!(chat.bottom_pane.status_indicator_visible(), true);
+    assert_eq!(chat.bottom_pane.status_indicator_visible(), false);
+    assert!(chat.is_task_running_for_test());
 }
 
 #[tokio::test]
@@ -637,6 +638,43 @@ async fn unified_exec_wait_after_final_agent_message_snapshot() {
 }
 
 #[tokio::test]
+async fn unified_exec_background_terminal_does_not_block_chat_input() {
+    let (mut chat, _rx, mut op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.thread_id = Some(ThreadId::new());
+    handle_turn_started(&mut chat, "turn-1");
+
+    begin_unified_exec_startup(&mut chat, "call-bg", "proc-bg", "cargo test -p codex-core");
+
+    assert!(chat.is_task_running_for_test());
+    assert!(chat.bottom_pane.status_widget().is_some());
+
+    terminal_interaction(&mut chat, "call-bg-stdin", "proc-bg", "");
+
+    assert!(!chat.is_task_running_for_test());
+    assert_ne!(
+        chat.current_status.header,
+        "Waiting for background terminal"
+    );
+    assert!(chat.bottom_pane.status_widget().is_none());
+
+    chat.bottom_pane
+        .set_composer_text("continue now".to_string(), Vec::new(), Vec::new());
+    chat.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+    match next_submit_op(&mut op_rx) {
+        Op::UserTurn { items, .. } => assert_eq!(
+            items,
+            vec![UserInput::Text {
+                text: "continue now".to_string(),
+                text_elements: Vec::new(),
+            }]
+        ),
+        other => panic!("expected chat input to submit while terminal runs, got {other:?}"),
+    }
+    assert!(chat.queued_user_messages.is_empty());
+}
+
+#[tokio::test]
 async fn unified_exec_wait_before_streamed_agent_message_snapshot() {
     let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
     handle_turn_started(&mut chat, "turn-1");
@@ -650,7 +688,7 @@ async fn unified_exec_wait_before_streamed_agent_message_snapshot() {
     terminal_interaction(&mut chat, "call-wait-stream-stdin", "proc-1", "");
 
     handle_agent_message_delta(&mut chat, "Streaming response.");
-    handle_turn_completed(&mut chat, "turn-wait-1", /*duration_ms*/ None);
+    handle_turn_completed(&mut chat, "turn-1", /*duration_ms*/ None);
 
     let cells = drain_insert_history(&mut rx);
     let combined = cells
@@ -694,7 +732,7 @@ async fn final_worked_for_uses_cumulative_turn_duration_snapshot() {
 }
 
 #[tokio::test]
-async fn unified_exec_wait_status_header_updates_on_late_command_display() {
+async fn unified_exec_empty_terminal_interaction_stays_backgrounded() {
     let (mut chat, _rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
     chat.on_task_started();
     chat.unified_exec_processes.push(UnifiedExecProcessSummary {
@@ -702,21 +740,99 @@ async fn unified_exec_wait_status_header_updates_on_late_command_display() {
         call_id: "call-1".to_string(),
         command_display: "sleep 5".to_string(),
         recent_chunks: Vec::new(),
+        output_lines: Vec::new(),
     });
 
     terminal_interaction(&mut chat, "call-1", "proc-1", "");
 
     assert!(chat.active_cell.is_none());
-    assert_eq!(
-        chat.current_status.header,
-        "Waiting for background terminal"
+    assert!(!chat.is_task_running_for_test());
+    assert!(chat.bottom_pane.status_widget().is_none());
+}
+
+#[tokio::test]
+async fn down_opens_background_terminal_process_list_without_submitting_core_op() {
+    let (mut chat, mut rx, mut op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.unified_exec_processes.push(UnifiedExecProcessSummary {
+        key: "proc-1".to_string(),
+        call_id: "call-1".to_string(),
+        command_display: "sleep 300".to_string(),
+        recent_chunks: vec!["still running".to_string()],
+        output_lines: vec!["tick 01".to_string(), "still running".to_string()],
+    });
+    chat.sync_unified_exec_footer();
+
+    let down = KeyEvent::new(KeyCode::Down, KeyModifiers::NONE);
+    chat.handle_key_event(KeyEvent {
+        kind: crossterm::event::KeyEventKind::Repeat,
+        ..down
+    });
+
+    assert!(
+        op_rx.try_recv().is_err(),
+        "opening background terminal details must not submit a core op"
     );
-    let status = chat
-        .bottom_pane
-        .status_widget()
-        .expect("status indicator should be visible");
-    assert_eq!(status.header(), "Waiting for background terminal");
-    assert_eq!(status.details(), Some("sleep 5"));
+    assert!(
+        drain_insert_history(&mut rx).is_empty(),
+        "down should open a bottom view instead of inserting history"
+    );
+    assert_eq!(chat.bottom_pane.active_view_id(), Some("background_tasks"));
+    let combined = render_bottom_popup(&chat, /*width*/ 96);
+    assert!(
+        combined.contains("Background tasks"),
+        "down should render the background task list: {combined:?}"
+    );
+    assert!(
+        combined.contains("Subagents"),
+        "down should include the subagent section: {combined:?}"
+    );
+    assert!(
+        combined.contains("sleep 300"),
+        "process list should include the running command: {combined:?}"
+    );
+    assert!(
+        combined.contains("still running"),
+        "process list should include recent output: {combined:?}"
+    );
+}
+
+#[tokio::test]
+async fn down_enter_background_terminal_opens_shell_detail_without_core_op() {
+    let (mut chat, mut rx, mut op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.unified_exec_processes.push(UnifiedExecProcessSummary {
+        key: "proc-1".to_string(),
+        call_id: "call-1".to_string(),
+        command_display: "sleep 300".to_string(),
+        recent_chunks: vec!["tick 02".to_string()],
+        output_lines: vec!["tick 01".to_string(), "tick 02".to_string()],
+    });
+    chat.sync_unified_exec_footer();
+
+    chat.handle_key_event(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+    chat.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+    assert!(
+        op_rx.try_recv().is_err(),
+        "opening terminal detail must not submit a core op"
+    );
+    assert!(
+        drain_insert_history(&mut rx).is_empty(),
+        "terminal detail should stay in the bottom pane"
+    );
+    assert_eq!(chat.bottom_pane.active_view_id(), Some("background_tasks"));
+    let combined = render_bottom_popup(&chat, /*width*/ 96);
+    assert!(
+        combined.contains("Shell details"),
+        "Enter should open terminal detail: {combined:?}"
+    );
+    assert!(
+        combined.contains("Command") && combined.contains("sleep 300"),
+        "terminal detail should include the command: {combined:?}"
+    );
+    assert!(
+        combined.contains("Output") && combined.contains("tick 01") && combined.contains("tick 02"),
+        "terminal detail should include output tail: {combined:?}"
+    );
 }
 
 #[tokio::test]
@@ -779,7 +895,7 @@ async fn ctrl_b_backgrounds_active_exec_without_submitting_core_op() {
 }
 
 #[tokio::test]
-async fn down_foregrounds_backgrounded_active_exec_without_submitting_core_op() {
+async fn down_lists_backgrounded_active_exec_without_submitting_core_op() {
     let (mut chat, mut rx, mut op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
     handle_turn_started(&mut chat, "turn-1");
     let exec = begin_exec(&mut chat, "call-bg", "sleep 5");
@@ -790,12 +906,22 @@ async fn down_foregrounds_backgrounded_active_exec_without_submitting_core_op() 
 
     chat.handle_key_event(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
 
-    assert!(chat.is_task_running_for_test());
-    assert!(chat.active_cell.is_some());
+    assert!(!chat.is_task_running_for_test());
+    assert!(chat.active_cell.is_none());
     assert!(
         op_rx.try_recv().is_err(),
-        "foregrounding a backgrounded exec is a TUI-only action"
+        "listing background activity is a TUI-only action"
     );
+
+    assert!(
+        drain_insert_history(&mut rx).is_empty(),
+        "down should open a bottom view instead of inserting history"
+    );
+    assert_eq!(chat.bottom_pane.active_view_id(), Some("background_tasks"));
+    let listed = render_bottom_popup(&chat, /*width*/ 96);
+    assert!(listed.contains("Background tasks"));
+    assert!(listed.contains("Terminals"));
+    assert!(listed.contains("sleep 5"));
 
     end_exec(&mut chat, exec, "done\n", "", /*exit_code*/ 0);
 
@@ -856,16 +982,8 @@ async fn unified_exec_waiting_multiple_empty_snapshots() {
 
     terminal_interaction(&mut chat, "call-wait-1a", "proc-1", "");
     terminal_interaction(&mut chat, "call-wait-1b", "proc-1", "");
-    assert_eq!(
-        chat.current_status.header,
-        "Waiting for background terminal"
-    );
-    let status = chat
-        .bottom_pane
-        .status_widget()
-        .expect("status indicator should be visible");
-    assert_eq!(status.header(), "Waiting for background terminal");
-    assert_eq!(status.details(), Some("just fix"));
+    assert!(!chat.is_task_running_for_test());
+    assert!(chat.bottom_pane.status_widget().is_none());
 
     handle_turn_completed(&mut chat, "turn-wait-3", /*duration_ms*/ None);
 
@@ -878,7 +996,7 @@ async fn unified_exec_waiting_multiple_empty_snapshots() {
 }
 
 #[tokio::test]
-async fn unified_exec_wait_status_renders_command_in_single_details_row_snapshot() {
+async fn unified_exec_background_terminal_does_not_render_persistent_footer_snapshot() {
     let (mut chat, _rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
     chat.on_task_started();
     begin_unified_exec_startup(
@@ -891,8 +1009,12 @@ async fn unified_exec_wait_status_renders_command_in_single_details_row_snapshot
     terminal_interaction(&mut chat, "call-wait-ui-stdin", "proc-ui", "");
 
     let rendered = render_bottom_popup(&chat, /*width*/ 48);
+    assert!(
+        !rendered.contains("background terminal"),
+        "background terminals should be listed through Down or /ps, not persistent footer: {rendered}"
+    );
     assert_chatwidget_snapshot!(
-        "unified_exec_wait_status_renders_command_in_single_details_row",
+        "unified_exec_background_terminal_does_not_render_persistent_footer",
         normalize_snapshot_paths(rendered)
     );
 }
@@ -922,16 +1044,8 @@ async fn unified_exec_non_empty_then_empty_snapshots() {
 
     terminal_interaction(&mut chat, "call-wait-3a", "proc-3", "pwd\n");
     terminal_interaction(&mut chat, "call-wait-3b", "proc-3", "");
-    assert_eq!(
-        chat.current_status.header,
-        "Waiting for background terminal"
-    );
-    let status = chat
-        .bottom_pane
-        .status_widget()
-        .expect("status indicator should be visible");
-    assert_eq!(status.header(), "Waiting for background terminal");
-    assert_eq!(status.details(), Some("just fix"));
+    assert!(!chat.is_task_running_for_test());
+    assert!(chat.bottom_pane.status_widget().is_none());
     let pre_cells = drain_insert_history(&mut rx);
     let active_combined = pre_cells
         .iter()
@@ -1150,6 +1264,105 @@ async fn user_message_during_user_shell_command_is_queued_not_steered() {
             }]
         ),
         other => panic!("expected queued user message after shell completion, got {other:?}"),
+    }
+    assert!(chat.queued_user_messages.is_empty());
+}
+
+#[tokio::test]
+async fn esc_interrupts_user_shell_wait_and_submits_queued_message_after_interrupt() {
+    let (mut chat, _rx, mut op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.thread_id = Some(ThreadId::new());
+    handle_turn_started(&mut chat, "turn-1");
+    begin_exec_with_source(
+        &mut chat,
+        "user-shell-sleep",
+        "sleep 10",
+        ExecCommandSource::UserShell,
+    );
+
+    chat.bottom_pane
+        .set_composer_text("run next".to_string(), Vec::new(), Vec::new());
+    chat.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    assert_eq!(
+        chat.queued_user_message_texts(),
+        vec!["run next".to_string()]
+    );
+    assert_matches!(op_rx.try_recv(), Err(TryRecvError::Empty));
+
+    chat.handle_key_event(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+    next_interrupt_op(&mut op_rx);
+
+    handle_turn_interrupted(&mut chat, "turn-1");
+
+    match next_submit_op(&mut op_rx) {
+        Op::UserTurn { items, .. } => assert_eq!(
+            items,
+            vec![UserInput::Text {
+                text: "run next".to_string(),
+                text_elements: Vec::new(),
+            }]
+        ),
+        other => panic!("expected queued user message after interrupt, got {other:?}"),
+    }
+    assert!(chat.queued_user_messages.is_empty());
+}
+
+#[tokio::test]
+async fn esc_with_pending_query_submits_it_instead_of_showing_quit_hint() {
+    let (mut chat, _rx, mut op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.thread_id = Some(ThreadId::new());
+
+    chat.on_task_started();
+    chat.bottom_pane.set_task_running(/*running*/ true);
+    chat.queue_user_message("run pending".into());
+    chat.agent_turn_running = false;
+    chat.task_backgrounded = false;
+    chat.bottom_pane.set_task_running(/*running*/ false);
+    assert_eq!(
+        chat.queued_user_message_texts(),
+        vec!["run pending".to_string()]
+    );
+
+    chat.handle_key_event(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+
+    assert!(!chat.bottom_pane.quit_shortcut_hint_visible());
+    match next_submit_op(&mut op_rx) {
+        Op::UserTurn { items, .. } => assert_eq!(
+            items,
+            vec![UserInput::Text {
+                text: "run pending".to_string(),
+                text_elements: Vec::new(),
+            }]
+        ),
+        other => panic!("expected pending user message to submit on Esc, got {other:?}"),
+    }
+    assert!(chat.queued_user_messages.is_empty());
+}
+
+#[tokio::test]
+async fn esc_with_pending_query_prefers_send_over_edit_queued_message() {
+    let (mut chat, _rx, mut op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.thread_id = Some(ThreadId::new());
+    chat.chat_keymap.edit_queued_message = vec![crate::key_hint::plain(KeyCode::Esc)];
+
+    chat.on_task_started();
+    chat.queue_user_message("send me".into());
+    chat.agent_turn_running = false;
+    chat.task_backgrounded = false;
+    chat.bottom_pane.set_task_running(/*running*/ false);
+
+    chat.handle_key_event(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+
+    assert!(chat.bottom_pane.composer_text().is_empty());
+    match next_submit_op(&mut op_rx) {
+        Op::UserTurn { items, .. } => assert_eq!(
+            items,
+            vec![UserInput::Text {
+                text: "send me".to_string(),
+                text_elements: Vec::new(),
+            }]
+        ),
+        other => panic!("expected pending user message to submit on Esc, got {other:?}"),
     }
     assert!(chat.queued_user_messages.is_empty());
 }
@@ -1397,7 +1610,7 @@ async fn interrupt_preserves_unified_exec_processes() {
 }
 
 #[tokio::test]
-async fn interrupt_preserves_unified_exec_wait_streak_snapshot() {
+async fn interrupt_keeps_background_terminal_processes_snapshot() {
     let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
 
     handle_turn_started(&mut chat, "turn-1");
@@ -1415,7 +1628,7 @@ async fn interrupt_preserves_unified_exec_wait_streak_snapshot() {
         .collect::<Vec<_>>()
         .join("\n");
     let snapshot = format!("cells={}\n{combined}", cells.len());
-    assert_chatwidget_snapshot!("interrupt_preserves_unified_exec_wait_streak", snapshot);
+    assert_chatwidget_snapshot!("interrupt_keeps_background_terminal_processes", snapshot);
 }
 
 #[tokio::test]

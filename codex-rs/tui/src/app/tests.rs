@@ -4876,22 +4876,29 @@ async fn replace_chat_widget_reseeds_collab_agent_metadata_for_replay() {
             session: None,
             turns: Vec::new(),
             events: vec![ThreadBufferedEvent::Notification(
-                ServerNotification::ItemStarted(
-                    codex_app_server_protocol::ItemStartedNotification {
+                ServerNotification::ItemCompleted(
+                    codex_app_server_protocol::ItemCompletedNotification {
                         thread_id: "thread-1".to_string(),
                         turn_id: "turn-1".to_string(),
-                        started_at_ms: 0,
+                        completed_at_ms: 0,
                         item: ThreadItem::CollabAgentToolCall {
                             id: "wait-1".to_string(),
                             tool: codex_app_server_protocol::CollabAgentTool::Wait,
-                            status:
-                                codex_app_server_protocol::CollabAgentToolCallStatus::InProgress,
+                            status: codex_app_server_protocol::CollabAgentToolCallStatus::Completed,
                             sender_thread_id: ThreadId::new().to_string(),
                             receiver_thread_ids: vec![receiver_thread_id.to_string()],
                             prompt: None,
                             model: None,
                             reasoning_effort: None,
-                            agents_states: HashMap::new(),
+                            agents_states: HashMap::from([(
+                                receiver_thread_id.to_string(),
+                                codex_app_server_protocol::CollabAgentState {
+                                    status: codex_app_server_protocol::CollabAgentStatus::Completed,
+                                    message: Some("Done".to_string()),
+                                    agent_nickname: None,
+                                    agent_role: None,
+                                },
+                            )]),
                         },
                     },
                 ),
@@ -4911,7 +4918,7 @@ async fn replace_chat_widget_reseeds_collab_agent_metadata_for_replay() {
 
     assert!(
         saw_named_wait,
-        "expected replayed wait item to keep agent name"
+        "expected replayed completed wait item to keep agent name"
     );
 }
 

@@ -47,7 +47,7 @@ impl StatusLineAccent {
             StatusLineItem::CodexVersion | StatusLineItem::SessionId => Self::Metadata,
             StatusLineItem::FastMode | StatusLineItem::RawOutput => Self::Mode,
             StatusLineItem::ThreadTitle => Self::Thread,
-            StatusLineItem::TaskProgress => Self::Progress,
+            StatusLineItem::TaskProgress | StatusLineItem::BackgroundTasks => Self::Progress,
         }
     }
 

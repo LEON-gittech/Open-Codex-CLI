@@ -179,8 +179,7 @@ pub(crate) enum FooterMode {
     ComposerEmpty,
     /// Base single-line footer when the composer contains a draft.
     ///
-    /// The shortcuts hint is suppressed here; when a task is running, this
-    /// mode can show the queue hint instead.
+    /// The shortcuts hint is suppressed here so contextual status remains visible.
     ComposerHasDraft,
 }
 
@@ -233,14 +232,7 @@ pub(crate) fn footer_height(props: &FooterProps) -> u16 {
         | FooterMode::ShortcutOverlay
         | FooterMode::EscHint => false,
     };
-    let show_queue_hint = match props.mode {
-        FooterMode::ComposerHasDraft => props.is_task_running,
-        FooterMode::QuitShortcutReminder
-        | FooterMode::HistorySearch
-        | FooterMode::ComposerEmpty
-        | FooterMode::ShortcutOverlay
-        | FooterMode::EscHint => false,
-    };
+    let show_queue_hint = false;
     footer_from_props_lines(
         props,
         /*collaboration_mode_indicator*/ None,
@@ -800,7 +792,7 @@ pub(crate) fn passive_footer_status_line(props: &FooterProps) -> Option<Line<'st
 pub(crate) fn shows_passive_footer_line(props: &FooterProps) -> bool {
     match props.mode {
         FooterMode::ComposerEmpty => true,
-        FooterMode::ComposerHasDraft => !props.is_task_running,
+        FooterMode::ComposerHasDraft => true,
         FooterMode::HistorySearch
         | FooterMode::QuitShortcutReminder
         | FooterMode::ShortcutOverlay
@@ -1304,14 +1296,7 @@ mod tests {
                     | FooterMode::ShortcutOverlay
                     | FooterMode::EscHint => false,
                 };
-                let show_queue_hint = match props.mode {
-                    FooterMode::ComposerHasDraft => props.is_task_running,
-                    FooterMode::HistorySearch
-                    | FooterMode::QuitShortcutReminder
-                    | FooterMode::ComposerEmpty
-                    | FooterMode::ShortcutOverlay
-                    | FooterMode::EscHint => false,
-                };
+                let show_queue_hint = false;
                 let status_line_active = uses_passive_footer_status_layout(props);
                 let passive_status_line = if status_line_active {
                     passive_footer_status_line(props)

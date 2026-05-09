@@ -34,7 +34,6 @@ const TERMINAL_TITLE_ACTION_REQUIRED_PREFIX_HIDDEN: &str = "[ . ] Action Require
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub(super) enum TerminalTitleStatusKind {
     Working,
-    WaitingForBackgroundTerminal,
     #[default]
     Thinking,
 }
@@ -163,7 +162,8 @@ impl ChatWidget {
     }
 
     fn refresh_status_line_from_selections(&mut self, selections: &StatusSurfaceSelections) {
-        let enabled = !selections.status_line_items.is_empty();
+        let background_counts = self.background_status_line_text();
+        let enabled = !selections.status_line_items.is_empty() || background_counts.is_some();
         self.bottom_pane.set_status_line_enabled(enabled);
         if !enabled {
             self.set_status_line(/*status_line*/ None);
@@ -176,6 +176,13 @@ impl ChatWidget {
             if let Some(value) = self.status_line_value_for_item(*item) {
                 segments.push((*item, value));
             }
+        }
+        if !selections
+            .status_line_items
+            .contains(&StatusLineItem::BackgroundTasks)
+            && let Some(value) = background_counts
+        {
+            segments.push((StatusLineItem::BackgroundTasks, value));
         }
 
         self.set_status_line(status_line_from_segments(
@@ -659,6 +666,7 @@ impl ChatWidget {
                 (!trimmed.is_empty()).then(|| trimmed.to_string())
             }),
             StatusLineItem::TaskProgress => self.terminal_title_task_progress(),
+            StatusLineItem::BackgroundTasks => self.background_status_line_text(),
         }
     }
 
@@ -699,8 +707,31 @@ impl ChatWidget {
             StatusSurfacePreviewItem::RawOutput => StatusLineItem::RawOutput,
             StatusSurfacePreviewItem::Model => StatusLineItem::ModelName,
             StatusSurfacePreviewItem::ModelWithReasoning => StatusLineItem::ModelWithReasoning,
+            StatusSurfacePreviewItem::BackgroundTasks => StatusLineItem::BackgroundTasks,
         };
         self.status_line_value_for_item(status_line_item)
+    }
+
+    fn background_status_line_text(&self) -> Option<String> {
+        let (subagent_count, terminal_count) = self.background_task_counts();
+        if subagent_count == 0 && terminal_count == 0 {
+            return None;
+        }
+
+        let mut parts = Vec::new();
+        if subagent_count > 0 {
+            parts.push(format!(
+                "{subagent_count} {}",
+                plural(subagent_count, "subagent")
+            ));
+        }
+        if terminal_count > 0 {
+            parts.push(format!(
+                "{terminal_count} {}",
+                plural(terminal_count, "terminal")
+            ));
+        }
+        Some(format!("bg {}", parts.join(" / ")))
     }
     /// Resolves one configured terminal-title item into a displayable segment.
     ///
@@ -797,19 +828,12 @@ impl ChatWidget {
         }
 
         match self.terminal_title_status_kind {
-            TerminalTitleStatusKind::Working if !self.bottom_pane.is_task_running() => {
-                "Ready".to_string()
-            }
-            TerminalTitleStatusKind::WaitingForBackgroundTerminal
+            TerminalTitleStatusKind::Working | TerminalTitleStatusKind::Thinking
                 if !self.bottom_pane.is_task_running() =>
             {
                 "Ready".to_string()
             }
-            TerminalTitleStatusKind::Thinking if !self.bottom_pane.is_task_running() => {
-                "Ready".to_string()
-            }
             TerminalTitleStatusKind::Working => "Working".to_string(),
-            TerminalTitleStatusKind::WaitingForBackgroundTerminal => "Waiting".to_string(),
             TerminalTitleStatusKind::Thinking => "Thinking".to_string(),
         }
     }
@@ -894,6 +918,14 @@ impl ChatWidget {
         let mut truncated = head.graphemes(true).take(max_chars - 3).collect::<String>();
         truncated.push_str("...");
         truncated
+    }
+}
+
+fn plural(count: usize, singular: &str) -> String {
+    if count == 1 {
+        singular.to_string()
+    } else {
+        format!("{singular}s")
     }
 }
 

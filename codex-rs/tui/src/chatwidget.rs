@@ -51,6 +51,9 @@ use crate::approval_events::ApplyPatchApprovalRequestEvent;
 use crate::approval_events::ExecApprovalRequestEvent;
 #[cfg(not(target_os = "linux"))]
 use crate::audio_device::list_realtime_audio_device_names;
+use crate::bottom_pane::BackgroundTaskItem;
+use crate::bottom_pane::BackgroundTaskKind;
+use crate::bottom_pane::BackgroundTasksViewParams;
 use crate::bottom_pane::StatusLineItem;
 use crate::bottom_pane::StatusLineSetupView;
 use crate::bottom_pane::StatusSurfacePreviewData;
@@ -396,42 +399,7 @@ struct UnifiedExecProcessSummary {
     call_id: String,
     command_display: String,
     recent_chunks: Vec<String>,
-}
-
-struct UnifiedExecWaitState {
-    command_display: String,
-}
-
-impl UnifiedExecWaitState {
-    fn new(command_display: String) -> Self {
-        Self { command_display }
-    }
-
-    fn is_duplicate(&self, command_display: &str) -> bool {
-        self.command_display == command_display
-    }
-}
-
-#[derive(Clone, Debug)]
-struct UnifiedExecWaitStreak {
-    process_id: String,
-    command_display: Option<String>,
-}
-
-impl UnifiedExecWaitStreak {
-    fn new(process_id: String, command_display: Option<String>) -> Self {
-        Self {
-            process_id,
-            command_display: command_display.filter(|display| !display.is_empty()),
-        }
-    }
-
-    fn update_command_display(&mut self, command_display: Option<String>) {
-        if self.command_display.is_some() {
-            return;
-        }
-        self.command_display = command_display.filter(|display| !display.is_empty());
-    }
+    output_lines: Vec<String>,
 }
 
 fn is_unified_exec_source(source: ExecCommandSource) -> bool {
@@ -754,7 +722,6 @@ pub(crate) struct ChatWidget {
     bottom_pane: BottomPane,
     active_cell: Option<Box<dyn HistoryCell>>,
     background_activities: VecDeque<BackgroundActivity>,
-    next_background_activity_id: u64,
     /// Monotonic-ish counter used to invalidate transcript overlay caching.
     ///
     /// The transcript overlay appends a cached "live tail" for the current active cell. Most
@@ -833,8 +800,6 @@ pub(crate) struct ChatWidget {
     suppressed_exec_calls: HashSet<String>,
     skills_all: Vec<ProtocolSkillMetadata>,
     skills_initial_state: Option<HashMap<AbsolutePathBuf, bool>>,
-    last_unified_wait: Option<UnifiedExecWaitState>,
-    unified_exec_wait_streak: Option<UnifiedExecWaitStreak>,
     turn_sleep_inhibitor: SleepInhibitor,
     task_complete_pending: bool,
     unified_exec_processes: Vec<UnifiedExecProcessSummary>,
@@ -1055,8 +1020,31 @@ pub(crate) struct ChatWidget {
 
 #[derive(Debug)]
 struct BackgroundActivity {
-    id: u64,
     cell: Box<dyn HistoryCell>,
+}
+
+impl BackgroundActivity {
+    fn is_collab_agent_activity(&self) -> bool {
+        self.cell
+            .as_any()
+            .is::<multi_agents::CollabAgentActivityCell>()
+    }
+}
+
+fn line_to_plain_string(line: &Line<'_>) -> String {
+    line.spans
+        .iter()
+        .map(|span| span.content.as_ref())
+        .collect()
+}
+
+fn split_background_task_status(title: String) -> (String, Option<String>) {
+    let title = title.trim_start_matches('•').trim().to_string();
+    if let Some((name, status)) = title.rsplit_once(": ") {
+        return (name.to_string(), Some(status.to_string()));
+    }
+
+    (title, None)
 }
 
 #[cfg_attr(not(test), allow(dead_code))]
@@ -1717,6 +1705,27 @@ impl ChatWidget {
             .unwrap_or_default()
     }
 
+    fn sync_collab_agent_metadata_from_states(&mut self, item: &ThreadItem) {
+        let ThreadItem::CollabAgentToolCall { agents_states, .. } = item else {
+            return;
+        };
+
+        for (thread_id, state) in agents_states {
+            if state.agent_nickname.is_none() && state.agent_role.is_none() {
+                continue;
+            }
+            let Ok(thread_id) = ThreadId::from_string(thread_id) else {
+                continue;
+            };
+            let existing = self.collab_agent_metadata(thread_id);
+            self.set_collab_agent_metadata(
+                thread_id,
+                state.agent_nickname.clone().or(existing.agent_nickname),
+                state.agent_role.clone().or(existing.agent_role),
+            );
+        }
+    }
+
     fn realtime_conversation_enabled(&self) -> bool {
         self.config.features.enabled(Feature::RealtimeConversation)
             && cfg!(not(target_os = "linux"))
@@ -1731,32 +1740,14 @@ impl ChatWidget {
     /// The bottom pane only has one running flag, but this module treats it as a derived state of
     /// both the agent turn lifecycle and MCP startup lifecycle.
     fn update_task_running_state(&mut self) {
-        let foreground_turn_running = self.agent_turn_running && !self.task_backgrounded;
         self.bottom_pane
-            .set_task_running(foreground_turn_running || self.mcp_startup_status.is_some());
+            .set_task_running(self.foreground_turn_running() || self.mcp_startup_status.is_some());
         self.refresh_plan_mode_nudge();
         self.refresh_status_surfaces();
     }
 
-    fn restore_reasoning_status_header(&mut self) {
-        if let Some(header) = extract_first_bold(&self.reasoning_buffer) {
-            self.terminal_title_status_kind = TerminalTitleStatusKind::Thinking;
-            self.set_status_header(header);
-        } else if self.bottom_pane.is_task_running() {
-            self.terminal_title_status_kind = TerminalTitleStatusKind::Working;
-            self.set_status_header(String::from("Working"));
-        }
-    }
-
-    fn flush_unified_exec_wait_streak(&mut self) {
-        let Some(wait) = self.unified_exec_wait_streak.take() else {
-            return;
-        };
-        self.needs_final_message_separator = true;
-        let cell = history_cell::new_unified_exec_interaction(wait.command_display, String::new());
-        self.app_event_tx
-            .send(AppEvent::InsertHistoryCell(Box::new(cell)));
-        self.restore_reasoning_status_header();
+    fn foreground_turn_running(&self) -> bool {
+        self.agent_turn_running && !self.task_backgrounded
     }
 
     fn flush_answer_stream_with_separator(&mut self) {
@@ -2357,7 +2348,6 @@ impl ChatWidget {
         }
         self.plan_delta_buffer.push_str(&delta);
         // Before streaming plan content, flush any active exec cell group.
-        self.flush_unified_exec_wait_streak();
         self.flush_active_cell();
 
         if self.plan_stream_controller.is_none() {
@@ -2424,12 +2414,6 @@ impl ChatWidget {
         // current reasoning block and extract the first bold element
         // (between **/**) as the chunk header. Show this header as status.
         self.reasoning_buffer.push_str(&delta);
-
-        if self.unified_exec_wait_streak.is_some() {
-            // Unified exec waiting should take precedence over reasoning-derived status headers.
-            self.request_redraw();
-            return;
-        }
 
         if let Some(header) = extract_first_bold(&self.reasoning_buffer) {
             // Update the shimmer header to the extracted reasoning chunk header.
@@ -2555,7 +2539,6 @@ impl ChatWidget {
                     .send(AppEvent::ConsolidateProposedPlan(source));
             }
         }
-        self.flush_unified_exec_wait_streak();
         if !from_replay {
             self.collect_runtime_metrics_delta();
             let runtime_metrics =
@@ -2594,15 +2577,18 @@ impl ChatWidget {
         self.goal_status_active_turn_started_at = None;
         self.turn_sleep_inhibitor
             .set_turn_running(/*turn_running*/ false);
-        self.update_task_running_state();
         self.running_commands.clear();
         self.suppressed_exec_calls.clear();
-        self.last_unified_wait = None;
-        self.unified_exec_wait_streak = None;
         let background_activities = self.background_activities.drain(..).collect::<Vec<_>>();
         for activity in background_activities {
-            self.add_boxed_history(activity.cell);
+            if activity.is_collab_agent_activity() {
+                self.background_activities.push_back(activity);
+            } else {
+                self.add_boxed_history(activity.cell);
+            }
         }
+        self.task_backgrounded = self.should_mark_current_turn_backgrounded();
+        self.update_task_running_state();
         self.request_redraw();
 
         let had_pending_steers = !self.pending_steers.is_empty();
@@ -3082,15 +3068,13 @@ impl ChatWidget {
         // Reset running state and clear streaming buffers.
         self.user_turn_pending_start = false;
         self.agent_turn_running = false;
-        self.task_backgrounded = false;
+        self.task_backgrounded = self.should_mark_current_turn_backgrounded();
         self.goal_status_active_turn_started_at = None;
         self.turn_sleep_inhibitor
             .set_turn_running(/*turn_running*/ false);
         self.update_task_running_state();
         self.running_commands.clear();
         self.suppressed_exec_calls.clear();
-        self.last_unified_wait = None;
-        self.unified_exec_wait_streak = None;
         self.adaptive_chunking.reset();
         self.stream_controller = None;
         self.plan_stream_controller = None;
@@ -3270,8 +3254,8 @@ impl ChatWidget {
                 let (user_message, history_record) =
                     merge_user_messages_with_history_record(pending_steers);
                 self.submit_user_message_with_history_record(user_message, history_record);
-            } else if let Some(combined) = self.drain_pending_messages_for_restore() {
-                self.restore_user_message_to_composer(combined);
+            } else {
+                self.maybe_send_next_queued_input();
             }
         } else if let Some(combined) = self.drain_pending_messages_for_restore() {
             self.restore_user_message_to_composer(combined);
@@ -3797,16 +3781,14 @@ impl ChatWidget {
         };
         let (_command, parsed_cmd) = command_execution_command_and_parsed(command, command_actions);
         self.flush_answer_stream_with_separator();
-        if is_unified_exec_source(*source) {
-            if *source == ExecCommandSource::UnifiedExecStartup {
-                self.track_unified_exec_process_begin(id, process_id.as_deref(), command);
-            }
-            if !self.bottom_pane.is_task_running() {
-                return;
-            }
-            // Unified exec may be parsed as Unknown; keep the working indicator visible regardless.
-            self.bottom_pane.ensure_status_indicator();
-            if !is_standard_tool_call(&parsed_cmd) {
+        if *source == ExecCommandSource::UnifiedExecInteraction {
+            return;
+        }
+        if *source == ExecCommandSource::UnifiedExecStartup {
+            self.track_unified_exec_process_begin(id, process_id.as_deref(), command);
+            if is_standard_tool_call(&parsed_cmd) {
+                self.bottom_pane.ensure_status_indicator();
+            } else {
                 return;
             }
         }
@@ -3845,52 +3827,20 @@ impl ChatWidget {
     }
 
     fn on_terminal_interaction(&mut self, process_id: String, stdin: String) {
-        if !self.bottom_pane.is_task_running() {
+        if !self.bottom_pane.is_task_running() && !self.task_backgrounded {
             return;
         }
-        self.flush_answer_stream_with_separator();
         let command_display = self
             .unified_exec_processes
             .iter()
             .find(|process| process.key == process_id)
             .map(|process| process.command_display.clone());
         if stdin.is_empty() {
-            // Empty stdin means we are polling for background output.
-            // Surface this in the status indicator (single "waiting" surface) instead of
-            // the transcript. Keep the header short so the interrupt hint remains visible.
-            self.bottom_pane.ensure_status_indicator();
-            self.bottom_pane
-                .set_interrupt_hint_visible(/*visible*/ true);
-            self.terminal_title_status_kind = TerminalTitleStatusKind::WaitingForBackgroundTerminal;
-            self.set_status(
-                "Waiting for background terminal".to_string(),
-                command_display.clone(),
-                StatusDetailsCapitalization::Preserve,
-                /*details_max_lines*/ 1,
-            );
-            match &mut self.unified_exec_wait_streak {
-                Some(wait) if wait.process_id == process_id => {
-                    wait.update_command_display(command_display);
-                }
-                Some(_) => {
-                    self.flush_unified_exec_wait_streak();
-                    self.unified_exec_wait_streak =
-                        Some(UnifiedExecWaitStreak::new(process_id, command_display));
-                }
-                None => {
-                    self.unified_exec_wait_streak =
-                        Some(UnifiedExecWaitStreak::new(process_id, command_display));
-                }
-            }
+            self.task_backgrounded = true;
+            self.update_task_running_state();
             self.request_redraw();
         } else {
-            if self
-                .unified_exec_wait_streak
-                .as_ref()
-                .is_some_and(|wait| wait.process_id == process_id)
-            {
-                self.flush_unified_exec_wait_streak();
-            }
+            self.flush_answer_stream_with_separator();
             self.add_to_history(history_cell::new_unified_exec_interaction(
                 command_display,
                 stdin,
@@ -3949,16 +3899,30 @@ impl ChatWidget {
             return;
         };
         if is_unified_exec_source(*source) {
-            if let Some(process_id) = process_id.as_deref()
-                && self
-                    .unified_exec_wait_streak
-                    .as_ref()
-                    .is_some_and(|wait| wait.process_id == process_id)
-            {
-                self.flush_unified_exec_wait_streak();
-            }
+            let has_tracked_exec = self.background_activities.iter().any(|activity| {
+                activity
+                    .cell
+                    .as_any()
+                    .downcast_ref::<ExecCell>()
+                    .is_some_and(|exec_cell| {
+                        exec_cell
+                            .iter_calls()
+                            .any(|call| call.call_id == id.as_str())
+                    })
+            }) || self
+                .active_cell
+                .as_ref()
+                .and_then(|cell| cell.as_any().downcast_ref::<ExecCell>())
+                .is_some_and(|exec_cell| {
+                    exec_cell
+                        .iter_calls()
+                        .any(|call| call.call_id == id.as_str())
+                });
             self.track_unified_exec_process_end(id, process_id.as_deref());
-            if !self.bottom_pane.is_task_running() {
+            if *source == ExecCommandSource::UnifiedExecInteraction {
+                return;
+            }
+            if !self.agent_turn_running && !self.task_backgrounded && !has_tracked_exec {
                 return;
             }
         }
@@ -3986,15 +3950,18 @@ impl ChatWidget {
             existing.call_id = call_id.to_string();
             existing.command_display = command_display;
             existing.recent_chunks.clear();
+            existing.output_lines.clear();
         } else {
             self.unified_exec_processes.push(UnifiedExecProcessSummary {
                 key,
                 call_id: call_id.to_string(),
                 command_display,
                 recent_chunks: Vec::new(),
+                output_lines: Vec::new(),
             });
         }
         self.sync_unified_exec_footer();
+        self.refresh_status_surfaces();
     }
 
     fn track_unified_exec_process_end(&mut self, call_id: &str, process_id: Option<&str>) {
@@ -4004,16 +3971,12 @@ impl ChatWidget {
             .retain(|process| process.key != key);
         if self.unified_exec_processes.len() != before {
             self.sync_unified_exec_footer();
+            self.refresh_status_surfaces();
         }
     }
 
     fn sync_unified_exec_footer(&mut self) {
-        let processes = self
-            .unified_exec_processes
-            .iter()
-            .map(|process| process.command_display.clone())
-            .collect();
-        self.bottom_pane.set_unified_exec_processes(processes);
+        self.bottom_pane.set_unified_exec_processes(Vec::new());
     }
 
     /// Record recent stdout/stderr lines for the unified exec footer.
@@ -4033,12 +3996,19 @@ impl ChatWidget {
             .filter(|line| !line.is_empty())
         {
             process.recent_chunks.push(line.to_string());
+            process.output_lines.push(line.to_string());
         }
 
         const MAX_RECENT_CHUNKS: usize = 3;
         if process.recent_chunks.len() > MAX_RECENT_CHUNKS {
             let drop_count = process.recent_chunks.len() - MAX_RECENT_CHUNKS;
             process.recent_chunks.drain(0..drop_count);
+        }
+
+        const MAX_OUTPUT_LINES: usize = 200;
+        if process.output_lines.len() > MAX_OUTPUT_LINES {
+            let drop_count = process.output_lines.len() - MAX_OUTPUT_LINES;
+            process.output_lines.drain(0..drop_count);
         }
     }
 
@@ -4125,6 +4095,7 @@ impl ChatWidget {
             None
         };
 
+        self.sync_collab_agent_metadata_from_states(&item);
         if let Some(cell) = multi_agents::tool_call_history_cell(
             &item,
             cached_spawn_request.as_ref(),
@@ -4424,7 +4395,6 @@ impl ChatWidget {
     #[inline]
     fn handle_streaming_delta(&mut self, delta: String) {
         // Before streaming agent content, flush any active exec cell group.
-        self.flush_unified_exec_wait_streak();
         self.flush_active_cell();
 
         if self.stream_controller.is_none() {
@@ -4489,6 +4459,9 @@ impl ChatWidget {
         else {
             return;
         };
+        if source == ExecCommandSource::UnifiedExecInteraction {
+            return;
+        }
         let event_command = split_command_string(&command);
         let event_parsed = command_actions
             .into_iter()
@@ -4801,22 +4774,6 @@ impl ChatWidget {
                 source,
             },
         );
-        let is_wait_interaction = matches!(source, ExecCommandSource::UnifiedExecInteraction);
-        let command_display = command.join(" ");
-        let should_suppress_unified_wait = is_wait_interaction
-            && self
-                .last_unified_wait
-                .as_ref()
-                .is_some_and(|wait| wait.is_duplicate(&command_display));
-        if is_wait_interaction {
-            self.last_unified_wait = Some(UnifiedExecWaitState::new(command_display));
-        } else {
-            self.last_unified_wait = None;
-        }
-        if should_suppress_unified_wait {
-            self.suppressed_exec_calls.insert(id);
-            return;
-        }
         if let Some(cell) = self
             .active_cell
             .as_mut()
@@ -5050,7 +5007,6 @@ impl ChatWidget {
             }),
             active_cell,
             background_activities: VecDeque::new(),
-            next_background_activity_id: 0,
             active_cell_revision: 0,
             raw_output_mode: config.tui_raw_output_mode,
             config,
@@ -5089,8 +5045,6 @@ impl ChatWidget {
             collab_agent_metadata: HashMap::new(),
             pending_collab_spawn_requests: HashMap::new(),
             suppressed_exec_calls: HashSet::new(),
-            last_unified_wait: None,
-            unified_exec_wait_streak: None,
             turn_sleep_inhibitor: SleepInhibitor::new(prevent_idle_sleep),
             task_complete_pending: false,
             unified_exec_processes: Vec::new(),
@@ -5315,10 +5269,10 @@ impl ChatWidget {
             }
             KeyEvent {
                 code: KeyCode::Down,
-                kind: KeyEventKind::Press,
+                kind: KeyEventKind::Press | KeyEventKind::Repeat,
                 ..
             } => {
-                if self.foreground_backgrounded_activity() {
+                if self.show_background_activity_summary() {
                     return;
                 }
             }
@@ -5357,6 +5311,23 @@ impl ChatWidget {
             _ => {}
         }
 
+        if matches!(key_event.code, KeyCode::Esc)
+            && matches!(key_event.kind, KeyEventKind::Press | KeyEventKind::Repeat)
+            && (!self.pending_steers.is_empty() || self.has_queued_follow_up_messages())
+            && self.bottom_pane.no_modal_or_popup_active()
+            && !self.should_handle_vim_insert_escape(key_event)
+        {
+            self.submit_pending_steers_after_interrupt = true;
+            if self.is_cancellable_work_active() {
+                if !self.submit_op(AppCommand::interrupt()) {
+                    self.submit_pending_steers_after_interrupt = false;
+                }
+            } else if !self.maybe_send_next_queued_input() {
+                self.submit_pending_steers_after_interrupt = false;
+            }
+            return;
+        }
+
         if key_event.kind == KeyEventKind::Press
             && self.chat_keymap.edit_queued_message.is_pressed(key_event)
             && self.has_queued_follow_up_messages()
@@ -5366,20 +5337,6 @@ impl ChatWidget {
                 self.restore_user_message_to_composer(user_message);
                 self.refresh_pending_input_preview();
                 self.request_redraw();
-            }
-            return;
-        }
-
-        if matches!(key_event.code, KeyCode::Esc)
-            && matches!(key_event.kind, KeyEventKind::Press | KeyEventKind::Repeat)
-            && !self.pending_steers.is_empty()
-            && self.bottom_pane.is_task_running()
-            && self.bottom_pane.no_modal_or_popup_active()
-            && !self.should_handle_vim_insert_escape(key_event)
-        {
-            self.submit_pending_steers_after_interrupt = true;
-            if !self.submit_op(AppCommand::interrupt()) {
-                self.submit_pending_steers_after_interrupt = false;
             }
             return;
         }
@@ -7011,11 +6968,20 @@ impl ChatWidget {
     /// Mark the active cell as failed (✗) and flush it into history.
     fn finalize_active_cell_as_failed(&mut self) {
         if let Some(cell) = self.active_cell.take() {
-            self.finalize_boxed_cell_as_failed(cell);
+            if cell.as_any().is::<multi_agents::CollabAgentActivityCell>() {
+                self.background_activities
+                    .push_back(BackgroundActivity { cell });
+            } else {
+                self.finalize_boxed_cell_as_failed(cell);
+            }
         }
         let background_activities = self.background_activities.drain(..).collect::<Vec<_>>();
         for activity in background_activities {
-            self.finalize_boxed_cell_as_failed(activity.cell);
+            if activity.is_collab_agent_activity() {
+                self.background_activities.push_back(activity);
+            } else {
+                self.finalize_boxed_cell_as_failed(activity.cell);
+            }
         }
     }
 
@@ -7072,7 +7038,7 @@ impl ChatWidget {
     }
 
     pub(super) fn is_user_turn_pending_or_running(&self) -> bool {
-        self.user_turn_pending_start || self.bottom_pane.is_task_running()
+        self.user_turn_pending_start || self.foreground_turn_running() || self.is_review_mode
     }
 
     fn only_user_shell_commands_running(&self) -> bool {
@@ -7350,15 +7316,19 @@ impl ChatWidget {
     }
 
     pub(crate) fn add_ps_output(&mut self) {
-        let processes = self
-            .unified_exec_processes
+        self.add_to_history(history_cell::new_unified_exec_processes_output(
+            self.unified_exec_process_details(),
+        ));
+    }
+
+    fn unified_exec_process_details(&self) -> Vec<history_cell::UnifiedExecProcessDetails> {
+        self.unified_exec_processes
             .iter()
             .map(|process| history_cell::UnifiedExecProcessDetails {
                 command_display: process.command_display.clone(),
                 recent_chunks: process.recent_chunks.clone(),
             })
-            .collect();
-        self.add_to_history(history_cell::new_unified_exec_processes_output(processes));
+            .collect()
     }
 
     fn clean_background_terminals(&mut self) {
@@ -10549,12 +10519,9 @@ impl ChatWidget {
             return false;
         }
 
-        self.flush_unified_exec_wait_streak();
         if let Some(cell) = self.active_cell.take() {
-            let id = self.next_background_activity_id;
-            self.next_background_activity_id = self.next_background_activity_id.wrapping_add(1);
             self.background_activities
-                .push_back(BackgroundActivity { id, cell });
+                .push_back(BackgroundActivity { cell });
             self.bump_active_cell_revision();
         }
         self.task_backgrounded = true;
@@ -10566,32 +10533,85 @@ impl ChatWidget {
         true
     }
 
-    fn foreground_backgrounded_activity(&mut self) -> bool {
-        if !self.agent_turn_running
-            || !self.task_backgrounded
-            || !self.bottom_pane.no_modal_or_popup_active()
-        {
+    fn should_mark_current_turn_backgrounded(&self) -> bool {
+        self.agent_turn_running
+            && self.active_cell.is_none()
+            && self
+                .background_activities
+                .iter()
+                .any(|activity| !activity.is_collab_agent_activity())
+    }
+
+    fn show_background_activity_summary(&mut self) -> bool {
+        if !self.bottom_pane.no_modal_or_popup_active() {
             return false;
         }
 
-        if self.active_cell.is_none() {
-            let newest_index = self
-                .background_activities
-                .iter()
-                .enumerate()
-                .max_by_key(|(_, activity)| activity.id)
-                .map(|(index, _)| index);
-            if let Some(index) = newest_index
-                && let Some(activity) = self.background_activities.remove(index)
+        if self.background_activities.is_empty() && self.unified_exec_processes.is_empty() {
+            return false;
+        }
+
+        let mut params = BackgroundTasksViewParams::default();
+        for activity in &self.background_activities {
+            let lines = activity.cell.display_lines(u16::MAX);
+            let title = lines
+                .first()
+                .map(line_to_plain_string)
+                .filter(|line| !line.trim().is_empty())
+                .unwrap_or_else(|| "Background task".to_string());
+            let detail = lines.iter().skip(1).map(line_to_plain_string).collect();
+            if let Some(cell) = activity
+                .cell
+                .as_any()
+                .downcast_ref::<multi_agents::CollabAgentActivityCell>()
             {
-                self.active_cell = Some(activity.cell);
-                self.bump_active_cell_revision();
+                let (title, status) = split_background_task_status(title);
+                params.subagents.push(BackgroundTaskItem {
+                    kind: BackgroundTaskKind::Subagent {
+                        thread_id: cell.thread_id(),
+                    },
+                    title,
+                    detail,
+                    status,
+                    output_lines: Vec::new(),
+                });
+            } else {
+                params.terminals.push(BackgroundTaskItem {
+                    kind: BackgroundTaskKind::Terminal,
+                    title,
+                    detail,
+                    status: Some("running".to_string()),
+                    output_lines: Vec::new(),
+                });
             }
         }
-        self.task_backgrounded = false;
-        self.update_task_running_state();
-        self.request_redraw();
+
+        for process in &self.unified_exec_processes {
+            let mut detail = Vec::new();
+            detail.extend(process.recent_chunks.clone());
+            params.terminals.push(BackgroundTaskItem {
+                kind: BackgroundTaskKind::Terminal,
+                title: process.command_display.clone(),
+                detail,
+                status: Some("running".to_string()),
+                output_lines: process.output_lines.clone(),
+            });
+        }
+        self.bottom_pane.show_background_tasks_view(params);
         true
+    }
+
+    fn background_task_counts(&self) -> (usize, usize) {
+        let mut subagent_count = 0;
+        let mut terminal_count = self.unified_exec_processes.len();
+        for activity in &self.background_activities {
+            if activity.is_collab_agent_activity() {
+                subagent_count += 1;
+            } else {
+                terminal_count += 1;
+            }
+        }
+        (subagent_count, terminal_count)
     }
 
     /// True if `key` matches the armed quit shortcut and the window has not expired.
@@ -10617,7 +10637,7 @@ impl ChatWidget {
 
     // Review mode counts as cancellable work so Ctrl+C interrupts instead of quitting.
     fn is_cancellable_work_active(&self) -> bool {
-        self.agent_turn_running || self.bottom_pane.is_task_running() || self.is_review_mode
+        self.foreground_turn_running() || self.mcp_startup_status.is_some() || self.is_review_mode
     }
 
     /// Return the markdown body width available to an active stream.
