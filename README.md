@@ -38,7 +38,7 @@ That policy is understandable from the perspective of the upstream maintainers, 
 
 The goal of **Open Codex CLI** is not to diverge for the sake of divergence. The goal is to keep a small, intentional delta on top of upstream Codex CLI, make that delta easy to understand, and keep the fork mergeable as upstream evolves.
 
-## Targets
+## Current Goals
 
 - solve real Codex CLI usage problems I run into, whether they are bugs or features worth borrowing from Claude Code
 - keep improving the Codex CLI experience under `zellij` (**Fuck Off Tmux!**)
@@ -120,8 +120,13 @@ This is an instruction-policy feature rather than a hardcoded scheduler: it enab
 
 From recent fork-specific TUI changes:
 
+The feature is centered on two background lanes:
+
 - **Terminal commands** — long-running terminal sessions continue in the background instead of keeping the main turn blocked by foreground waiting or polling. Empty `command/exec/write` interactions keep the terminal backgrounded, so normal chat input can be submitted while the shell process continues.
 - **Subagents** — long-running agent work is tracked as background activity after spawn/wait tool calls complete, including agent nickname, role, status, and progress lines when available.
+
+The shared interaction model is:
+
 - **Manual backgrounding** — `Ctrl+B` sends the current active exec/terminal activity to the background without submitting a core op, clearing the foreground task-running UI while preserving streamed output.
 - **Foreground state** — foreground model activity still drives the normal `Working` status, while background work is counted separately in the status line as `bg <n> subagent / <m> terminal`.
 - **Task picker** — pressing `Down` when background work exists opens the bottom-pane background task picker instead of inserting a chat-stream summary. The picker separates `Subagents` and `Terminals`; `Up`/`Down` moves selection, `Enter` opens details, `Left` returns to the list, and `Esc` closes it.
@@ -130,7 +135,7 @@ From recent fork-specific TUI changes:
 - **Subagent details** — subagent detail view shows agent title, status, and progress. Subagents are inspectable in the background picker and switchable through the agent-thread workflow; `/stop` and picker `x` are terminal-only controls and do not kill subagents.
 - **Completed background work** — completed background exec cells are flushed back into history once they finish, preserving the command and captured output without re-foregrounding the task.
 
-This is the underlying interaction change behind the Claude Code-style behavior: background work stays visible and controllable, but it no longer blocks normal chat flow.
+This is the essential interaction change behind the Claude Code-style behavior: background work stays visible and controllable, but it no longer blocks normal chat flow.
 
 ### 8. Status line token throughput visibility (Beta)
 
@@ -351,8 +356,13 @@ Codex CLI 是开源的，但上游仓库当前对外部代码贡献采用 invita
 
 来自最近几条 fork 自有 TUI 改动：
 
+这个能力围绕两个 background lanes 展开：
+
 - **Terminal commands** — 长时间运行的 terminal session 会进入后台继续执行，不再通过前台 waiting / polling 阻塞主 turn。空的 `command/exec/write` 交互会保持 terminal backgrounded，因此 shell process 继续运行时也可以正常提交新的聊天输入。
 - **Subagents** — 长时间运行的 agent work 会在 spawn/wait tool call 完成后作为 background activity 跟踪，能带上 agent nickname、role、status，以及可用的 progress lines。
+
+共享交互模型是：
+
 - **Manual backgrounding** — `Ctrl+B` 会把当前 active exec/terminal activity 送到后台，不提交 core op，并清掉前台 task-running UI，同时保留后续 streamed output。
 - **Foreground state** — 前台模型活动仍然驱动正常的 `Working` 状态，后台工作则在 status line 中单独计数为 `bg <n> subagent / <m> terminal`。
 - **Task picker** — 有后台任务时按 `Down` 会在底部打开 background task picker，而不是往 chat stream 插入 summary。picker 会区分 `Subagents` 和 `Terminals`；`Up`/`Down` 移动选择，`Enter` 打开详情，`Left` 返回列表，`Esc` 关闭。
