@@ -10,6 +10,8 @@ use codex_shell_command::parse_command::shlex_join;
 
 const INITIAL_DELAY_MS: u64 = 200;
 const BACKOFF_FACTOR: f64 = 2.0;
+const DEFAULT_RESUME_COMMAND_NAME: &str = "codex";
+const RESUME_COMMAND_NAME_ENV_VAR: &str = "CODEX_RESUME_COMMAND_NAME";
 
 /// Emit structured feedback metadata as key/value pairs.
 ///
@@ -119,18 +121,41 @@ pub fn normalize_thread_name(name: &str) -> Option<String> {
 }
 
 pub fn resume_command(thread_name: Option<&str>, thread_id: Option<ThreadId>) -> Option<String> {
+    resume_command_for_program(&resume_command_name(), thread_name, thread_id)
+}
+
+fn resume_command_name() -> String {
+    std::env::var(RESUME_COMMAND_NAME_ENV_VAR)
+        .ok()
+        .and_then(|name| normalize_resume_command_name(&name))
+        .unwrap_or_else(|| DEFAULT_RESUME_COMMAND_NAME.to_string())
+}
+
+fn normalize_resume_command_name(name: &str) -> Option<String> {
+    let trimmed = name.trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed.to_string())
+    }
+}
+
+fn resume_command_for_program(
+    program: &str,
+    thread_name: Option<&str>,
+    thread_id: Option<ThreadId>,
+) -> Option<String> {
     let resume_target = thread_name
         .filter(|name| !name.is_empty())
         .map(str::to_string)
         .or_else(|| thread_id.map(|thread_id| thread_id.to_string()));
     resume_target.map(|target| {
-        let needs_double_dash = target.starts_with('-');
-        let escaped = shlex_join(&[target]);
-        if needs_double_dash {
-            format!("codex resume -- {escaped}")
-        } else {
-            format!("codex resume {escaped}")
+        let mut command = vec![program.to_string(), "resume".to_string()];
+        if target.starts_with('-') {
+            command.push("--".to_string());
         }
+        command.push(target);
+        shlex_join(&command)
     })
 }
 

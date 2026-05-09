@@ -441,6 +441,17 @@ fn resume_command_prefers_name_over_id() {
 }
 
 #[test]
+fn resume_command_can_use_launcher_command_name() {
+    let thread_id = ThreadId::from_string("123e4567-e89b-12d3-a456-426614174000").unwrap();
+    let command =
+        resume_command_for_program("open-codex", /*thread_name*/ None, Some(thread_id));
+    assert_eq!(
+        command,
+        Some("open-codex resume 123e4567-e89b-12d3-a456-426614174000".to_string())
+    );
+}
+
+#[test]
 fn resume_command_with_only_id() {
     let thread_id = ThreadId::from_string("123e4567-e89b-12d3-a456-426614174000").unwrap();
     let command = resume_command(/*thread_name*/ None, Some(thread_id));

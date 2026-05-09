@@ -171,6 +171,7 @@ const packageManagerEnvVar =
     ? "CODEX_MANAGED_BY_BUN"
     : "CODEX_MANAGED_BY_NPM";
 env[packageManagerEnvVar] = "1";
+env.CODEX_RESUME_COMMAND_NAME = "open-codex";
 
 const child = spawn(binaryPath, process.argv.slice(2), {
   stdio: "inherit",
