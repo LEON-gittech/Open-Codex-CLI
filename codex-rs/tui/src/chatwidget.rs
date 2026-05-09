@@ -3245,16 +3245,7 @@ impl ChatWidget {
         // interrupted turn reaches the UI, so any unacknowledged steers still
         // tracked here must be restored locally instead of waiting for a later commit.
         if send_pending_steers_immediately {
-            let pending_steers = self
-                .pending_steers
-                .drain(..)
-                .map(|pending| (pending.user_message, pending.history_record))
-                .collect::<Vec<_>>();
-            if !pending_steers.is_empty() {
-                let (user_message, history_record) =
-                    merge_user_messages_with_history_record(pending_steers);
-                self.submit_user_message_with_history_record(user_message, history_record);
-            } else {
+            if !self.submit_pending_steers_immediately() {
                 self.maybe_send_next_queued_input();
             }
         } else if let Some(combined) = self.drain_pending_messages_for_restore() {
@@ -3263,6 +3254,23 @@ impl ChatWidget {
         self.refresh_pending_input_preview();
 
         self.request_redraw();
+    }
+
+    fn submit_pending_steers_immediately(&mut self) -> bool {
+        let pending_steers = self
+            .pending_steers
+            .drain(..)
+            .map(|pending| (pending.user_message, pending.history_record))
+            .collect::<Vec<_>>();
+        if pending_steers.is_empty() {
+            return false;
+        }
+
+        let (user_message, history_record) =
+            merge_user_messages_with_history_record(pending_steers);
+        let submitted = self.submit_user_message_with_history_record(user_message, history_record);
+        self.refresh_pending_input_preview();
+        submitted
     }
 
     /// Merge pending steers, queued drafts, and the current composer state into a single message.
@@ -5317,12 +5325,14 @@ impl ChatWidget {
             && self.bottom_pane.no_modal_or_popup_active()
             && !self.should_handle_vim_insert_escape(key_event)
         {
-            self.submit_pending_steers_after_interrupt = true;
             if self.is_cancellable_work_active() {
+                self.submit_pending_steers_after_interrupt = true;
                 if !self.submit_op(AppCommand::interrupt()) {
                     self.submit_pending_steers_after_interrupt = false;
                 }
-            } else if !self.maybe_send_next_queued_input() {
+            } else if !self.submit_pending_steers_immediately()
+                && !self.maybe_send_next_queued_input()
+            {
                 self.submit_pending_steers_after_interrupt = false;
             }
             return;
@@ -10795,6 +10805,10 @@ impl ChatWidget {
     /// In this state Esc-Esc backtracking is enabled.
     pub(crate) fn is_normal_backtrack_mode(&self) -> bool {
         self.bottom_pane.is_normal_backtrack_mode()
+    }
+
+    pub(crate) fn has_pending_or_queued_input(&self) -> bool {
+        !self.pending_steers.is_empty() || self.has_queued_follow_up_messages()
     }
 
     pub(crate) fn should_handle_vim_insert_escape(&self, key_event: KeyEvent) -> bool {

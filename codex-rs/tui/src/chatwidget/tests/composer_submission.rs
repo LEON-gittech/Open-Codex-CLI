@@ -879,7 +879,7 @@ async fn empty_enter_during_task_does_not_queue() {
     let (mut chat, _rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
 
     // Simulate running task so submissions would normally be queued.
-    chat.bottom_pane.set_task_running(/*running*/ true);
+    chat.on_task_started();
 
     // Press Enter with an empty composer.
     chat.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
@@ -893,7 +893,7 @@ async fn pending_steer_esc_does_not_steal_vim_insert_escape() {
     let (mut chat, _rx, mut op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
     let esc = KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE);
 
-    chat.bottom_pane.set_task_running(/*running*/ true);
+    chat.on_task_started();
     chat.pending_steers.push_back(pending_steer("queued steer"));
     chat.toggle_vim_mode_and_notify();
     chat.handle_key_event(KeyEvent::new(KeyCode::Char('i'), KeyModifiers::NONE));

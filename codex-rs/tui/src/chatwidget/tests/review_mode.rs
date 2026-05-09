@@ -799,6 +799,30 @@ async fn esc_interrupt_sends_all_pending_steers_immediately_and_keeps_existing_d
 }
 
 #[tokio::test]
+async fn esc_submits_pending_steers_when_no_cancellable_work_is_active() {
+    let (mut chat, _rx, mut op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.thread_id = Some(ThreadId::new());
+    chat.pending_steers.push_back(pending_steer("first steer"));
+    chat.pending_steers.push_back(pending_steer("second steer"));
+    chat.refresh_pending_input_preview();
+
+    chat.handle_key_event(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+
+    match next_submit_op(&mut op_rx) {
+        Op::UserTurn { items, .. } => assert_eq!(
+            items,
+            vec![UserInput::Text {
+                text: "first steer\nsecond steer".to_string(),
+                text_elements: Vec::new(),
+            }]
+        ),
+        other => panic!("expected merged pending steers to submit, got {other:?}"),
+    }
+    assert!(chat.pending_steers.is_empty());
+    assert!(!chat.submit_pending_steers_after_interrupt);
+}
+
+#[tokio::test]
 async fn esc_with_pending_steers_overrides_agent_command_interrupt_behavior() {
     let (mut chat, _rx, mut op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
     chat.thread_id = Some(ThreadId::new());

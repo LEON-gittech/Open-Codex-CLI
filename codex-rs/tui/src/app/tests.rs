@@ -5300,6 +5300,56 @@ async fn backtrack_esc_does_not_steal_empty_vim_insert_escape() {
 }
 
 #[tokio::test]
+async fn backtrack_esc_does_not_steal_queued_follow_up() {
+    let (mut app, _app_event_rx, _op_rx) = make_test_app_with_channels().await;
+    let thread_id = ThreadId::new();
+    let session = test_thread_session(thread_id, test_path_buf("/tmp/project"));
+    app.chat_widget.handle_thread_session(session.clone());
+    app.chat_widget.handle_server_notification(
+        turn_started_notification(thread_id, "turn-1"),
+        /*replay_kind*/ None,
+    );
+    app.chat_widget.handle_server_notification(
+        agent_message_delta_notification(thread_id, "turn-1", "agent-1", "streaming"),
+        /*replay_kind*/ None,
+    );
+    app.chat_widget
+        .apply_external_edit("queued follow-up".to_string());
+    app.chat_widget
+        .handle_key_event(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));
+    let input_state = app
+        .chat_widget
+        .capture_thread_input_state()
+        .expect("expected queued follow-up state");
+
+    let (chat_widget, _app_event_tx, _rx, mut new_op_rx) =
+        make_chatwidget_manual_with_sender().await;
+    app.chat_widget = chat_widget;
+    app.chat_widget.handle_thread_session(session.clone());
+    while new_op_rx.try_recv().is_ok() {}
+    app.replay_thread_snapshot(
+        ThreadEventSnapshot {
+            session: None,
+            turns: Vec::new(),
+            events: vec![ThreadBufferedEvent::Notification(
+                turn_completed_notification(thread_id, "turn-1", TurnStatus::Completed),
+            )],
+            input_state: Some(input_state),
+        },
+        /*resume_restored_queue*/ false,
+    );
+
+    let esc = crossterm::event::KeyEvent::new(crossterm::event::KeyCode::Esc, KeyModifiers::NONE);
+
+    assert_eq!(
+        app.chat_widget.queued_user_message_texts(),
+        vec!["queued follow-up".to_string()]
+    );
+    assert!(app.chat_widget.composer_is_empty());
+    assert!(!app.should_handle_backtrack_esc(esc));
+}
+
+#[tokio::test]
 async fn session_summary_skips_when_no_usage_or_resume_hint() {
     assert!(
         session_summary(

@@ -254,6 +254,7 @@ impl App {
     pub(super) fn should_handle_backtrack_esc(&self, key_event: KeyEvent) -> bool {
         self.chat_widget.is_normal_backtrack_mode()
             && self.chat_widget.composer_is_empty()
+            && !self.chat_widget.has_pending_or_queued_input()
             && !self.chat_widget.should_handle_vim_insert_escape(key_event)
     }
 
