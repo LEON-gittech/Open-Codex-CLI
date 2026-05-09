@@ -1340,6 +1340,32 @@ async fn esc_with_pending_query_submits_it_instead_of_showing_quit_hint() {
 }
 
 #[tokio::test]
+async fn esc_with_pending_query_ignores_stale_task_running_flag() {
+    let (mut chat, _rx, mut op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.thread_id = Some(ThreadId::new());
+
+    chat.queue_user_message("send despite stale running".into());
+    chat.agent_turn_running = false;
+    chat.task_backgrounded = false;
+    chat.bottom_pane.set_task_running(/*running*/ true);
+
+    chat.handle_key_event(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+
+    assert!(!chat.bottom_pane.quit_shortcut_hint_visible());
+    match next_submit_op(&mut op_rx) {
+        Op::UserTurn { items, .. } => assert_eq!(
+            items,
+            vec![UserInput::Text {
+                text: "send despite stale running".to_string(),
+                text_elements: Vec::new(),
+            }]
+        ),
+        other => panic!("expected pending user message to submit on Esc, got {other:?}"),
+    }
+    assert!(chat.queued_user_messages.is_empty());
+}
+
+#[tokio::test]
 async fn esc_with_pending_query_prefers_send_over_edit_queued_message() {
     let (mut chat, _rx, mut op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
     chat.thread_id = Some(ThreadId::new());

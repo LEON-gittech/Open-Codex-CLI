@@ -1182,7 +1182,6 @@ pub(crate) struct ThreadInputState {
     user_turn_pending_start: bool,
     current_collaboration_mode: CollaborationMode,
     active_collaboration_mask: Option<CollaborationModeMask>,
-    task_running: bool,
     agent_turn_running: bool,
     task_backgrounded: bool,
 }
@@ -3390,14 +3389,12 @@ impl ChatWidget {
             user_turn_pending_start: self.user_turn_pending_start,
             current_collaboration_mode: self.current_collaboration_mode.clone(),
             active_collaboration_mask: self.active_collaboration_mask.clone(),
-            task_running: self.bottom_pane.is_task_running(),
             agent_turn_running: self.agent_turn_running,
             task_backgrounded: self.task_backgrounded,
         })
     }
 
     pub(crate) fn restore_thread_input_state(&mut self, input_state: Option<ThreadInputState>) {
-        let restored_task_running = input_state.as_ref().is_some_and(|state| state.task_running);
         if let Some(input_state) = input_state {
             self.current_collaboration_mode = input_state.current_collaboration_mode;
             self.active_collaboration_mask = input_state.active_collaboration_mask;
@@ -3490,10 +3487,6 @@ impl ChatWidget {
         self.turn_sleep_inhibitor
             .set_turn_running(self.agent_turn_running);
         self.update_task_running_state();
-        if restored_task_running && !self.bottom_pane.is_task_running() {
-            self.bottom_pane.set_task_running(/*running*/ true);
-            self.refresh_status_surfaces();
-        }
         self.refresh_pending_input_preview();
         self.request_redraw();
     }
@@ -4342,9 +4335,9 @@ impl ChatWidget {
     /// Runs a commit tick for the current stream queue snapshot.
     ///
     /// `scope` controls whether this call may commit in smooth mode or only when catch-up
-    /// is currently active. While lines are actively streaming we hide the status row to avoid
-    /// duplicate "in progress" affordances. Restoration is gated separately so we only re-show
-    /// the row after commentary completion once stream queues are idle.
+    /// is currently active. A foreground turn keeps the status row visible while streamed output
+    /// is committed; backgrounded work remains detached from the composer and can keep the row
+    /// hidden.
     fn run_commit_tick_with_scope(&mut self, scope: CommitTickScope) {
         let now = Instant::now();
         let outcome = run_commit_tick(
@@ -4355,7 +4348,17 @@ impl ChatWidget {
             now,
         );
         for cell in outcome.cells {
-            self.bottom_pane.hide_status_indicator();
+            if self.foreground_turn_running() {
+                self.bottom_pane.ensure_status_indicator();
+                self.set_status(
+                    self.current_status.header.clone(),
+                    self.current_status.details.clone(),
+                    StatusDetailsCapitalization::Preserve,
+                    self.current_status.details_max_lines,
+                );
+            } else {
+                self.bottom_pane.hide_status_indicator();
+            }
             self.add_boxed_history(cell);
         }
 
@@ -10652,9 +10655,7 @@ impl ChatWidget {
     }
 
     fn should_interrupt_before_submitting_pending_input(&self) -> bool {
-        self.is_cancellable_work_active()
-            || self.user_turn_pending_start
-            || self.bottom_pane.is_task_running()
+        self.is_cancellable_work_active() || self.user_turn_pending_start
     }
 
     /// Return the markdown body width available to an active stream.

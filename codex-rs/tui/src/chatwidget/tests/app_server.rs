@@ -358,15 +358,18 @@ async fn spawned_agent_activity_survives_parent_turn_completion_and_can_be_liste
 
     assert_eq!(chat.background_activities.len(), 1);
     assert!(chat.active_cell.is_none());
+    drain_insert_history(&mut rx);
 
     chat.handle_key_event(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
 
     assert!(op_rx.try_recv().is_err());
     assert!(chat.active_cell.is_none());
-    let rendered = drain_insert_history(&mut rx)
-        .iter()
-        .map(|lines| lines_to_single_string(lines))
-        .collect::<String>();
+    assert!(
+        drain_insert_history(&mut rx).is_empty(),
+        "down should open a bottom view instead of inserting history"
+    );
+    assert_eq!(chat.bottom_pane.active_view_id(), Some("background_tasks"));
+    let rendered = render_bottom_popup(&chat, /*width*/ 96);
     assert!(rendered.contains("Robie [explorer]"));
     assert!(rendered.contains("Running"));
 }
