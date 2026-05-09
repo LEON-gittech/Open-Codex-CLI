@@ -5325,7 +5325,8 @@ impl ChatWidget {
             && self.bottom_pane.no_modal_or_popup_active()
             && !self.should_handle_vim_insert_escape(key_event)
         {
-            if self.is_cancellable_work_active() {
+            self.clear_esc_backtrack_hint();
+            if self.should_interrupt_before_submitting_pending_input() {
                 self.submit_pending_steers_after_interrupt = true;
                 if !self.submit_op(AppCommand::interrupt()) {
                     self.submit_pending_steers_after_interrupt = false;
@@ -10648,6 +10649,12 @@ impl ChatWidget {
     // Review mode counts as cancellable work so Ctrl+C interrupts instead of quitting.
     fn is_cancellable_work_active(&self) -> bool {
         self.foreground_turn_running() || self.mcp_startup_status.is_some() || self.is_review_mode
+    }
+
+    fn should_interrupt_before_submitting_pending_input(&self) -> bool {
+        self.is_cancellable_work_active()
+            || self.user_turn_pending_start
+            || self.bottom_pane.is_task_running()
     }
 
     /// Return the markdown body width available to an active stream.

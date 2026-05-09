@@ -823,6 +823,37 @@ async fn esc_submits_pending_steers_when_no_cancellable_work_is_active() {
 }
 
 #[tokio::test]
+async fn esc_interrupts_visible_running_task_before_submitting_pending_steers() {
+    let (mut chat, _rx, mut op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.thread_id = Some(ThreadId::new());
+    chat.pending_steers.push_back(pending_steer("queued steer"));
+    chat.refresh_pending_input_preview();
+    chat.agent_turn_running = false;
+    chat.task_backgrounded = false;
+    chat.bottom_pane.set_task_running(/*running*/ true);
+
+    chat.handle_key_event(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+
+    next_interrupt_op(&mut op_rx);
+    assert_eq!(chat.pending_steers.len(), 1);
+    assert_matches!(op_rx.try_recv(), Err(TryRecvError::Empty));
+
+    chat.on_interrupted_turn(TurnAbortReason::Interrupted);
+
+    match next_submit_op(&mut op_rx) {
+        Op::UserTurn { items, .. } => assert_eq!(
+            items,
+            vec![UserInput::Text {
+                text: "queued steer".to_string(),
+                text_elements: Vec::new(),
+            }]
+        ),
+        other => panic!("expected pending steer to submit after interrupt, got {other:?}"),
+    }
+    assert!(chat.pending_steers.is_empty());
+}
+
+#[tokio::test]
 async fn esc_with_pending_steers_overrides_agent_command_interrupt_behavior() {
     let (mut chat, _rx, mut op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
     chat.thread_id = Some(ThreadId::new());
