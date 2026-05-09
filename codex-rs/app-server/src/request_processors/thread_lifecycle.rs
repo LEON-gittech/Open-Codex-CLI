@@ -315,6 +315,7 @@ pub(super) async fn ensure_listener_task_running(
                         thread_manager.clone(),
                         thread_outgoing,
                         thread_state.clone(),
+                        thread_state_manager.clone(),
                         thread_watch_manager.clone(),
                         thread_list_state_permit.clone(),
                         fallback_model_provider.clone(),

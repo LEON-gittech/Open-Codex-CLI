@@ -19,6 +19,7 @@ use crate::protocol::v2::ReasoningTextDeltaNotification;
 use crate::protocol::v2::TerminalInteractionNotification;
 use crate::protocol::v2::ThreadItem;
 use codex_protocol::dynamic_tools::DynamicToolCallOutputContentItem as CoreDynamicToolCallOutputContentItem;
+use codex_protocol::protocol::AgentStatus;
 use codex_protocol::protocol::EventMsg;
 use std::collections::HashMap;
 
@@ -104,7 +105,11 @@ pub fn item_event_to_server_notification(
             let (receiver_thread_ids, agents_states) = match end_event.new_thread_id {
                 Some(id) => {
                     let receiver_id = id.to_string();
-                    let received_status = CollabAgentState::from(end_event.status.clone());
+                    let received_status = collab_agent_state(
+                        end_event.status.clone(),
+                        end_event.new_agent_nickname,
+                        end_event.new_agent_role,
+                    );
                     (
                         vec![receiver_id.clone()],
                         [(receiver_id, received_status)].into_iter().collect(),
@@ -159,7 +164,11 @@ pub fn item_event_to_server_notification(
                 _ => CollabAgentToolCallStatus::Completed,
             };
             let receiver_id = end_event.receiver_thread_id.to_string();
-            let received_status = CollabAgentState::from(end_event.status);
+            let received_status = collab_agent_state(
+                end_event.status,
+                end_event.receiver_agent_nickname,
+                end_event.receiver_agent_role,
+            );
             let item = ThreadItem::CollabAgentToolCall {
                 id: end_event.call_id,
                 tool: CollabAgentTool::SendInput,
@@ -215,10 +224,22 @@ pub fn item_event_to_server_notification(
                 CollabAgentToolCallStatus::Completed
             };
             let receiver_thread_ids = end_event.statuses.keys().map(ToString::to_string).collect();
+            let metadata_by_thread_id = end_event
+                .agent_statuses
+                .into_iter()
+                .map(|entry| (entry.thread_id, (entry.agent_nickname, entry.agent_role)))
+                .collect::<HashMap<_, _>>();
             let agents_states = end_event
                 .statuses
                 .iter()
-                .map(|(id, status)| (id.to_string(), CollabAgentState::from(status.clone())))
+                .map(|(id, status)| {
+                    let (agent_nickname, agent_role) =
+                        metadata_by_thread_id.get(id).cloned().unwrap_or_default();
+                    (
+                        id.to_string(),
+                        collab_agent_state(status.clone(), agent_nickname, agent_role),
+                    )
+                })
                 .collect();
             let item = ThreadItem::CollabAgentToolCall {
                 id: end_event.call_id,
@@ -268,7 +289,11 @@ pub fn item_event_to_server_notification(
             let receiver_id = end_event.receiver_thread_id.to_string();
             let agents_states = [(
                 receiver_id.clone(),
-                CollabAgentState::from(end_event.status),
+                collab_agent_state(
+                    end_event.status,
+                    end_event.receiver_agent_nickname,
+                    end_event.receiver_agent_role,
+                ),
             )]
             .into_iter()
             .collect();
@@ -320,7 +345,11 @@ pub fn item_event_to_server_notification(
             let receiver_id = end_event.receiver_thread_id.to_string();
             let agents_states = [(
                 receiver_id.clone(),
-                CollabAgentState::from(end_event.status),
+                collab_agent_state(
+                    end_event.status,
+                    end_event.receiver_agent_nickname,
+                    end_event.receiver_agent_role,
+                ),
             )]
             .into_iter()
             .collect();
@@ -447,6 +476,14 @@ pub fn item_event_to_server_notification(
         }
         _ => unreachable!("unsupported item event"),
     }
+}
+
+fn collab_agent_state(
+    status: AgentStatus,
+    agent_nickname: Option<String>,
+    agent_role: Option<String>,
+) -> CollabAgentState {
+    CollabAgentState::from(status).with_agent_metadata(agent_nickname, agent_role)
 }
 
 #[cfg(test)]

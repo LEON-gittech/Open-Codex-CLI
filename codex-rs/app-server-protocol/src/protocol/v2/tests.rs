@@ -195,6 +195,8 @@ fn collab_agent_state_maps_interrupted_status() {
         CollabAgentState {
             status: CollabAgentStatus::Interrupted,
             message: None,
+            agent_nickname: None,
+            agent_role: None,
         }
     );
 }

@@ -6,6 +6,7 @@ use crate::request_processors::populate_thread_turns_from_history;
 use crate::request_processors::thread_from_stored_thread;
 use crate::server_request_error::is_turn_transition_server_request_error;
 use crate::thread_state::ThreadState;
+use crate::thread_state::ThreadStateManager;
 use crate::thread_state::TurnSummary;
 use crate::thread_state::resolve_server_request_on_thread_listener;
 use crate::thread_status::ThreadWatchActiveGuard;
@@ -116,6 +117,7 @@ use codex_shell_command::parse_command::shlex_join;
 use codex_utils_absolute_path::AbsolutePathBuf;
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::Duration;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 use tokio::sync::Mutex;
@@ -142,6 +144,7 @@ pub(crate) async fn apply_bespoke_event_handling(
     thread_manager: Arc<ThreadManager>,
     outgoing: ThreadScopedOutgoingMessageSender,
     thread_state: Arc<tokio::sync::Mutex<ThreadState>>,
+    thread_state_manager: ThreadStateManager,
     thread_watch_manager: ThreadWatchManager,
     thread_list_state_permit: Arc<tokio::sync::Semaphore>,
     fallback_model_provider: String,
@@ -848,6 +851,7 @@ pub(crate) async fn apply_bespoke_event_handling(
                 maybe_start_collab_agent_status_watcher(
                     Arc::clone(&thread_manager),
                     outgoing.clone(),
+                    thread_state_manager.clone(),
                     conversation_id,
                     event_turn_id,
                     sender_thread_id,
@@ -2097,9 +2101,16 @@ fn collab_agent_status_update_call_status(status: &AgentStatus) -> CollabAgentTo
     }
 }
 
+#[derive(Clone)]
+struct CollabAgentStatusUpdateMetadata {
+    agent_nickname: Option<String>,
+    agent_role: Option<String>,
+}
+
 async fn maybe_start_collab_agent_status_watcher(
     thread_manager: Arc<ThreadManager>,
     outgoing: ThreadScopedOutgoingMessageSender,
+    thread_state_manager: ThreadStateManager,
     parent_thread_id: ThreadId,
     turn_id: String,
     sender_thread_id: ThreadId,
@@ -2108,36 +2119,190 @@ async fn maybe_start_collab_agent_status_watcher(
     let Ok(child_thread) = thread_manager.get_thread(child_thread_id).await else {
         return;
     };
+    let child_snapshot = child_thread.config_snapshot().await;
+    let metadata = CollabAgentStatusUpdateMetadata {
+        agent_nickname: child_snapshot.session_source.get_nickname(),
+        agent_role: child_snapshot.session_source.get_agent_role(),
+    };
     let mut status_rx = child_thread.subscribe_status();
+    let child_thread_state = thread_state_manager.thread_state(child_thread_id).await;
     tokio::spawn(async move {
-        let mut status = status_rx.borrow().clone();
-        while is_live_agent_status(&status) {
-            if status_rx.changed().await.is_err() {
+        let mut ticker = tokio::time::interval(Duration::from_secs(1));
+        let mut last_sent: Option<(AgentStatus, Option<String>)> = None;
+        loop {
+            let status = status_rx.borrow().clone();
+            let progress = {
+                let state = child_thread_state.lock().await;
+                collab_agent_progress_message(state.active_turn_snapshot())
+            };
+            let next_sent = (status.clone(), progress.clone());
+            if last_sent.as_ref() != Some(&next_sent) {
+                send_collab_agent_status_update(
+                    &outgoing,
+                    parent_thread_id,
+                    turn_id.clone(),
+                    sender_thread_id,
+                    child_thread_id,
+                    status.clone(),
+                    progress,
+                    metadata.clone(),
+                )
+                .await;
+                last_sent = Some(next_sent);
+            }
+            if !is_live_agent_status(&status) {
                 return;
             }
-            status = status_rx.borrow().clone();
+            tokio::select! {
+                changed = status_rx.changed() => {
+                    if changed.is_err() {
+                        return;
+                    }
+                }
+                _ = ticker.tick() => {}
+            }
         }
-        let child_thread_id = child_thread_id.to_string();
-        let notification = ItemCompletedNotification {
-            thread_id: parent_thread_id.to_string(),
-            turn_id,
-            completed_at_ms: now_unix_timestamp_ms(),
-            item: ThreadItem::CollabAgentToolCall {
-                id: format!("agent-status:{child_thread_id}"),
-                tool: CollabAgentTool::StatusUpdate,
-                status: collab_agent_status_update_call_status(&status),
-                sender_thread_id: sender_thread_id.to_string(),
-                receiver_thread_ids: vec![child_thread_id.clone()],
-                prompt: None,
-                model: None,
-                reasoning_effort: None,
-                agents_states: HashMap::from([(child_thread_id, CollabAgentState::from(status))]),
-            },
-        };
-        outgoing
-            .send_server_notification(ServerNotification::ItemCompleted(notification))
-            .await;
     });
+}
+
+async fn send_collab_agent_status_update(
+    outgoing: &ThreadScopedOutgoingMessageSender,
+    parent_thread_id: ThreadId,
+    turn_id: String,
+    sender_thread_id: ThreadId,
+    child_thread_id: ThreadId,
+    status: AgentStatus,
+    progress: Option<String>,
+    metadata: CollabAgentStatusUpdateMetadata,
+) {
+    let child_thread_id = child_thread_id.to_string();
+    let mut state = CollabAgentState::from(status.clone())
+        .with_agent_metadata(metadata.agent_nickname, metadata.agent_role);
+    if state.message.is_none() {
+        state.message = progress;
+    }
+    let notification = ItemCompletedNotification {
+        thread_id: parent_thread_id.to_string(),
+        turn_id,
+        completed_at_ms: now_unix_timestamp_ms(),
+        item: ThreadItem::CollabAgentToolCall {
+            id: format!("agent-status:{child_thread_id}"),
+            tool: CollabAgentTool::StatusUpdate,
+            status: collab_agent_status_update_call_status(&status),
+            sender_thread_id: sender_thread_id.to_string(),
+            receiver_thread_ids: vec![child_thread_id.clone()],
+            prompt: None,
+            model: None,
+            reasoning_effort: None,
+            agents_states: HashMap::from([(child_thread_id, state)]),
+        },
+    };
+    outgoing
+        .send_server_notification(ServerNotification::ItemCompleted(notification))
+        .await;
+}
+
+fn collab_agent_progress_message(active_turn: Option<Turn>) -> Option<String> {
+    let mut lines = Vec::new();
+    for item in active_turn?.items.iter().rev() {
+        if let Some(line) = collab_agent_progress_line(item) {
+            lines.push(line);
+        }
+        if lines.len() >= 4 {
+            break;
+        }
+    }
+    lines.reverse();
+    (!lines.is_empty()).then(|| lines.join("\n"))
+}
+
+fn collab_agent_progress_line(item: &ThreadItem) -> Option<String> {
+    let line = match item {
+        ThreadItem::CommandExecution {
+            command, status, ..
+        } => match status {
+            CommandExecutionStatus::InProgress => format!("Running command: {command}"),
+            CommandExecutionStatus::Completed => format!("Ran command: {command}"),
+            CommandExecutionStatus::Failed => format!("Command failed: {command}"),
+            CommandExecutionStatus::Declined => format!("Command declined: {command}"),
+        },
+        ThreadItem::McpToolCall {
+            server,
+            tool,
+            status,
+            ..
+        } => {
+            let verb = match status {
+                codex_app_server_protocol::McpToolCallStatus::InProgress => "Calling",
+                codex_app_server_protocol::McpToolCallStatus::Completed => "Called",
+                codex_app_server_protocol::McpToolCallStatus::Failed => "Tool failed",
+            };
+            format!("{verb} {server}.{tool}")
+        }
+        ThreadItem::DynamicToolCall {
+            namespace,
+            tool,
+            status,
+            ..
+        } => {
+            let verb = match status {
+                DynamicToolCallStatus::InProgress => "Calling",
+                DynamicToolCallStatus::Completed => "Called",
+                DynamicToolCallStatus::Failed => "Tool failed",
+            };
+            let name = namespace
+                .as_ref()
+                .filter(|namespace| !namespace.is_empty())
+                .map(|namespace| format!("{namespace}.{tool}"))
+                .unwrap_or_else(|| tool.to_string());
+            format!("{verb} {name}")
+        }
+        ThreadItem::Plan { text, .. } => format!("Planning: {text}"),
+        ThreadItem::Reasoning {
+            summary, content, ..
+        } => {
+            let text = summary
+                .last()
+                .or_else(|| content.last())
+                .map(String::as_str)?;
+            format!("Thinking: {text}")
+        }
+        ThreadItem::AgentMessage { text, .. } => format!("Drafted response: {text}"),
+        ThreadItem::FileChange {
+            changes, status, ..
+        } => {
+            format!(
+                "Updated {} file change{} ({status:?})",
+                changes.len(),
+                plural(changes.len())
+            )
+        }
+        ThreadItem::UserMessage { .. }
+        | ThreadItem::HookPrompt { .. }
+        | ThreadItem::CollabAgentToolCall { .. }
+        | ThreadItem::WebSearch { .. }
+        | ThreadItem::ImageView { .. }
+        | ThreadItem::ImageGeneration { .. }
+        | ThreadItem::EnteredReviewMode { .. }
+        | ThreadItem::ExitedReviewMode { .. }
+        | ThreadItem::ContextCompaction { .. } => return None,
+    };
+    Some(truncate_progress_line(line))
+}
+
+fn truncate_progress_line(line: String) -> String {
+    const MAX_CHARS: usize = 140;
+    let compact = line.split_whitespace().collect::<Vec<_>>().join(" ");
+    if compact.chars().count() <= MAX_CHARS {
+        return compact;
+    }
+    let mut truncated = compact.chars().take(MAX_CHARS).collect::<String>();
+    truncated.push_str("...");
+    truncated
+}
+
+fn plural(count: usize) -> &'static str {
+    if count == 1 { "" } else { "s" }
 }
 
 #[cfg(test)]
@@ -2227,6 +2392,47 @@ mod tests {
         assert!(is_live_agent_status(&AgentStatus::PendingInit));
         assert!(is_live_agent_status(&AgentStatus::Running));
         assert!(!is_live_agent_status(&AgentStatus::Interrupted));
+    }
+
+    #[test]
+    fn collab_agent_progress_message_summarizes_active_turn_items() {
+        let turn = Turn {
+            id: "turn-1".to_string(),
+            items: vec![
+                ThreadItem::AgentMessage {
+                    id: "msg-1".to_string(),
+                    text: "I am checking the repo".to_string(),
+                    phase: None,
+                    memory_citation: None,
+                },
+                ThreadItem::CommandExecution {
+                    id: "cmd-1".to_string(),
+                    command: "cargo test -p codex-tui".to_string(),
+                    cwd: test_path_buf("/tmp").abs(),
+                    process_id: None,
+                    source: CommandExecutionSource::Agent,
+                    status: CommandExecutionStatus::InProgress,
+                    command_actions: Vec::new(),
+                    aggregated_output: None,
+                    exit_code: None,
+                    duration_ms: None,
+                },
+            ],
+            items_view: TurnItemsView::Full,
+            status: TurnStatus::InProgress,
+            error: None,
+            started_at: Some(1),
+            completed_at: None,
+            duration_ms: None,
+        };
+
+        assert_eq!(
+            collab_agent_progress_message(Some(turn)),
+            Some(
+                "Drafted response: I am checking the repo\nRunning command: cargo test -p codex-tui"
+                    .to_string()
+            )
+        );
     }
 
     async fn recv_broadcast_message(
@@ -2392,6 +2598,7 @@ mod tests {
         thread_manager: Arc<ThreadManager>,
         outgoing: ThreadScopedOutgoingMessageSender,
         thread_state: Arc<Mutex<ThreadState>>,
+        thread_state_manager: ThreadStateManager,
         thread_watch_manager: ThreadWatchManager,
     }
 
@@ -2408,6 +2615,7 @@ mod tests {
                 self.thread_manager.clone(),
                 self.outgoing.clone(),
                 self.thread_state.clone(),
+                self.thread_state_manager.clone(),
                 self.thread_watch_manager.clone(),
                 Arc::new(tokio::sync::Semaphore::new(/*permits*/ 1)),
                 "test-provider".to_string(),
@@ -2729,6 +2937,7 @@ mod tests {
             ..
         } = thread_manager.start_thread(config.clone()).await?;
         let thread_state = new_thread_state();
+        let thread_state_manager = ThreadStateManager::new();
         let thread_watch_manager = ThreadWatchManager::new();
         let (tx, mut rx) = mpsc::channel(CHANNEL_CAPACITY);
         let outgoing = Arc::new(OutgoingMessageSender::new(
@@ -2746,6 +2955,7 @@ mod tests {
             thread_manager: thread_manager.clone(),
             outgoing: outgoing.clone(),
             thread_state: thread_state.clone(),
+            thread_state_manager,
             thread_watch_manager: thread_watch_manager.clone(),
         };
 
@@ -3355,6 +3565,7 @@ mod tests {
             thread_manager,
             outgoing,
             thread_state,
+            ThreadStateManager::new(),
             thread_watch_manager,
             Arc::new(tokio::sync::Semaphore::new(/*permits*/ 1)),
             "test-provider".to_string(),
