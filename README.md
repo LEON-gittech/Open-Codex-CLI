@@ -129,10 +129,12 @@ The shared interaction model is:
 
 - **Manual backgrounding** — `Ctrl+B` sends the current active exec/terminal activity to the background without submitting a core op, clearing the foreground task-running UI while preserving streamed output.
 - **Foreground state** — foreground model activity still drives the normal `Working` status, while background work is counted separately in the status line as `bg <n> subagent / <m> terminal`.
-- **Task picker** — pressing `Down` when background work exists opens the bottom-pane background task picker instead of inserting a chat-stream summary. The picker separates `Subagents` and `Terminals`; `Up`/`Down` moves selection, `Enter` opens details, `Left` returns to the list, and `Esc` closes it.
-- **Terminal details** — terminal detail view shows the command and the recent output tail. Pressing `x` in the picker or detail view stops background terminals through the same cleanup path as `/stop`.
+- **Down task panel** — pressing `Down` opens a persistent bottom-pane task panel instead of inserting a chat-stream summary. The panel updates in place and separates `Tasks`, `Subagents`, and `Terminals`.
+- **List navigation** — `Up`/`Down` moves selection, `Enter` opens details, `x` stops the selected stoppable terminal, and `Esc`/`Left` closes the panel.
+- **Terminal details** — terminal detail view shows status, elapsed runtime, wrapped command/task metadata, and the recent output tail. `x` stops the terminal through the same cleanup path as `/stop` when the terminal is stoppable.
 - **Slash commands** — `/ps` prints a chat-history summary of running background terminals, while `/stop` terminates all running background terminal processes for the thread.
-- **Subagent details** — subagent detail view shows agent title, status, and progress. Subagents are inspectable in the background picker and switchable through the agent-thread workflow; `/stop` and picker `x` are terminal-only controls and do not kill subagents.
+- **Subagent details** — subagent detail view shows agent title, role, task prompt, status, elapsed runtime, and progress lines. Subagents are inspectable in the background picker and switchable through the agent-thread workflow; non-stoppable subagents do not expose `x stop`.
+- **Plan tasks** — the same `Down` panel also surfaces the latest visible plan/task list, including completed tasks, so task history is inspectable without relying only on the compact status-line count.
 - **Completed background work** — completed background exec cells are flushed back into history once they finish, preserving the command and captured output without re-foregrounding the task.
 
 This is the essential interaction change behind the Claude Code-style behavior: background work stays visible and controllable, but it no longer blocks normal chat flow.
@@ -147,6 +149,16 @@ From commit `85e937b855`:
 - computes a coarse session average from completed turn usage and duration, including interval merging for overlapping active windows
 
 This is intentionally marked **Beta**: the current value is useful as a rough responsiveness signal, but it is not yet an exact real-time throughput metric.
+
+### 9. Workspace git status in the status line
+
+The status line can now surface the current workspace diff through the configurable `workspace-changes` item:
+
+- renders tracked changes as `+<added>/-<deleted>` using Git numstat data from the active workspace
+- appends `?<count>` when untracked files are present, so a dirty workspace is still visible even before files are staged or modified in tracked paths
+- hides itself for clean workspaces, keeping the status line compact when there is nothing to review
+
+This is intended as a lightweight situational-awareness signal: it answers "did this session leave local changes behind?" without opening a separate shell or `/status` view.
 
 ### Near-term roadmap
 
@@ -365,10 +377,12 @@ Codex CLI 是开源的，但上游仓库当前对外部代码贡献采用 invita
 
 - **Manual backgrounding** — `Ctrl+B` 会把当前 active exec/terminal activity 送到后台，不提交 core op，并清掉前台 task-running UI，同时保留后续 streamed output。
 - **Foreground state** — 前台模型活动仍然驱动正常的 `Working` 状态，后台工作则在 status line 中单独计数为 `bg <n> subagent / <m> terminal`。
-- **Task picker** — 有后台任务时按 `Down` 会在底部打开 background task picker，而不是往 chat stream 插入 summary。picker 会区分 `Subagents` 和 `Terminals`；`Up`/`Down` 移动选择，`Enter` 打开详情，`Left` 返回列表，`Esc` 关闭。
-- **Terminal details** — terminal detail view 会显示 command 和最近的 output tail。在 picker 或 detail view 中按 `x` 会通过和 `/stop` 相同的 cleanup path 停止 background terminals。
+- **Down task panel** — 按 `Down` 会打开一个持久的底部 task panel，而不是往 chat stream 插入 summary。这个 panel 会原地更新，并区分 `Tasks`、`Subagents`、`Terminals`。
+- **List navigation** — `Up`/`Down` 移动选择，`Enter` 打开详情，`x` 停止当前选中的 stoppable terminal，`Esc`/`Left` 关闭 panel。
+- **Terminal details** — terminal detail view 会显示 status、elapsed runtime、自动换行的 command/task metadata，以及最近的 output tail。当 terminal 是 stoppable 时，`x` 会通过和 `/stop` 相同的 cleanup path 停止它。
 - **Slash commands** — `/ps` 会把 running background terminals 的摘要打印到 chat history，`/stop` 会终止当前 thread 下所有 running background terminal processes。
-- **Subagent details** — subagent detail view 会显示 agent title、status 和 progress。Subagents 可以在 background picker 中查看，并通过 agent-thread workflow 切换；`/stop` 和 picker 里的 `x` 都是 terminal-only controls，不会 kill subagents。
+- **Subagent details** — subagent detail view 会显示 agent title、role、task prompt、status、elapsed runtime 和 progress lines。Subagents 可以在 background picker 中查看，并通过 agent-thread workflow 切换；不可停止的 subagents 不会暴露 `x stop`。
+- **Plan tasks** — 同一个 `Down` panel 也会展示最近可见的 plan/task list，包括已经完成的 tasks，因此不用只依赖 status line 上的 compact task count 才能了解任务历史。
 - **Completed background work** — background exec 完成后会把对应 cell 刷回 history，保留 command 和已捕获 output，但不会把任务重新拉回前台。
 
 这是 Claude Code 风格体验背后的本质交互变化：后台工作仍然可见、可管理，但不会阻塞正常聊天流。
@@ -383,6 +397,16 @@ Codex CLI 是开源的，但上游仓库当前对外部代码贡献采用 invita
 - 当前用 completed turn usage 和 duration 计算粗略 session average，并对 overlapping active windows 做 interval merging
 
 这个能力目前标记为 **Beta**：它可以作为粗略 responsiveness signal，但还不是准确的 real-time throughput metric。
+
+### 9. Status line 中显示 workspace git status
+
+status line 现在可以通过可配置的 `workspace-changes` item 显示当前 workspace diff：
+
+- 使用当前 workspace 的 Git numstat 数据，把 tracked changes 显示为 `+<added>/-<deleted>`
+- 当存在 untracked files 时追加 `?<count>`，因此即使文件还没 stage、也还没进入 tracked path 修改，也能看出 workspace 已经变脏
+- clean workspace 下自动隐藏，避免没有改动时占用 status line 空间
+
+这个能力是轻量级的上下文提示：它回答的是“当前 session 有没有留下本地改动”，不需要额外打开 shell 或 `/status` view。
 
 ### 近期路线图
 
