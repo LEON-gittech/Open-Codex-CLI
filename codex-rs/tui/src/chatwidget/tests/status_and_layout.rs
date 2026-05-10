@@ -284,6 +284,34 @@ async fn status_line_git_summary_items_render_values() {
 }
 
 #[tokio::test]
+async fn status_line_workspace_changes_render_dirty_tracked_stats() {
+    let (mut chat, _rx, _ops) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.status_line_workspace_changes = Some(crate::branch_summary::GitWorkspaceDiffStats {
+        additions: 830,
+        deletions: 281,
+    });
+
+    assert_eq!(
+        chat.status_line_value_for_item(crate::bottom_pane::StatusLineItem::WorkspaceChanges),
+        Some("+830/-281".to_string())
+    );
+}
+
+#[tokio::test]
+async fn status_line_workspace_changes_omits_clean_workspaces() {
+    let (mut chat, _rx, _ops) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.status_line_workspace_changes = Some(crate::branch_summary::GitWorkspaceDiffStats {
+        additions: 0,
+        deletions: 0,
+    });
+
+    assert_eq!(
+        chat.status_line_value_for_item(crate::bottom_pane::StatusLineItem::WorkspaceChanges),
+        None
+    );
+}
+
+#[tokio::test]
 async fn raw_output_status_line_value_only_shows_when_enabled() {
     let (mut chat, _rx, _ops) = make_chatwidget_manual(/*model_override*/ None).await;
 

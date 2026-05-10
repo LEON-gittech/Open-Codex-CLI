@@ -1937,6 +1937,11 @@ impl App {
                 self.chat_widget.set_status_line_git_summary(cwd, summary);
                 self.refresh_status_line();
             }
+            AppEvent::StatusLineWorkspaceChangesUpdated { cwd, stats } => {
+                self.chat_widget
+                    .set_status_line_workspace_changes(cwd, stats);
+                self.refresh_status_line();
+            }
             AppEvent::StatusLineSetupCancelled => {
                 self.chat_widget.cancel_status_line_setup();
             }

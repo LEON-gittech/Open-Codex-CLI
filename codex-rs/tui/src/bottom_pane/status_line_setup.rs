@@ -11,7 +11,7 @@
 //!
 //! - Model information (name, reasoning level)
 //! - Directory paths (current dir, project root)
-//! - Git information (branch name)
+//! - Git information (branch name, workspace changes)
 //! - Context usage (remaining %, used %, window size)
 //! - Usage limits (5-hour, weekly)
 //! - Session info (thread title, ID, tokens used)
@@ -76,6 +76,14 @@ pub(crate) enum StatusLineItem {
 
     /// Committed branch diff stats relative to the default branch.
     BranchChanges,
+
+    /// Current tracked workspace diff stats relative to HEAD.
+    #[strum(
+        to_string = "workspace-changes",
+        serialize = "git-status",
+        serialize = "workspace-diff"
+    )]
+    WorkspaceChanges,
 
     /// Compact runtime run-state text.
     #[strum(to_string = "run-state", serialize = "status")]
@@ -148,6 +156,9 @@ impl StatusLineItem {
             StatusLineItem::BranchChanges => {
                 "Committed branch changes against the default branch (omitted when unavailable)"
             }
+            StatusLineItem::WorkspaceChanges => {
+                "Tracked workspace changes against HEAD (omitted when clean or unavailable)"
+            }
             StatusLineItem::Status => "Compact session run-state text (Ready, Working, Thinking)",
             StatusLineItem::ContextRemaining => {
                 "Percentage of context window remaining (omitted when unknown)"
@@ -191,6 +202,7 @@ impl StatusLineItem {
             StatusLineItem::GitBranch => StatusSurfacePreviewItem::GitBranch,
             StatusLineItem::PullRequestNumber => StatusSurfacePreviewItem::PullRequestNumber,
             StatusLineItem::BranchChanges => StatusSurfacePreviewItem::BranchChanges,
+            StatusLineItem::WorkspaceChanges => StatusSurfacePreviewItem::WorkspaceChanges,
             StatusLineItem::Status => StatusSurfacePreviewItem::Status,
             StatusLineItem::ContextRemaining => StatusSurfacePreviewItem::ContextRemaining,
             StatusLineItem::ContextUsed => StatusSurfacePreviewItem::ContextUsed,
@@ -447,6 +459,18 @@ mod tests {
         assert_eq!(
             "branch-changes".parse::<StatusLineItem>(),
             Ok(StatusLineItem::BranchChanges)
+        );
+        assert_eq!(
+            "workspace-changes".parse::<StatusLineItem>(),
+            Ok(StatusLineItem::WorkspaceChanges)
+        );
+        assert_eq!(
+            "git-status".parse::<StatusLineItem>(),
+            Ok(StatusLineItem::WorkspaceChanges)
+        );
+        assert_eq!(
+            StatusLineItem::WorkspaceChanges.to_string(),
+            "workspace-changes"
         );
     }
 

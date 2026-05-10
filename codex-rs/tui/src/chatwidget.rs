@@ -363,6 +363,7 @@ use self::user_messages::PendingSteerCompareKey;
 use self::user_messages::UserMessageDisplay;
 mod warnings;
 use self::warnings::WarningDisplayState;
+pub(crate) use crate::branch_summary::GitWorkspaceDiffStats;
 pub(crate) use crate::branch_summary::StatusLineGitSummary;
 use crate::streaming::chunking::AdaptiveChunkingPolicy;
 use crate::streaming::commit_tick::CommitTickScope;
@@ -388,7 +389,8 @@ use unicode_segmentation::UnicodeSegmentation;
 const USER_SHELL_COMMAND_HELP_TITLE: &str = "Prefix a command with ! to run it locally";
 const USER_SHELL_COMMAND_HELP_HINT: &str = "Example: !ls";
 const DEFAULT_OPENAI_BASE_URL: &str = "https://api.openai.com/v1";
-const DEFAULT_STATUS_LINE_ITEMS: [&str; 2] = ["model-with-reasoning", "current-dir"];
+const DEFAULT_STATUS_LINE_ITEMS: [&str; 3] =
+    ["model-with-reasoning", "current-dir", "workspace-changes"];
 // Track information about an in-flight exec command.
 struct RunningCommand {
     command: Vec<String>,
@@ -1012,6 +1014,14 @@ pub(crate) struct ChatWidget {
     status_line_git_summary_pending: bool,
     // True once we've attempted a Git summary lookup for the current CWD.
     status_line_git_summary_lookup_complete: bool,
+    // Cached tracked workspace diff stats for the active status-line cwd.
+    status_line_workspace_changes: Option<GitWorkspaceDiffStats>,
+    // CWD used to resolve the cached workspace diff stats; change resets workspace state.
+    status_line_workspace_changes_cwd: Option<PathBuf>,
+    // True while an async workspace diff stats lookup is in flight.
+    status_line_workspace_changes_pending: bool,
+    // True once we've attempted a workspace diff stats lookup for the current CWD.
+    status_line_workspace_changes_lookup_complete: bool,
     // Current thread-goal status shown in the status line when plan mode is inactive.
     current_goal_status_indicator: Option<GoalStatusIndicator>,
     current_goal_status: Option<GoalStatusState>,
@@ -2018,6 +2028,22 @@ impl ChatWidget {
         self.refresh_status_surfaces();
     }
 
+    /// Stores async workspace diff stats for the current status-line cwd.
+    pub(crate) fn set_status_line_workspace_changes(
+        &mut self,
+        cwd: PathBuf,
+        stats: Option<GitWorkspaceDiffStats>,
+    ) {
+        if self.status_line_workspace_changes_cwd.as_ref() != Some(&cwd) {
+            self.status_line_workspace_changes_pending = false;
+            return;
+        }
+        self.status_line_workspace_changes = stats;
+        self.status_line_workspace_changes_pending = false;
+        self.status_line_workspace_changes_lookup_complete = true;
+        self.refresh_status_surfaces();
+    }
+
     fn collect_runtime_metrics_delta(&mut self) {
         if let Some(delta) = self.session_telemetry.runtime_metrics_summary() {
             self.apply_runtime_metrics_delta(delta);
@@ -2601,6 +2627,7 @@ impl ChatWidget {
             self.had_work_activity = false;
             self.request_status_line_branch_refresh();
             self.request_status_line_git_summary_refresh();
+            self.request_status_line_workspace_changes_refresh();
         }
         // Mark task stopped and request redraw now that all content is in history.
         self.pending_status_indicator_restore = false;
@@ -3114,6 +3141,7 @@ impl ChatWidget {
         self.pending_status_indicator_restore = false;
         self.request_status_line_branch_refresh();
         self.request_status_line_git_summary_refresh();
+        self.request_status_line_workspace_changes_refresh();
         self.maybe_show_pending_rate_limit_prompt();
     }
 
@@ -5202,6 +5230,10 @@ impl ChatWidget {
             status_line_git_summary_cwd: None,
             status_line_git_summary_pending: false,
             status_line_git_summary_lookup_complete: false,
+            status_line_workspace_changes: None,
+            status_line_workspace_changes_cwd: None,
+            status_line_workspace_changes_pending: false,
+            status_line_workspace_changes_lookup_complete: false,
             current_goal_status_indicator: None,
             current_goal_status: None,
             goal_status_active_turn_started_at: None,

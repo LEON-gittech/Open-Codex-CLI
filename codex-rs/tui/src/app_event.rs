@@ -881,6 +881,11 @@ pub(crate) enum AppEvent {
         cwd: PathBuf,
         summary: crate::chatwidget::StatusLineGitSummary,
     },
+    /// Async update of tracked workspace diff stats for status line rendering.
+    StatusLineWorkspaceChangesUpdated {
+        cwd: PathBuf,
+        stats: Option<crate::chatwidget::GitWorkspaceDiffStats>,
+    },
     /// Apply a user-confirmed status-line item ordering/selection.
     StatusLineSetup {
         items: Vec<StatusLineItem>,

@@ -31,6 +31,15 @@ pub(crate) struct GitBranchDiffStats {
     pub(crate) deletions: u64,
 }
 
+/// Additions and deletions in the current tracked workspace relative to `HEAD`.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct GitWorkspaceDiffStats {
+    /// Total added lines in the current workspace.
+    pub(crate) additions: u64,
+    /// Total deleted lines in the current workspace.
+    pub(crate) deletions: u64,
+}
+
 /// Combined git metadata cached by the status line for one working directory.
 ///
 /// A summary may contain only one of the fields when the other probe fails. Renderers should treat
@@ -130,6 +139,36 @@ pub(crate) async fn status_line_git_summary(
     }
 }
 
+/// Counts tracked workspace line changes relative to `HEAD`.
+///
+/// Untracked files are intentionally ignored for this compact status-line probe. Counting their
+/// lines requires full-file reads or expensive `--no-index` diffs, which is too heavy for a
+/// background UI refresh.
+pub(crate) async fn workspace_diff_stats(
+    runner: &dyn WorkspaceCommandExecutor,
+    cwd: &Path,
+) -> Option<GitWorkspaceDiffStats> {
+    let git_dir = run_git_command(runner, cwd, &["rev-parse", "--git-dir"])
+        .await
+        .ok()?;
+    if !git_dir.success() {
+        return None;
+    }
+
+    let numstat = run_git_command(runner, cwd, &["diff", "--numstat", "HEAD", "--"])
+        .await
+        .ok()?;
+    if !numstat.success() {
+        return None;
+    }
+
+    let (additions, deletions) = parse_numstat_totals(&numstat.stdout);
+    Some(GitWorkspaceDiffStats {
+        additions,
+        deletions,
+    })
+}
+
 /// Counts committed line changes between `HEAD` and the repository default branch.
 ///
 /// The comparison base is the merge base with a verified default-branch ref. Uncommitted working
@@ -170,23 +209,26 @@ async fn branch_diff_stats_to_default_branch(
         return None;
     }
 
-    let mut additions = 0_u64;
-    let mut deletions = 0_u64;
-    for line in numstat.stdout.lines() {
-        let mut columns = line.split('\t');
-        additions += columns
-            .next()
-            .and_then(|value| value.parse().ok())
-            .unwrap_or(0);
-        deletions += columns
-            .next()
-            .and_then(|value| value.parse().ok())
-            .unwrap_or(0);
-    }
+    let (additions, deletions) = parse_numstat_totals(&numstat.stdout);
 
     Some(GitBranchDiffStats {
         additions,
         deletions,
+    })
+}
+
+fn parse_numstat_totals(stdout: &str) -> (u64, u64) {
+    stdout.lines().fold((0_u64, 0_u64), |mut totals, line| {
+        let mut columns = line.split('\t');
+        totals.0 += columns
+            .next()
+            .and_then(|value| value.parse().ok())
+            .unwrap_or(0);
+        totals.1 += columns
+            .next()
+            .and_then(|value| value.parse().ok())
+            .unwrap_or(0);
+        totals
     })
 }
 
@@ -566,6 +608,49 @@ mod tests {
             }
         );
         assert!(runner.saw(&["git", "merge-base", "HEAD", "refs/remotes/origin/main"]));
+    }
+
+    #[tokio::test]
+    async fn workspace_diff_stats_counts_tracked_changes_against_head() {
+        let runner = FakeRunner::new(vec![
+            response(
+                &["git", "rev-parse", "--git-dir"],
+                /*exit_code*/ 0,
+                ".git\n",
+            ),
+            response(
+                &["git", "diff", "--numstat", "HEAD", "--"],
+                /*exit_code*/ 0,
+                "10\t2\tsrc/main.rs\n-\t-\tassets/logo.png\n3\t0\tREADME.md\n",
+            ),
+        ]);
+
+        let stats = workspace_diff_stats(&runner, Path::new("/repo"))
+            .await
+            .expect("workspace diff stats");
+
+        assert_eq!(
+            stats,
+            GitWorkspaceDiffStats {
+                additions: 13,
+                deletions: 2,
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn workspace_diff_stats_omits_non_git_directories() {
+        let runner = FakeRunner::new(vec![response(
+            &["git", "rev-parse", "--git-dir"],
+            /*exit_code*/ 128,
+            "",
+        )]);
+
+        assert_eq!(
+            workspace_diff_stats(&runner, Path::new("/repo")).await,
+            None
+        );
+        assert!(!runner.saw(&["git", "diff", "--numstat", "HEAD", "--"]));
     }
 
     #[tokio::test]

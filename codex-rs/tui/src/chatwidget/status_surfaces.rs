@@ -67,6 +67,11 @@ impl StatusSurfaceSelections {
                 .status_line_items
                 .contains(&StatusLineItem::BranchChanges)
     }
+
+    fn uses_workspace_changes(&self) -> bool {
+        self.status_line_items
+            .contains(&StatusLineItem::WorkspaceChanges)
+    }
 }
 
 /// Cached project-root display name keyed by the cwd used for the last lookup.
@@ -157,6 +162,18 @@ impl ChatWidget {
             self.sync_status_line_git_summary_state(&cwd);
             if !self.status_line_git_summary_lookup_complete {
                 self.request_status_line_git_summary(cwd);
+            }
+        }
+
+        if !selections.uses_workspace_changes() {
+            self.status_line_workspace_changes = None;
+            self.status_line_workspace_changes_pending = false;
+            self.status_line_workspace_changes_lookup_complete = false;
+        } else {
+            let cwd = self.status_line_cwd().to_path_buf();
+            self.sync_status_line_workspace_changes_state(&cwd);
+            if !self.status_line_workspace_changes_lookup_complete {
+                self.request_status_line_workspace_changes(cwd);
             }
         }
     }
@@ -392,6 +409,16 @@ impl ChatWidget {
         self.request_status_line_git_summary(cwd);
     }
 
+    pub(super) fn request_status_line_workspace_changes_refresh(&mut self) {
+        let selections = self.status_surface_selections();
+        if !selections.uses_workspace_changes() {
+            return;
+        }
+        let cwd = self.status_line_cwd().to_path_buf();
+        self.sync_status_line_workspace_changes_state(&cwd);
+        self.request_status_line_workspace_changes(cwd);
+    }
+
     /// Parses configured status-line ids into known items and collects unknown ids.
     ///
     /// Unknown ids are deduplicated in insertion order for warning messages.
@@ -527,6 +554,16 @@ impl ChatWidget {
         self.status_line_git_summary_lookup_complete = false;
     }
 
+    fn sync_status_line_workspace_changes_state(&mut self, cwd: &Path) {
+        if self.status_line_workspace_changes_cwd.as_deref() == Some(cwd) {
+            return;
+        }
+        self.status_line_workspace_changes_cwd = Some(cwd.to_path_buf());
+        self.status_line_workspace_changes = None;
+        self.status_line_workspace_changes_pending = false;
+        self.status_line_workspace_changes_lookup_complete = false;
+    }
+
     /// Starts an async git-branch lookup unless one is already running.
     ///
     /// The resulting `StatusLineBranchUpdated` event carries the lookup cwd so callers can reject
@@ -563,6 +600,22 @@ impl ChatWidget {
         });
     }
 
+    fn request_status_line_workspace_changes(&mut self, cwd: PathBuf) {
+        if self.status_line_workspace_changes_pending {
+            return;
+        }
+        let Some(runner) = self.workspace_command_runner.clone() else {
+            self.status_line_workspace_changes_lookup_complete = true;
+            return;
+        };
+        self.status_line_workspace_changes_pending = true;
+        let tx = self.app_event_tx.clone();
+        tokio::spawn(async move {
+            let stats = branch_summary::workspace_diff_stats(runner.as_ref(), &cwd).await;
+            tx.send(AppEvent::StatusLineWorkspaceChangesUpdated { cwd, stats });
+        });
+    }
+
     /// Resolves a display string for one configured status-line item.
     ///
     /// Returning `None` means "omit this item for now", not "configuration error". Callers rely on
@@ -595,6 +648,13 @@ impl ChatWidget {
                     } else {
                         format!("+{} -{}", stats.additions, stats.deletions)
                     }
+                }),
+            StatusLineItem::WorkspaceChanges => self
+                .status_line_workspace_changes
+                .as_ref()
+                .and_then(|stats| {
+                    (stats.additions != 0 || stats.deletions != 0)
+                        .then(|| format!("+{}/-{}", stats.additions, stats.deletions))
                 }),
             StatusLineItem::Status => Some(self.run_state_status_text()),
             StatusLineItem::UsedTokens => {
@@ -692,6 +752,7 @@ impl ChatWidget {
             StatusSurfacePreviewItem::GitBranch => StatusLineItem::GitBranch,
             StatusSurfacePreviewItem::PullRequestNumber => StatusLineItem::PullRequestNumber,
             StatusSurfacePreviewItem::BranchChanges => StatusLineItem::BranchChanges,
+            StatusSurfacePreviewItem::WorkspaceChanges => StatusLineItem::WorkspaceChanges,
             StatusSurfacePreviewItem::ContextRemaining => StatusLineItem::ContextRemaining,
             StatusSurfacePreviewItem::ContextUsed => StatusLineItem::ContextUsed,
             StatusSurfacePreviewItem::FiveHourLimit => StatusLineItem::FiveHourLimit,
