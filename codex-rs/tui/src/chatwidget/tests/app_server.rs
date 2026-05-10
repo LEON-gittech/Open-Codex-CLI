@@ -148,6 +148,7 @@ async fn down_uses_collab_agent_metadata_from_agent_state() {
 
     let rendered = render_bottom_popup(&chat, /*width*/ 96);
     assert!(rendered.contains("Robie [explorer]: Running"));
+    assert!(rendered.contains("Explore the repo"));
     assert!(
         !rendered.contains(&spawned_thread_id.to_string()),
         "background task title should prefer nickname over raw thread id: {rendered:?}"
@@ -223,6 +224,7 @@ async fn down_lists_spawned_agent_activity_without_submitting_core_op() {
         key: "proc-1".to_string(),
         call_id: "call-terminal".to_string(),
         command_display: "sleep 300".to_string(),
+        started_at: std::time::Instant::now(),
         recent_chunks: vec!["still running".to_string()],
         output_lines: vec!["still running".to_string()],
     });
@@ -247,6 +249,7 @@ async fn down_lists_spawned_agent_activity_without_submitting_core_op() {
     assert!(rendered.contains("Background tasks"));
     assert!(rendered.contains("Robie [explorer]"));
     assert!(rendered.contains("Running"));
+    assert!(rendered.contains("Explore the repo"));
     assert!(rendered.contains("Terminals"));
     assert!(rendered.contains("sleep 300"));
     assert!(rendered.contains("still running"));
@@ -308,7 +311,9 @@ async fn down_enter_subagent_opens_agent_detail_without_selecting_thread() {
         "Enter should open subagent detail: {rendered:?}"
     );
     assert!(rendered.contains("Robie [explorer]"));
+    assert!(rendered.contains("Role: explorer"));
     assert!(rendered.contains("Running"));
+    assert!(rendered.contains("Task: Explore the repo"));
     assert!(rendered.contains("Progress"));
     assert!(rendered.contains("Reading files"));
 }

@@ -739,6 +739,7 @@ async fn unified_exec_empty_terminal_interaction_stays_backgrounded() {
         key: "proc-1".to_string(),
         call_id: "call-1".to_string(),
         command_display: "sleep 5".to_string(),
+        started_at: std::time::Instant::now(),
         recent_chunks: Vec::new(),
         output_lines: Vec::new(),
     });
@@ -757,6 +758,7 @@ async fn down_opens_background_terminal_process_list_without_submitting_core_op(
         key: "proc-1".to_string(),
         call_id: "call-1".to_string(),
         command_display: "sleep 300".to_string(),
+        started_at: std::time::Instant::now(),
         recent_chunks: vec!["still running".to_string()],
         output_lines: vec!["tick 01".to_string(), "still running".to_string()],
     });
@@ -803,6 +805,7 @@ async fn down_enter_background_terminal_opens_shell_detail_without_core_op() {
         key: "proc-1".to_string(),
         call_id: "call-1".to_string(),
         command_display: "sleep 300".to_string(),
+        started_at: std::time::Instant::now(),
         recent_chunks: vec!["tick 02".to_string()],
         output_lines: vec!["tick 01".to_string(), "tick 02".to_string()],
     });

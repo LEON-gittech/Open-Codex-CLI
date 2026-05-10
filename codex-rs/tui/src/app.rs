@@ -1120,7 +1120,11 @@ See the Codex keymap documentation for supported actions and examples."
                 TuiEvent::Draw | TuiEvent::Resize => {
                     if self.backtrack_render_pending {
                         self.backtrack_render_pending = false;
-                        self.render_transcript_once(tui);
+                        if let Err(err) = self.reflow_transcript_now(tui) {
+                            tracing::warn!(error = %err, "failed to reflow transcript after backtrack");
+                            self.chat_widget
+                                .add_error_message(format!("Failed to redraw transcript: {err}"));
+                        }
                     }
                     self.chat_widget.maybe_post_pending_notification(tui);
                     if self

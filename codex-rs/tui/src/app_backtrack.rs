@@ -255,20 +255,6 @@ impl App {
         }
     }
 
-    /// Re-render the full transcript into the terminal scrollback in one call.
-    /// Useful when switching sessions to ensure prior history remains visible.
-    pub(crate) fn render_transcript_once(&mut self, tui: &mut tui::Tui) {
-        if !self.transcript_cells.is_empty() {
-            let width = tui.terminal.last_known_screen_size.width;
-            for cell in &self.transcript_cells {
-                tui.insert_history_lines_with_wrap_policy(
-                    cell.display_lines_for_mode(width, self.chat_widget.history_render_mode()),
-                    self.history_line_wrap_policy(),
-                );
-            }
-        }
-    }
-
     /// Initialize backtrack state and show composer hint.
     fn prime_backtrack(&mut self) {
         self.backtrack.primed = true;

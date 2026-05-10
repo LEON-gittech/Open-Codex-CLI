@@ -8,6 +8,7 @@ use codex_app_server_protocol::CollabAgentToolCallStatus;
 use codex_app_server_protocol::ThreadItem;
 use codex_protocol::ThreadId;
 use std::collections::HashSet;
+use std::time::Instant;
 
 pub(super) fn sync_collab_agent_background_activity(chat: &mut ChatWidget, item: &ThreadItem) {
     let ThreadItem::CollabAgentToolCall {
@@ -37,7 +38,8 @@ pub(super) fn sync_collab_agent_background_activity(chat: &mut ChatWidget, item:
             if let Ok(parsed_thread_id) = ThreadId::from_string(thread_id) {
                 seen.insert(parsed_thread_id);
                 if let Some(state) = agents_states.get(thread_id) {
-                    changed |= sync_collab_agent_activity_state(chat, parsed_thread_id, state);
+                    changed |=
+                        sync_collab_agent_activity_state(chat, item, parsed_thread_id, state);
                 }
             }
         }
@@ -45,7 +47,7 @@ pub(super) fn sync_collab_agent_background_activity(chat: &mut ChatWidget, item:
             if let Ok(parsed_thread_id) = ThreadId::from_string(thread_id)
                 && seen.insert(parsed_thread_id)
             {
-                changed |= sync_collab_agent_activity_state(chat, parsed_thread_id, state);
+                changed |= sync_collab_agent_activity_state(chat, item, parsed_thread_id, state);
             }
         }
     }
@@ -58,6 +60,7 @@ pub(super) fn sync_collab_agent_background_activity(chat: &mut ChatWidget, item:
 
 fn sync_collab_agent_activity_state(
     chat: &mut ChatWidget,
+    item: &ThreadItem,
     thread_id: ThreadId,
     state: &CollabAgentState,
 ) -> bool {
@@ -99,6 +102,9 @@ fn sync_collab_agent_activity_state(
                 && cell.thread_id() == thread_id
             {
                 cell.update(state, &metadata);
+                if activity.task.is_none() {
+                    activity.task = prompt_for_thread(item, thread_id);
+                }
                 return true;
             }
         }
@@ -107,11 +113,33 @@ fn sync_collab_agent_activity_state(
             cell: Box::new(multi_agents::CollabAgentActivityCell::new(
                 thread_id, state, &metadata,
             )),
+            started_at: Instant::now(),
+            task: prompt_for_thread(item, thread_id),
         });
         true
     } else {
         remove_collab_agent_background_activity(chat, thread_id)
     }
+}
+
+fn prompt_for_thread(item: &ThreadItem, thread_id: ThreadId) -> Option<String> {
+    let ThreadItem::CollabAgentToolCall {
+        tool,
+        prompt,
+        receiver_thread_ids,
+        ..
+    } = item
+    else {
+        return None;
+    };
+    if !matches!(tool, CollabAgentTool::SpawnAgent) {
+        return None;
+    }
+    let targets_thread = receiver_thread_ids
+        .iter()
+        .filter_map(|id| ThreadId::from_string(id).ok())
+        .any(|id| id == thread_id);
+    if targets_thread { prompt.clone() } else { None }
 }
 
 fn remove_collab_agent_background_activity(chat: &mut ChatWidget, thread_id: ThreadId) -> bool {

@@ -64,6 +64,7 @@ pub(crate) struct SpawnRequestSummary {
 #[derive(Debug)]
 pub(crate) struct CollabAgentActivityCell {
     thread_id: ThreadId,
+    metadata: AgentMetadata,
     lines: Vec<Line<'static>>,
 }
 
@@ -75,6 +76,7 @@ impl CollabAgentActivityCell {
     ) -> Self {
         Self {
             thread_id,
+            metadata: metadata.clone(),
             lines: collab_agent_activity_lines(thread_id, status, metadata),
         }
     }
@@ -84,7 +86,12 @@ impl CollabAgentActivityCell {
     }
 
     pub(crate) fn update(&mut self, status: &CollabAgentState, metadata: &AgentMetadata) {
+        self.metadata = metadata.clone();
         self.lines = collab_agent_activity_lines(self.thread_id, status, metadata);
+    }
+
+    pub(crate) fn agent_role(&self) -> Option<&str> {
+        self.metadata.agent_role.as_deref()
     }
 }
 

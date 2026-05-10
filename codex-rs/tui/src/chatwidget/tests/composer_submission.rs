@@ -916,6 +916,31 @@ async fn pending_steer_esc_does_not_steal_vim_insert_escape() {
 }
 
 #[tokio::test]
+async fn pending_steer_esc_interrupts_backgrounded_agent_turn() {
+    let (mut chat, _rx, mut op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    let esc = KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE);
+
+    chat.on_task_started();
+    chat.task_backgrounded = true;
+    chat.update_task_running_state();
+    chat.pending_steers.push_back(pending_steer("queued steer"));
+    chat.refresh_pending_input_preview();
+
+    assert!(chat.agent_turn_running);
+    assert!(chat.task_backgrounded);
+    assert!(!chat.bottom_pane.is_task_running());
+
+    chat.handle_key_event(esc);
+
+    match op_rx.try_recv() {
+        Ok(Op::Interrupt) => {}
+        other => panic!("expected Op::Interrupt, got {other:?}"),
+    }
+    assert!(chat.submit_pending_steers_after_interrupt);
+    assert_eq!(chat.pending_steers.len(), 1);
+}
+
+#[tokio::test]
 async fn restore_thread_input_state_syncs_sleep_inhibitor_state() {
     let (mut chat, _rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
     chat.set_feature_enabled(Feature::PreventIdleSleep, /*enabled*/ true);

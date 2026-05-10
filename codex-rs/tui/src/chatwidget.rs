@@ -317,6 +317,7 @@ use crate::slash_command::SlashCommand;
 use crate::status::RateLimitSnapshotDisplay;
 use crate::status_indicator_widget::STATUS_DETAILS_DEFAULT_MAX_LINES;
 use crate::status_indicator_widget::StatusDetailsCapitalization;
+use crate::status_indicator_widget::fmt_elapsed_compact;
 use crate::text_formatting::truncate_text;
 use crate::tui::FrameRequester;
 mod background_agents;
@@ -398,6 +399,7 @@ struct UnifiedExecProcessSummary {
     key: String,
     call_id: String,
     command_display: String,
+    started_at: Instant,
     recent_chunks: Vec<String>,
     output_lines: Vec<String>,
 }
@@ -1021,6 +1023,8 @@ pub(crate) struct ChatWidget {
 #[derive(Debug)]
 struct BackgroundActivity {
     cell: Box<dyn HistoryCell>,
+    started_at: Instant,
+    task: Option<String>,
 }
 
 impl BackgroundActivity {
@@ -1045,6 +1049,10 @@ fn split_background_task_status(title: String) -> (String, Option<String>) {
     }
 
     (title, None)
+}
+
+fn background_elapsed_text(started_at: Instant) -> String {
+    fmt_elapsed_compact(started_at.elapsed().as_secs())
 }
 
 #[cfg_attr(not(test), allow(dead_code))]
@@ -3950,6 +3958,7 @@ impl ChatWidget {
         {
             existing.call_id = call_id.to_string();
             existing.command_display = command_display;
+            existing.started_at = Instant::now();
             existing.recent_chunks.clear();
             existing.output_lines.clear();
         } else {
@@ -3957,6 +3966,7 @@ impl ChatWidget {
                 key,
                 call_id: call_id.to_string(),
                 command_display,
+                started_at: Instant::now(),
                 recent_chunks: Vec::new(),
                 output_lines: Vec::new(),
             });
@@ -6983,8 +6993,11 @@ impl ChatWidget {
     fn finalize_active_cell_as_failed(&mut self) {
         if let Some(cell) = self.active_cell.take() {
             if cell.as_any().is::<multi_agents::CollabAgentActivityCell>() {
-                self.background_activities
-                    .push_back(BackgroundActivity { cell });
+                self.background_activities.push_back(BackgroundActivity {
+                    cell,
+                    started_at: Instant::now(),
+                    task: None,
+                });
             } else {
                 self.finalize_boxed_cell_as_failed(cell);
             }
@@ -7092,6 +7105,10 @@ impl ChatWidget {
                 user_message_preview_text(message, self.rejected_steer_history_records.get(idx))
             })
             .collect();
+        if !queued_messages.is_empty() || !pending_steers.is_empty() || !rejected_steers.is_empty()
+        {
+            self.clear_esc_backtrack_hint();
+        }
         self.bottom_pane.set_pending_input_preview(
             queued_messages,
             pending_steers,
@@ -10534,8 +10551,11 @@ impl ChatWidget {
         }
 
         if let Some(cell) = self.active_cell.take() {
-            self.background_activities
-                .push_back(BackgroundActivity { cell });
+            self.background_activities.push_back(BackgroundActivity {
+                cell,
+                started_at: Instant::now(),
+                task: None,
+            });
             self.bump_active_cell_revision();
         }
         self.task_backgrounded = true;
@@ -10580,11 +10600,18 @@ impl ChatWidget {
                 .downcast_ref::<multi_agents::CollabAgentActivityCell>()
             {
                 let (title, status) = split_background_task_status(title);
+                let task = activity
+                    .task
+                    .as_deref()
+                    .map(|task| truncate_text(task, 240));
                 params.subagents.push(BackgroundTaskItem {
                     kind: BackgroundTaskKind::Subagent {
                         thread_id: cell.thread_id(),
                     },
                     title,
+                    role: cell.agent_role().map(str::to_string),
+                    task,
+                    elapsed: Some(background_elapsed_text(activity.started_at)),
                     detail,
                     status,
                     output_lines: Vec::new(),
@@ -10593,6 +10620,9 @@ impl ChatWidget {
                 params.terminals.push(BackgroundTaskItem {
                     kind: BackgroundTaskKind::Terminal,
                     title,
+                    role: None,
+                    task: None,
+                    elapsed: Some(background_elapsed_text(activity.started_at)),
                     detail,
                     status: Some("running".to_string()),
                     output_lines: Vec::new(),
@@ -10606,6 +10636,9 @@ impl ChatWidget {
             params.terminals.push(BackgroundTaskItem {
                 kind: BackgroundTaskKind::Terminal,
                 title: process.command_display.clone(),
+                role: None,
+                task: None,
+                elapsed: Some(background_elapsed_text(process.started_at)),
                 detail,
                 status: Some("running".to_string()),
                 output_lines: process.output_lines.clone(),
@@ -10655,7 +10688,10 @@ impl ChatWidget {
     }
 
     fn should_interrupt_before_submitting_pending_input(&self) -> bool {
-        self.is_cancellable_work_active() || self.user_turn_pending_start
+        self.agent_turn_running
+            || self.mcp_startup_status.is_some()
+            || self.is_review_mode
+            || self.user_turn_pending_start
     }
 
     /// Return the markdown body width available to an active stream.

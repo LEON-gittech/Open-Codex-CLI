@@ -29,6 +29,9 @@ pub(crate) enum BackgroundTaskKind {
 pub(crate) struct BackgroundTaskItem {
     pub(crate) kind: BackgroundTaskKind,
     pub(crate) title: String,
+    pub(crate) role: Option<String>,
+    pub(crate) task: Option<String>,
+    pub(crate) elapsed: Option<String>,
     pub(crate) detail: Vec<String>,
     pub(crate) status: Option<String>,
     pub(crate) output_lines: Vec<String>,
@@ -210,11 +213,17 @@ impl BackgroundTasksView {
         let mut lines = vec![
             "Shell details".bold().into(),
             status_line(item.status.as_deref().unwrap_or("running")),
-            "".into(),
-            label_value_line("Command", &item.title),
-            "".into(),
-            "Output".bold().into(),
         ];
+        if let Some(elapsed) = item.elapsed.as_deref() {
+            lines.push(label_value_line("Running", elapsed));
+        }
+        lines.push("".into());
+        lines.push(label_value_line("Command", &item.title));
+        if let Some(task) = item.task.as_deref() {
+            lines.push(label_value_line("Task", task));
+        }
+        lines.push("".into());
+        lines.push("Output".bold().into());
 
         if item.output_lines.is_empty() {
             lines.push("  No output yet.".italic().into());
@@ -246,8 +255,18 @@ impl BackgroundTasksView {
             "Agent details".bold().into(),
             label_value_line("Agent", &item.title),
         ];
+        if let Some(role) = item.role.as_deref() {
+            lines.push(label_value_line("Role", role));
+        }
         if let Some(status) = item.status.as_deref() {
             lines.push(status_line(status));
+        }
+        if let Some(elapsed) = item.elapsed.as_deref() {
+            lines.push(label_value_line("Running", elapsed));
+        }
+        if let Some(task) = item.task.as_deref() {
+            lines.push("".into());
+            lines.push(label_value_line("Task", task));
         }
 
         lines.push("".into());
@@ -364,7 +383,17 @@ fn append_section(
             title.push(": ".dim());
             title.push(status.to_string().dim());
         }
+        if let Some(elapsed) = item.elapsed.as_deref() {
+            title.push(" · ".dim());
+            title.push(elapsed.to_string().dim());
+        }
         lines.push(Line::from(title));
+        if let Some(role) = item.role.as_deref() {
+            lines.push(label_value_line("    Role", role));
+        }
+        if let Some(task) = item.task.as_deref() {
+            lines.push(label_value_line("    Task", task));
+        }
         for detail in item.detail.iter().take(2) {
             lines.push(Line::from(vec!["    ↳ ".dim(), detail.clone().dim()]));
         }
