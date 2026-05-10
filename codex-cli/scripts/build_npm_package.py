@@ -116,6 +116,10 @@ def platform_packages_for_meta() -> list[str]:
     return packages
 
 
+def platform_dependencies_are_required() -> bool:
+    return bool(os.environ.get("CODEX_NPM_PLATFORM_PACKAGES"))
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Build or stage the Codex CLI npm package.")
     parser.add_argument(
@@ -335,7 +339,12 @@ def stage_sources(staging_dir: Path, version: str, package: str) -> None:
 
     if package == "codex":
         package_json["files"] = ["bin"]
-        package_json["optionalDependencies"] = {
+        dependency_key = (
+            "dependencies"
+            if platform_dependencies_are_required()
+            else "optionalDependencies"
+        )
+        package_json[dependency_key] = {
             CODEX_PLATFORM_PACKAGES[platform_package]["npm_name"]: (
                 f"npm:{CODEX_NPM_NAME}@"
                 f"{compute_platform_package_version(version, CODEX_PLATFORM_PACKAGES[platform_package]['npm_tag'])}"
