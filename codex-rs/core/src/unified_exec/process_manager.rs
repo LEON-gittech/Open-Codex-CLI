@@ -1256,6 +1256,18 @@ impl UnifiedExecProcessManager {
             entry.process.terminate();
         }
     }
+
+    pub(crate) async fn terminate_process(&self, process_id: i32) {
+        let entry = {
+            let mut processes = self.process_store.lock().await;
+            processes.remove(process_id)
+        };
+
+        if let Some(entry) = entry {
+            unregister_network_approval_for_entry(&entry).await;
+            entry.process.terminate();
+        }
+    }
 }
 
 enum ProcessStatus {

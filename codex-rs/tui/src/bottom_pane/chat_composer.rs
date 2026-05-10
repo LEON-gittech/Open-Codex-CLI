@@ -4062,13 +4062,9 @@ impl ChatComposer {
         self.context_window_used_tokens = used_tokens;
     }
 
-    pub(crate) fn set_esc_backtrack_hint(&mut self, show: bool) {
-        self.esc_backtrack_hint = show;
-        if show {
-            self.footer_mode = esc_hint_mode(self.footer_mode, self.is_task_running);
-        } else {
-            self.footer_mode = reset_mode_after_activity(self.footer_mode);
-        }
+    pub(crate) fn set_esc_backtrack_hint(&mut self, _show: bool) {
+        self.esc_backtrack_hint = false;
+        self.footer_mode = reset_mode_after_activity(self.footer_mode);
     }
 
     pub(crate) fn set_status_line(&mut self, status_line: Option<Line<'static>>) -> bool {

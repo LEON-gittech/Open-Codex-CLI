@@ -653,6 +653,12 @@ impl App {
                 app_server.review_start(thread_id, target.clone()).await?;
                 Ok(true)
             }
+            AppCommand::TerminateBackgroundTerminal { process_id } => {
+                app_server
+                    .thread_background_terminal_terminate(thread_id, process_id.clone())
+                    .await?;
+                Ok(true)
+            }
             AppCommand::CleanBackgroundTerminals => {
                 app_server
                     .thread_background_terminals_clean(thread_id)

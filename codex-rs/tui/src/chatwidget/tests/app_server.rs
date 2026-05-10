@@ -319,6 +319,174 @@ async fn down_enter_subagent_opens_agent_detail_without_selecting_thread() {
 }
 
 #[tokio::test]
+async fn down_x_subagent_requests_stop_event() {
+    let (mut chat, mut rx, mut op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    let sender_thread_id = ThreadId::new();
+    let spawned_thread_id = ThreadId::new();
+    chat.set_collab_agent_metadata(
+        spawned_thread_id,
+        Some("Robie".to_string()),
+        Some("explorer".to_string()),
+    );
+
+    chat.handle_server_notification(
+        ServerNotification::ItemCompleted(ItemCompletedNotification {
+            thread_id: "thread-1".to_string(),
+            turn_id: "turn-1".to_string(),
+            completed_at_ms: 0,
+            item: AppServerThreadItem::CollabAgentToolCall {
+                id: "call-spawn".to_string(),
+                tool: AppServerCollabAgentTool::SpawnAgent,
+                status: AppServerCollabAgentToolCallStatus::Completed,
+                sender_thread_id: sender_thread_id.to_string(),
+                receiver_thread_ids: vec![spawned_thread_id.to_string()],
+                prompt: Some("Explore the repo".to_string()),
+                model: None,
+                reasoning_effort: None,
+                agents_states: HashMap::from([(
+                    spawned_thread_id.to_string(),
+                    AppServerCollabAgentState {
+                        status: AppServerCollabAgentStatus::Running,
+                        message: Some("Reading files".to_string()),
+                        agent_nickname: Some("Robie".to_string()),
+                        agent_role: Some("explorer".to_string()),
+                    },
+                )]),
+            },
+        }),
+        /*replay_kind*/ None,
+    );
+    drain_insert_history(&mut rx);
+
+    chat.handle_key_event(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+    chat.handle_key_event(KeyEvent::new(KeyCode::Char('x'), KeyModifiers::NONE));
+
+    assert!(
+        op_rx.try_recv().is_err(),
+        "background panel should route stop through the app layer"
+    );
+    assert_matches!(
+        rx.try_recv(),
+        Ok(AppEvent::StopBackgroundSubagent { thread_id }) if thread_id == spawned_thread_id
+    );
+    assert_eq!(chat.bottom_pane.active_view_id(), None);
+}
+
+#[tokio::test]
+async fn background_subagent_completion_inserts_visible_notice() {
+    let (mut chat, mut rx, mut op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    let sender_thread_id = ThreadId::new();
+    let spawned_thread_id = ThreadId::new();
+    chat.set_collab_agent_metadata(
+        spawned_thread_id,
+        Some("Robie".to_string()),
+        Some("explorer".to_string()),
+    );
+
+    chat.handle_server_notification(
+        ServerNotification::ItemCompleted(ItemCompletedNotification {
+            thread_id: "thread-1".to_string(),
+            turn_id: "turn-1".to_string(),
+            completed_at_ms: 0,
+            item: AppServerThreadItem::CollabAgentToolCall {
+                id: "call-spawn".to_string(),
+                tool: AppServerCollabAgentTool::SpawnAgent,
+                status: AppServerCollabAgentToolCallStatus::Completed,
+                sender_thread_id: sender_thread_id.to_string(),
+                receiver_thread_ids: vec![spawned_thread_id.to_string()],
+                prompt: Some("Explore the repo".to_string()),
+                model: None,
+                reasoning_effort: None,
+                agents_states: HashMap::from([(
+                    spawned_thread_id.to_string(),
+                    AppServerCollabAgentState {
+                        status: AppServerCollabAgentStatus::Running,
+                        message: Some("Reading files".to_string()),
+                        agent_nickname: Some("Robie".to_string()),
+                        agent_role: Some("explorer".to_string()),
+                    },
+                )]),
+            },
+        }),
+        /*replay_kind*/ None,
+    );
+    assert_eq!(chat.background_activities.len(), 1);
+    drain_insert_history(&mut rx);
+
+    chat.handle_server_notification(
+        ServerNotification::ItemCompleted(ItemCompletedNotification {
+            thread_id: "thread-1".to_string(),
+            turn_id: "turn-1".to_string(),
+            completed_at_ms: 0,
+            item: AppServerThreadItem::CollabAgentToolCall {
+                id: format!("agent-status:{spawned_thread_id}"),
+                tool: AppServerCollabAgentTool::StatusUpdate,
+                status: AppServerCollabAgentToolCallStatus::Completed,
+                sender_thread_id: sender_thread_id.to_string(),
+                receiver_thread_ids: vec![spawned_thread_id.to_string()],
+                prompt: None,
+                model: None,
+                reasoning_effort: None,
+                agents_states: HashMap::from([(
+                    spawned_thread_id.to_string(),
+                    AppServerCollabAgentState {
+                        status: AppServerCollabAgentStatus::Completed,
+                        message: Some("Final summary ready".to_string()),
+                        agent_nickname: Some("Robie".to_string()),
+                        agent_role: Some("explorer".to_string()),
+                    },
+                )]),
+            },
+        }),
+        /*replay_kind*/ None,
+    );
+
+    assert!(chat.background_activities.is_empty());
+    let rendered = drain_insert_history(&mut rx)
+        .into_iter()
+        .map(|lines| lines_to_single_string(&lines))
+        .collect::<String>();
+    assert!(
+        rendered.contains("Robie [explorer] completed.")
+            && rendered.contains("Final summary ready"),
+        "completion should be visible in the foreground history: {rendered:?}"
+    );
+
+    chat.handle_key_event(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+
+    assert!(op_rx.try_recv().is_err());
+    assert_ne!(chat.bottom_pane.active_view_id(), Some("background_tasks"));
+}
+
+#[tokio::test]
+async fn down_panel_lists_latest_plan_tasks() {
+    let (mut chat, mut rx, mut op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.on_plan_update(UpdatePlanArgs {
+        explanation: None,
+        plan: vec![
+            UpdatePlanItemArg {
+                step: "Fix background stop actions".to_string(),
+                status: StepStatus::Completed,
+            },
+            UpdatePlanItemArg {
+                step: "Publish npm package".to_string(),
+                status: StepStatus::InProgress,
+            },
+        ],
+    });
+    drain_insert_history(&mut rx);
+
+    chat.handle_key_event(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+
+    assert!(op_rx.try_recv().is_err());
+    assert_eq!(chat.bottom_pane.active_view_id(), Some("background_tasks"));
+    let rendered = render_bottom_popup(&chat, /*width*/ 96);
+    assert!(rendered.contains("Tasks (2)"));
+    assert!(rendered.contains("[x] Fix background stop actions"));
+    assert!(rendered.contains("[*] Publish npm package"));
+}
+
+#[tokio::test]
 async fn spawned_agent_activity_survives_parent_turn_completion_and_can_be_listed() {
     let (mut chat, mut rx, mut op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
     let sender_thread_id = ThreadId::new();

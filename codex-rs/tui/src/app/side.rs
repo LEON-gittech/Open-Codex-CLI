@@ -365,6 +365,27 @@ impl App {
         self.discard_side_thread_local(thread_id).await;
     }
 
+    pub(super) async fn stop_background_subagent(
+        &mut self,
+        app_server: &mut AppServerSession,
+        thread_id: ThreadId,
+    ) {
+        let label = self.thread_label(thread_id);
+        match app_server.thread_agent_close(thread_id).await {
+            Ok(()) => {
+                self.mark_agent_picker_thread_closed(thread_id);
+                self.chat_widget
+                    .mark_background_subagent_stopping(thread_id, &label);
+                self.sync_active_agent_label();
+            }
+            Err(err) => {
+                let message = format!("Failed to stop subagent {label}: {err}");
+                tracing::warn!("{message}");
+                self.chat_widget.add_error_message(message);
+            }
+        }
+    }
+
     async fn discard_side_thread_local(&mut self, thread_id: ThreadId) {
         self.abort_thread_event_listener(thread_id);
         self.thread_event_channels.remove(&thread_id);

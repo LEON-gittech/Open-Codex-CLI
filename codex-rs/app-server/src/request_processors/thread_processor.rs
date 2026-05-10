@@ -546,6 +546,25 @@ impl ThreadRequestProcessor {
             .map(|response| Some(response.into()))
     }
 
+    pub(crate) async fn thread_background_terminal_terminate(
+        &self,
+        request_id: &ConnectionRequestId,
+        params: ThreadBackgroundTerminalTerminateParams,
+    ) -> Result<Option<ClientResponsePayload>, JSONRPCErrorError> {
+        self.thread_background_terminal_terminate_inner(request_id, params)
+            .await
+            .map(|response| Some(response.into()))
+    }
+
+    pub(crate) async fn thread_agent_close(
+        &self,
+        params: ThreadAgentCloseParams,
+    ) -> Result<Option<ClientResponsePayload>, JSONRPCErrorError> {
+        self.thread_agent_close_inner(params)
+            .await
+            .map(|response| Some(response.into()))
+    }
+
     pub(crate) async fn thread_rollback(
         &self,
         request_id: &ConnectionRequestId,
@@ -1717,6 +1736,44 @@ impl ThreadRequestProcessor {
                 internal_error(format!("failed to clean background terminals: {err}"))
             })?;
         Ok(ThreadBackgroundTerminalsCleanResponse {})
+    }
+
+    async fn thread_background_terminal_terminate_inner(
+        &self,
+        request_id: &ConnectionRequestId,
+        params: ThreadBackgroundTerminalTerminateParams,
+    ) -> Result<ThreadBackgroundTerminalTerminateResponse, JSONRPCErrorError> {
+        let ThreadBackgroundTerminalTerminateParams {
+            thread_id,
+            process_id,
+        } = params;
+        let process_id = process_id.parse::<i32>().map_err(|err| {
+            invalid_request(format!("invalid background terminal process id: {err}"))
+        })?;
+
+        let (_, thread) = self.load_thread(&thread_id).await?;
+        self.submit_core_op(
+            request_id,
+            thread.as_ref(),
+            Op::TerminateBackgroundTerminal { process_id },
+        )
+        .await
+        .map_err(|err| internal_error(format!("failed to terminate background terminal: {err}")))?;
+        Ok(ThreadBackgroundTerminalTerminateResponse {})
+    }
+
+    async fn thread_agent_close_inner(
+        &self,
+        params: ThreadAgentCloseParams,
+    ) -> Result<ThreadAgentCloseResponse, JSONRPCErrorError> {
+        let ThreadAgentCloseParams { thread_id } = params;
+        let thread_id = ThreadId::from_string(&thread_id)
+            .map_err(|err| invalid_request(format!("invalid thread id: {err}")))?;
+        self.thread_manager
+            .close_agent(thread_id)
+            .await
+            .map_err(|err| internal_error(format!("failed to close subagent: {err}")))?;
+        Ok(ThreadAgentCloseResponse {})
     }
 
     async fn thread_shell_command_inner(

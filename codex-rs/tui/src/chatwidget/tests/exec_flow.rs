@@ -675,6 +675,29 @@ async fn unified_exec_background_terminal_does_not_block_chat_input() {
 }
 
 #[tokio::test]
+async fn main_turn_activity_after_background_terminal_restores_working() {
+    let (mut chat, _rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.thread_id = Some(ThreadId::new());
+    handle_turn_started(&mut chat, "turn-1");
+
+    begin_unified_exec_startup(&mut chat, "call-bg", "proc-bg", "cargo test -p codex-core");
+    terminal_interaction(&mut chat, "call-bg-stdin", "proc-bg", "");
+
+    assert!(chat.agent_turn_running);
+    assert!(chat.task_backgrounded);
+    assert!(!chat.is_task_running_for_test());
+    assert!(chat.bottom_pane.status_widget().is_none());
+
+    handle_agent_message_delta(&mut chat, "Continuing with the fix.");
+
+    assert!(chat.agent_turn_running);
+    assert!(!chat.task_backgrounded);
+    assert!(chat.is_task_running_for_test());
+    assert!(chat.bottom_pane.status_widget().is_some());
+    assert_eq!(chat.current_status.header, "Working");
+}
+
+#[tokio::test]
 async fn unified_exec_wait_before_streamed_agent_message_snapshot() {
     let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
     handle_turn_started(&mut chat, "turn-1");
@@ -801,10 +824,14 @@ async fn down_opens_background_terminal_process_list_without_submitting_core_op(
 #[tokio::test]
 async fn down_enter_background_terminal_opens_shell_detail_without_core_op() {
     let (mut chat, mut rx, mut op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    let command = concat!(
+        "PYTHONPATH=src .venv/bin/python -u src/trace_generator.py ",
+        "--config config/running_settings/config_pipeline_meituan_sessions_20_gpt52_human_feedback.toml",
+    );
     chat.unified_exec_processes.push(UnifiedExecProcessSummary {
         key: "proc-1".to_string(),
         call_id: "call-1".to_string(),
-        command_display: "sleep 300".to_string(),
+        command_display: command.to_string(),
         started_at: std::time::Instant::now(),
         recent_chunks: vec!["tick 02".to_string()],
         output_lines: vec!["tick 01".to_string(), "tick 02".to_string()],
@@ -823,18 +850,128 @@ async fn down_enter_background_terminal_opens_shell_detail_without_core_op() {
         "terminal detail should stay in the bottom pane"
     );
     assert_eq!(chat.bottom_pane.active_view_id(), Some("background_tasks"));
-    let combined = render_bottom_popup(&chat, /*width*/ 96);
+    let combined = render_bottom_popup(&chat, /*width*/ 64);
     assert!(
         combined.contains("Shell details"),
         "Enter should open terminal detail: {combined:?}"
     );
     assert!(
-        combined.contains("Command") && combined.contains("sleep 300"),
-        "terminal detail should include the command: {combined:?}"
+        combined.contains("Command: PYTHONPATH=src .venv/bin/")
+            && combined.contains("python -u src/trace_generator.py")
+            && combined.contains("--config config/running_settings/")
+            && combined.contains("config_pipeline_meituan_sessions_20_gpt52_human_fee")
+            && combined.contains("dback.toml"),
+        "terminal detail should wrap the full command instead of truncating it: {combined:?}"
     );
     assert!(
         combined.contains("Output") && combined.contains("tick 01") && combined.contains("tick 02"),
         "terminal detail should include output tail: {combined:?}"
+    );
+}
+
+#[tokio::test]
+async fn down_x_background_terminal_requests_stop_event() {
+    let (mut chat, mut rx, mut op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    let thread_id = ThreadId::new();
+    chat.thread_id = Some(thread_id);
+    chat.unified_exec_processes.push(UnifiedExecProcessSummary {
+        key: "proc-1".to_string(),
+        call_id: "call-1".to_string(),
+        command_display: "sleep 300".to_string(),
+        started_at: std::time::Instant::now(),
+        recent_chunks: vec!["tick 01".to_string()],
+        output_lines: vec!["tick 01".to_string()],
+    });
+    chat.sync_unified_exec_footer();
+
+    chat.handle_key_event(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+    chat.handle_key_event(KeyEvent::new(KeyCode::Char('x'), KeyModifiers::NONE));
+
+    assert!(
+        op_rx.try_recv().is_err(),
+        "background panel should route stop through the app layer"
+    );
+    assert_matches!(
+        rx.try_recv(),
+        Ok(AppEvent::StopBackgroundTerminal {
+            thread_id: stopped_thread_id,
+            process_id,
+        }) if stopped_thread_id == thread_id && process_id == "proc-1"
+    );
+    assert_eq!(chat.bottom_pane.active_view_id(), None);
+}
+
+#[tokio::test]
+async fn down_x_background_terminal_stops_only_selected_process() {
+    let (mut chat, mut rx, mut op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    let thread_id = ThreadId::new();
+    chat.thread_id = Some(thread_id);
+    chat.unified_exec_processes.push(UnifiedExecProcessSummary {
+        key: "proc-1".to_string(),
+        call_id: "call-1".to_string(),
+        command_display: "sleep 300".to_string(),
+        started_at: std::time::Instant::now(),
+        recent_chunks: vec!["first".to_string()],
+        output_lines: vec!["first".to_string()],
+    });
+    chat.unified_exec_processes.push(UnifiedExecProcessSummary {
+        key: "proc-2".to_string(),
+        call_id: "call-2".to_string(),
+        command_display: "sleep 600".to_string(),
+        started_at: std::time::Instant::now(),
+        recent_chunks: vec!["second".to_string()],
+        output_lines: vec!["second".to_string()],
+    });
+    chat.sync_unified_exec_footer();
+
+    chat.handle_key_event(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+    chat.handle_key_event(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+    chat.handle_key_event(KeyEvent::new(KeyCode::Char('x'), KeyModifiers::NONE));
+
+    assert!(
+        op_rx.try_recv().is_err(),
+        "background panel should route stop through the app layer"
+    );
+    assert_matches!(
+        rx.try_recv(),
+        Ok(AppEvent::StopBackgroundTerminal {
+            thread_id: stopped_thread_id,
+            process_id,
+        }) if stopped_thread_id == thread_id && process_id == "proc-2"
+    );
+    assert_eq!(chat.bottom_pane.active_view_id(), None);
+}
+
+#[tokio::test]
+async fn open_background_task_panel_refreshes_when_terminal_state_changes() {
+    let (mut chat, _rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.unified_exec_processes.push(UnifiedExecProcessSummary {
+        key: "proc-1".to_string(),
+        call_id: "call-1".to_string(),
+        command_display: "sleep 300".to_string(),
+        started_at: std::time::Instant::now(),
+        recent_chunks: vec!["tick 01".to_string()],
+        output_lines: vec!["tick 01".to_string()],
+    });
+    chat.sync_unified_exec_footer();
+
+    chat.handle_key_event(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+    let initial = render_bottom_popup(&chat, /*width*/ 96);
+    assert!(
+        initial.contains("Terminals (1)"),
+        "initial panel: {initial}"
+    );
+
+    chat.track_unified_exec_process_end("call-1", Some("proc-1"));
+
+    let refreshed = render_bottom_popup(&chat, /*width*/ 96);
+    assert!(
+        refreshed.contains("Terminals (0)"),
+        "open panel should refresh after terminal state changes: {refreshed}"
+    );
+    assert!(
+        refreshed.contains("No background terminals."),
+        "open panel should render the empty terminal state: {refreshed}"
     );
 }
 
@@ -936,6 +1073,15 @@ async fn down_lists_backgrounded_active_exec_without_submitting_core_op() {
     assert!(combined.contains("sleep 5"));
     assert!(combined.contains("done"));
     assert_eq!(combined.matches("sleep 5").count(), 1);
+
+    assert!(op_rx.try_recv().is_err());
+    assert_eq!(chat.bottom_pane.active_view_id(), Some("background_tasks"));
+    let refreshed = render_bottom_popup(&chat, /*width*/ 96);
+    assert!(
+        refreshed.contains("Terminals (0)") && refreshed.contains("No background terminals."),
+        "completed terminal should be removed from the live task panel: {refreshed:?}"
+    );
+    assert!(!refreshed.contains("Completed ("));
 }
 
 #[tokio::test]

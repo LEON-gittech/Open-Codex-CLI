@@ -68,10 +68,12 @@ pub(crate) use app_link_view::AppLinkViewParams;
 pub(crate) use approval_overlay::ApprovalOverlay;
 pub(crate) use approval_overlay::ApprovalRequest;
 pub(crate) use approval_overlay::format_requested_permissions_rule;
+pub(crate) use background_tasks_view::BACKGROUND_TASKS_VIEW_ID;
 pub(crate) use background_tasks_view::BackgroundTaskItem;
 pub(crate) use background_tasks_view::BackgroundTaskKind;
 pub(crate) use background_tasks_view::BackgroundTasksView;
 pub(crate) use background_tasks_view::BackgroundTasksViewParams;
+pub(crate) use background_tasks_view::PlanTaskItem;
 pub(crate) use mcp_server_elicitation::McpServerElicitationFormRequest;
 pub(crate) use mcp_server_elicitation::McpServerElicitationOverlay;
 pub(crate) use request_user_input::RequestUserInputOverlay;
@@ -944,9 +946,8 @@ impl BottomPane {
     }
 
     pub(crate) fn show_esc_backtrack_hint(&mut self) {
-        self.esc_backtrack_hint = true;
-        self.composer.set_esc_backtrack_hint(/*show*/ true);
-        self.request_redraw();
+        self.esc_backtrack_hint = false;
+        self.composer.set_esc_backtrack_hint(/*show*/ false);
     }
 
     pub(crate) fn clear_esc_backtrack_hint(&mut self) {
@@ -1225,12 +1226,35 @@ impl BottomPane {
         self.push_view(view);
     }
 
-    pub(crate) fn show_background_tasks_view(&mut self, params: BackgroundTasksViewParams) {
+    pub(crate) fn show_background_tasks_view(
+        &mut self,
+        params: BackgroundTasksViewParams,
+        thread_id: Option<ThreadId>,
+    ) {
         self.push_view(Box::new(BackgroundTasksView::new(
             params,
-            self.thread_id,
+            thread_id.or(self.thread_id),
             self.app_event_tx.clone(),
         )));
+    }
+
+    pub(crate) fn update_background_tasks_view_if_active(
+        &mut self,
+        params: BackgroundTasksViewParams,
+    ) -> bool {
+        let Some(view) = self.view_stack.last_mut() else {
+            return false;
+        };
+        if view.view_id() != Some(BACKGROUND_TASKS_VIEW_ID) {
+            return false;
+        }
+        if view.update_background_tasks(params) {
+            self.request_redraw();
+            self.schedule_active_view_frame();
+            true
+        } else {
+            false
+        }
     }
 
     /// Called when the agent requests user approval.

@@ -54,6 +54,7 @@ pub(super) fn sync_collab_agent_background_activity(chat: &mut ChatWidget, item:
 
     if changed {
         refresh_task_backgrounded_from_activity_state(chat);
+        chat.refresh_background_tasks_view_if_open();
         chat.request_redraw();
     }
 }
@@ -118,6 +119,7 @@ fn sync_collab_agent_activity_state(
         });
         true
     } else {
+        notify_collab_agent_background_completion(chat, thread_id, state);
         remove_collab_agent_background_activity(chat, thread_id)
     }
 }
@@ -155,6 +157,50 @@ fn remove_collab_agent_background_activity(chat: &mut ChatWidget, thread_id: Thr
     } else {
         false
     }
+}
+
+fn notify_collab_agent_background_completion(
+    chat: &mut ChatWidget,
+    thread_id: ThreadId,
+    state: &CollabAgentState,
+) {
+    let Some(title) = chat.background_activities.iter().find_map(|activity| {
+        activity
+            .cell
+            .as_any()
+            .downcast_ref::<multi_agents::CollabAgentActivityCell>()
+            .filter(|cell| cell.thread_id() == thread_id)
+            .map(|_| {
+                let lines = activity.cell.display_lines(u16::MAX);
+                let raw_title = lines
+                    .first()
+                    .map(super::line_to_plain_string)
+                    .unwrap_or_else(|| format!("Subagent {thread_id}"));
+                super::split_background_task_status(raw_title).0
+            })
+    }) else {
+        return;
+    };
+
+    let message = match state.status {
+        CollabAgentStatus::Completed => "completed",
+        CollabAgentStatus::Interrupted => "interrupted",
+        CollabAgentStatus::Errored => "failed",
+        CollabAgentStatus::Shutdown => "closed",
+        CollabAgentStatus::NotFound => "not found",
+        CollabAgentStatus::PendingInit | CollabAgentStatus::Running => return,
+    };
+    let mut notification = format!("{title} {message}.");
+    if let Some(summary) = state
+        .message
+        .as_deref()
+        .map(str::trim)
+        .filter(|summary| !summary.is_empty())
+    {
+        notification.push(' ');
+        notification.push_str(summary);
+    }
+    chat.add_info_message(notification, /*hint*/ None);
 }
 
 fn refresh_task_backgrounded_from_activity_state(chat: &mut ChatWidget) {

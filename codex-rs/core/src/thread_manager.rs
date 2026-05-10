@@ -715,6 +715,11 @@ impl ThreadManager {
         self.state.threads.write().await.remove(thread_id)
     }
 
+    /// Close a spawned subagent thread and any live descendants.
+    pub async fn close_agent(&self, thread_id: ThreadId) -> CodexResult<String> {
+        self.agent_control().close_agent(thread_id).await
+    }
+
     /// Tries to shut down all tracked threads concurrently within the provided timeout.
     /// Threads that complete shutdown are removed from the manager; incomplete shutdowns
     /// remain tracked so callers can retry or inspect them later.

@@ -128,6 +128,15 @@ pub(crate) enum KeymapEditIntent {
 pub(crate) enum AppEvent {
     /// Open the agent picker for switching active threads.
     OpenAgentPicker,
+    /// Stop a spawned subagent from the background task panel.
+    StopBackgroundSubagent {
+        thread_id: ThreadId,
+    },
+    /// Stop one selected background terminal process from the background task panel.
+    StopBackgroundTerminal {
+        thread_id: ThreadId,
+        process_id: String,
+    },
     /// Switch the active thread to the selected agent.
     SelectAgentThread(ThreadId),
 

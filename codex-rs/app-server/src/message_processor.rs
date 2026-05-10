@@ -981,6 +981,9 @@ impl MessageProcessor {
                     .thread_unarchive(request_id.clone(), params)
                     .await
             }
+            ClientRequest::ThreadAgentClose { params, .. } => {
+                self.thread_processor.thread_agent_close(params).await
+            }
             ClientRequest::ThreadCompactStart { params, .. } => {
                 self.thread_processor
                     .thread_compact_start(&request_id, params)
@@ -989,6 +992,11 @@ impl MessageProcessor {
             ClientRequest::ThreadBackgroundTerminalsClean { params, .. } => {
                 self.thread_processor
                     .thread_background_terminals_clean(&request_id, params)
+                    .await
+            }
+            ClientRequest::ThreadBackgroundTerminalTerminate { params, .. } => {
+                self.thread_processor
+                    .thread_background_terminal_terminate(&request_id, params)
                     .await
             }
             ClientRequest::ThreadRollback { params, .. } => {

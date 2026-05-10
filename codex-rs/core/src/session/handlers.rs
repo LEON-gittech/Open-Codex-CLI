@@ -67,6 +67,10 @@ pub async fn interrupt(sess: &Arc<Session>) {
     sess.interrupt_task().await;
 }
 
+pub async fn terminate_background_terminal(sess: &Arc<Session>, process_id: i32) {
+    sess.close_unified_exec_process(process_id).await;
+}
+
 pub async fn clean_background_terminals(sess: &Arc<Session>) {
     sess.close_unified_exec_processes().await;
 }
@@ -721,6 +725,10 @@ pub(super) async fn submission_loop(
             match sub.op.clone() {
                 Op::Interrupt => {
                     interrupt(&sess).await;
+                    false
+                }
+                Op::TerminateBackgroundTerminal { process_id } => {
+                    terminate_background_terminal(&sess, process_id).await;
                     false
                 }
                 Op::CleanBackgroundTerminals => {

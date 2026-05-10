@@ -166,6 +166,20 @@
     },
     "CollabAgentState": {
       "properties": {
+        "agentNickname": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "agentRole": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "message": {
           "type": [
             "string",

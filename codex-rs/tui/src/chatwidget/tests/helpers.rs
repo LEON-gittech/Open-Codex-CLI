@@ -304,6 +304,7 @@ pub(super) async fn make_chatwidget_manual(
         saw_plan_update_this_turn: false,
         saw_plan_item_this_turn: false,
         last_plan_progress: None,
+        last_plan_items: Vec::new(),
         plan_delta_buffer: String::new(),
         plan_item_active: false,
         turn_runtime_metrics: RuntimeMetricsSummary::default(),

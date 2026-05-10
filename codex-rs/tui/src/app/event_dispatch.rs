@@ -372,22 +372,22 @@ impl App {
                     if let Some(parent) = path.parent()
                         && let Err(err) = tokio::fs::create_dir_all(parent).await
                     {
-                        let _ = tx.send(AppEvent::MemoryCommandResult {
-                            text: format!("Failed to create export directory: {}", err),
+                        tx.send(AppEvent::MemoryCommandResult {
+                            text: format!("Failed to create export directory: {err}"),
                             is_error: true,
                         });
                         return;
                     }
                     match tokio::fs::write(&path, transcript).await {
                         Ok(()) => {
-                            let _ = tx.send(AppEvent::MemoryCommandResult {
+                            tx.send(AppEvent::MemoryCommandResult {
                                 text: format!("Exported session to {}.", path.display()),
                                 is_error: false,
                             });
                         }
                         Err(err) => {
-                            let _ = tx.send(AppEvent::MemoryCommandResult {
-                                text: format!("Failed to export session: {}", err),
+                            tx.send(AppEvent::MemoryCommandResult {
+                                text: format!("Failed to export session: {err}"),
                                 is_error: true,
                             });
                         }
@@ -756,9 +756,13 @@ impl App {
             }
             AppEvent::UpdateReasoningEffort(effort) => {
                 self.on_update_reasoning_effort(effort);
+                self.sync_active_thread_model_settings_to_cached_session()
+                    .await;
             }
             AppEvent::UpdateModel(model) => {
                 self.chat_widget.set_model(&model);
+                self.sync_active_thread_model_settings_to_cached_session()
+                    .await;
             }
             AppEvent::UpdateCollaborationMode(mask) => {
                 self.chat_widget.set_collaboration_mask(mask);
@@ -1309,11 +1313,13 @@ impl App {
             }
             AppEvent::PersistServiceTierSelection { service_tier } => {
                 self.refresh_status_line();
-                let profile = self.active_profile.as_deref();
+                let profile = self.active_profile.clone();
                 self.config.service_tier =
                     service_tier.map(|service_tier| service_tier.request_value().to_string());
+                self.sync_active_thread_model_settings_to_cached_session()
+                    .await;
                 let mut edits = ConfigEditsBuilder::new(&self.config.codex_home)
-                    .with_profile(profile)
+                    .with_profile(profile.as_deref())
                     .set_service_tier(service_tier);
                 if service_tier.is_none() {
                     self.config.notices.fast_default_opt_out = Some(true);
@@ -1330,7 +1336,7 @@ impl App {
                             "off"
                         };
                         let mut message = format!("Fast mode set to {status}");
-                        if let Some(profile) = profile {
+                        if let Some(profile) = profile.as_deref() {
                             message.push_str(" for ");
                             message.push_str(profile);
                             message.push_str(" profile");
@@ -1339,7 +1345,7 @@ impl App {
                     }
                     Err(err) => {
                         tracing::error!(error = %err, "failed to persist fast mode selection");
-                        if let Some(profile) = profile {
+                        if let Some(profile) = profile.as_deref() {
                             self.chat_widget.add_error_message(format!(
                                 "Failed to save Fast mode for profile `{profile}`: {err}"
                             ));
@@ -1653,6 +1659,22 @@ impl App {
             }
             AppEvent::OpenAgentPicker => {
                 self.open_agent_picker(app_server).await;
+            }
+            AppEvent::StopBackgroundSubagent { thread_id } => {
+                self.stop_background_subagent(app_server, thread_id).await;
+            }
+            AppEvent::StopBackgroundTerminal {
+                thread_id,
+                process_id,
+            } => {
+                self.submit_thread_op(
+                    app_server,
+                    thread_id,
+                    AppCommand::terminate_background_terminal(process_id.clone()),
+                )
+                .await?;
+                self.chat_widget
+                    .mark_background_terminal_stopping_from_panel(&process_id);
             }
             AppEvent::SelectAgentThread(thread_id) => {
                 self.select_agent_thread_and_discard_side(tui, app_server, thread_id)

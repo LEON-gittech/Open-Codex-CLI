@@ -889,7 +889,7 @@ async fn empty_enter_during_task_does_not_queue() {
 }
 
 #[tokio::test]
-async fn pending_steer_esc_does_not_steal_vim_insert_escape() {
+async fn pending_steer_esc_interrupts_before_vim_insert_escape() {
     let (mut chat, _rx, mut op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
     let esc = KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE);
 
@@ -901,18 +901,13 @@ async fn pending_steer_esc_does_not_steal_vim_insert_escape() {
     assert!(chat.should_handle_vim_insert_escape(esc));
     chat.handle_key_event(esc);
 
-    assert!(!chat.should_handle_vim_insert_escape(esc));
-    assert_eq!(chat.pending_steers.len(), 1);
-    assert!(!chat.submit_pending_steers_after_interrupt);
-    assert!(op_rx.try_recv().is_err());
-
-    chat.handle_key_event(esc);
-
     match op_rx.try_recv() {
         Ok(Op::Interrupt) => {}
         other => panic!("expected Op::Interrupt, got {other:?}"),
     }
     assert!(chat.submit_pending_steers_after_interrupt);
+    assert_eq!(chat.pending_steers.len(), 1);
+    assert!(chat.should_handle_vim_insert_escape(esc));
 }
 
 #[tokio::test]

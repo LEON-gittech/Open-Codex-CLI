@@ -6,6 +6,7 @@ use codex_app_server_protocol::ToolRequestUserInputParams;
 use crossterm::event::KeyEvent;
 
 use super::CancellationEvent;
+use super::background_tasks_view::BackgroundTasksViewParams;
 
 /// Reason an active bottom-pane view finished.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -47,6 +48,11 @@ pub(crate) trait BottomPaneView: Renderable {
     /// across external refreshes.
     fn selected_index(&self) -> Option<usize> {
         None
+    }
+
+    /// Refresh live background task data for views that render task state.
+    fn update_background_tasks(&mut self, _params: BackgroundTasksViewParams) -> bool {
+        false
     }
 
     /// Active tab id for tabbed list-based views.

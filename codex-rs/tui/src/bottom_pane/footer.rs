@@ -729,7 +729,6 @@ fn footer_from_props_lines(
         FooterMode::ShortcutOverlay => {
             let state = ShortcutsState {
                 use_shift_enter_hint: props.use_shift_enter_hint,
-                esc_backtrack_hint: props.esc_backtrack_hint,
                 is_wsl: props.is_wsl,
                 collaboration_modes_enabled: props.collaboration_modes_enabled,
                 key_hints,
@@ -851,7 +850,6 @@ fn footer_hint_items_line(items: &[(String, String)]) -> Line<'static> {
 #[derive(Clone, Copy, Debug)]
 struct ShortcutsState {
     use_shift_enter_hint: bool,
-    esc_backtrack_hint: bool,
     is_wsl: bool,
     collaboration_modes_enabled: bool,
     key_hints: FooterKeyHints,
@@ -861,19 +859,8 @@ fn quit_shortcut_reminder_line(key: KeyBinding) -> Line<'static> {
     Line::from(vec![key.into(), " again to quit".into()]).dim()
 }
 
-fn esc_hint_line(esc_backtrack_hint: bool) -> Line<'static> {
-    let esc = key_hint::plain(KeyCode::Esc);
-    if esc_backtrack_hint {
-        Line::from(vec![esc.into(), " again to edit previous message".into()]).dim()
-    } else {
-        Line::from(vec![
-            esc.into(),
-            " ".into(),
-            esc.into(),
-            " to edit previous message".into(),
-        ])
-        .dim()
-    }
+fn esc_hint_line(_esc_backtrack_hint: bool) -> Line<'static> {
+    Line::from("")
 }
 
 fn shortcut_overlay_lines(state: ShortcutsState) -> Vec<Line<'static>> {
@@ -884,7 +871,6 @@ fn shortcut_overlay_lines(state: ShortcutsState) -> Vec<Line<'static>> {
     let mut file_paths = Line::from("");
     let mut paste_image = Line::from("");
     let mut external_editor = Line::from("");
-    let mut edit_previous = Line::from("");
     let mut history_search = Line::from("");
     let mut quit = Line::from("");
     let mut show_transcript = Line::from("");
@@ -902,7 +888,7 @@ fn shortcut_overlay_lines(state: ShortcutsState) -> Vec<Line<'static>> {
                 ShortcutId::FilePaths => file_paths = text,
                 ShortcutId::PasteImage => paste_image = text,
                 ShortcutId::ExternalEditor => external_editor = text,
-                ShortcutId::EditPrevious => edit_previous = text,
+                ShortcutId::EditPrevious => {}
                 ShortcutId::HistorySearch => history_search = text,
                 ShortcutId::Quit => quit = text,
                 ShortcutId::ShowTranscript => show_transcript = text,
@@ -921,7 +907,6 @@ fn shortcut_overlay_lines(state: ShortcutsState) -> Vec<Line<'static>> {
         file_paths,
         paste_image,
         external_editor,
-        edit_previous,
         history_search,
         quit,
         reasoning_down,
@@ -1084,17 +1069,7 @@ impl ShortcutDescriptor {
         }?;
         let mut line = Line::from(vec![self.prefix.into(), key.into()]);
         match self.id {
-            ShortcutId::EditPrevious => {
-                if state.esc_backtrack_hint {
-                    line.push_span(" again to edit previous message");
-                } else {
-                    line.extend(vec![
-                        " ".into(),
-                        key.into(),
-                        " to edit previous message".into(),
-                    ]);
-                }
-            }
+            ShortcutId::EditPrevious => {}
             _ => line.push_span(self.label),
         };
         Some(line)
@@ -1989,7 +1964,6 @@ mod tests {
         let actual_key = descriptor
             .binding_for(ShortcutsState {
                 use_shift_enter_hint: false,
-                esc_backtrack_hint: false,
                 is_wsl,
                 collaboration_modes_enabled: false,
                 key_hints: FooterKeyHints::default_bindings(),

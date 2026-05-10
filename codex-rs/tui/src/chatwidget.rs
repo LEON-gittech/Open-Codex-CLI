@@ -54,6 +54,7 @@ use crate::audio_device::list_realtime_audio_device_names;
 use crate::bottom_pane::BackgroundTaskItem;
 use crate::bottom_pane::BackgroundTaskKind;
 use crate::bottom_pane::BackgroundTasksViewParams;
+use crate::bottom_pane::PlanTaskItem;
 use crate::bottom_pane::StatusLineItem;
 use crate::bottom_pane::StatusLineSetupView;
 use crate::bottom_pane::StatusSurfacePreviewData;
@@ -953,8 +954,9 @@ pub(crate) struct ChatWidget {
     // later steer. This is cleared when the user submits a steer so the plan popup only appears
     // if a newer proposed plan arrives afterward.
     saw_plan_item_this_turn: bool,
-    // Latest `update_plan` checklist task counts for terminal-title rendering.
+    // Latest `update_plan` checklist tasks for footer/title rendering.
     last_plan_progress: Option<(usize, usize)>,
+    last_plan_items: Vec<UpdatePlanItemArg>,
     // Incremental buffer for streamed plan content.
     plan_delta_buffer: String,
     // True while a plan item is streaming.
@@ -1053,6 +1055,14 @@ fn split_background_task_status(title: String) -> (String, Option<String>) {
 
 fn background_elapsed_text(started_at: Instant) -> String {
     fmt_elapsed_compact(started_at.elapsed().as_secs())
+}
+
+fn plan_task_status_marker(status: &StepStatus) -> String {
+    match status {
+        StepStatus::Pending => " ".to_string(),
+        StepStatus::InProgress => "*".to_string(),
+        StepStatus::Completed => "x".to_string(),
+    }
 }
 
 #[cfg_attr(not(test), allow(dead_code))]
@@ -1748,13 +1758,25 @@ impl ChatWidget {
     /// both the agent turn lifecycle and MCP startup lifecycle.
     fn update_task_running_state(&mut self) {
         self.bottom_pane
-            .set_task_running(self.foreground_turn_running() || self.mcp_startup_status.is_some());
+            .set_task_running(self.foreground_turn_running());
         self.refresh_plan_mode_nudge();
         self.refresh_status_surfaces();
     }
 
     fn foreground_turn_running(&self) -> bool {
         self.agent_turn_running && !self.task_backgrounded
+    }
+
+    fn restore_foreground_turn_activity(&mut self) {
+        if !self.agent_turn_running || !self.task_backgrounded {
+            return;
+        }
+
+        self.task_backgrounded = false;
+        self.update_task_running_state();
+        self.bottom_pane.ensure_status_indicator();
+        self.terminal_title_status_kind = TerminalTitleStatusKind::Working;
+        self.set_status_header(String::from("Working"));
     }
 
     fn flush_answer_stream_with_separator(&mut self) {
@@ -2094,6 +2116,7 @@ impl ChatWidget {
         self.current_rollout_path = session.rollout_path.clone();
         self.current_cwd = Some(session.cwd.to_path_buf());
         self.config.cwd = session.cwd.clone();
+        self.config.service_tier = session.service_tier.clone();
         self.effective_service_tier = session
             .service_tier
             .as_deref()
@@ -2342,6 +2365,7 @@ impl ChatWidget {
     }
 
     fn on_agent_message_delta(&mut self, delta: String) {
+        self.restore_foreground_turn_activity();
         self.handle_streaming_delta(delta);
     }
 
@@ -2349,6 +2373,7 @@ impl ChatWidget {
         if self.active_mode_kind() != ModeKind::Plan {
             return;
         }
+        self.restore_foreground_turn_activity();
         if !self.plan_item_active {
             self.plan_item_active = true;
             self.plan_delta_buffer.clear();
@@ -2417,6 +2442,7 @@ impl ChatWidget {
     }
 
     fn on_agent_reasoning_delta(&mut self, delta: String) {
+        self.restore_foreground_turn_activity();
         // For reasoning deltas, do not stream to history. Accumulate the
         // current reasoning block and extract the first bold element
         // (between **/**) as the chunk header. Show this header as status.
@@ -3515,7 +3541,9 @@ impl ChatWidget {
             })
             .count();
         self.last_plan_progress = (total > 0).then_some((completed, total));
+        self.last_plan_items = update.plan.clone();
         self.refresh_status_surfaces();
+        self.refresh_background_tasks_view_if_open();
         self.add_to_history(history_cell::new_plan_update(update));
     }
 
@@ -3800,6 +3828,8 @@ impl ChatWidget {
             } else {
                 return;
             }
+        } else if *source == ExecCommandSource::Agent {
+            self.restore_foreground_turn_activity();
         }
         let item2 = item.clone();
         self.defer_or_handle(
@@ -3858,6 +3888,7 @@ impl ChatWidget {
     }
 
     fn on_patch_apply_begin(&mut self, changes: HashMap<PathBuf, FileChange>) {
+        self.restore_foreground_turn_activity();
         self.add_to_history(history_cell::new_patch_event(changes, &self.config.cwd));
     }
 
@@ -3871,6 +3902,7 @@ impl ChatWidget {
     }
 
     fn on_image_generation_begin(&mut self) {
+        self.restore_foreground_turn_activity();
         self.flush_answer_stream_with_separator();
     }
 
@@ -3973,6 +4005,7 @@ impl ChatWidget {
         }
         self.sync_unified_exec_footer();
         self.refresh_status_surfaces();
+        self.refresh_background_tasks_view_if_open();
     }
 
     fn track_unified_exec_process_end(&mut self, call_id: &str, process_id: Option<&str>) {
@@ -3983,6 +4016,7 @@ impl ChatWidget {
         if self.unified_exec_processes.len() != before {
             self.sync_unified_exec_footer();
             self.refresh_status_surfaces();
+            self.refresh_background_tasks_view_if_open();
         }
     }
 
@@ -4021,9 +4055,11 @@ impl ChatWidget {
             let drop_count = process.output_lines.len() - MAX_OUTPUT_LINES;
             process.output_lines.drain(0..drop_count);
         }
+        self.refresh_background_tasks_view_if_open();
     }
 
     fn on_mcp_tool_call_started(&mut self, item: ThreadItem) {
+        self.restore_foreground_turn_activity();
         let item2 = item.clone();
         self.defer_or_handle(
             |q| q.push_item_started(item),
@@ -4040,6 +4076,7 @@ impl ChatWidget {
     }
 
     fn on_web_search_begin(&mut self, call_id: String) {
+        self.restore_foreground_turn_activity();
         self.flush_answer_stream_with_separator();
         self.flush_active_cell();
         self.active_cell = Some(Box::new(history_cell::new_active_web_search_call(
@@ -5139,6 +5176,7 @@ impl ChatWidget {
             saw_plan_update_this_turn: false,
             saw_plan_item_this_turn: false,
             last_plan_progress: None,
+            last_plan_items: Vec::new(),
             plan_delta_buffer: String::new(),
             plan_item_active: false,
             turn_runtime_metrics: RuntimeMetricsSummary::default(),
@@ -5336,7 +5374,6 @@ impl ChatWidget {
             && matches!(key_event.kind, KeyEventKind::Press | KeyEventKind::Repeat)
             && (!self.pending_steers.is_empty() || self.has_queued_follow_up_messages())
             && self.bottom_pane.no_modal_or_popup_active()
-            && !self.should_handle_vim_insert_escape(key_event)
         {
             self.clear_esc_backtrack_hint();
             if self.should_interrupt_before_submitting_pending_input() {
@@ -7364,12 +7401,48 @@ impl ChatWidget {
 
     fn clean_background_terminals(&mut self) {
         self.submit_op(AppCommand::clean_background_terminals());
+        self.mark_background_terminals_stopping_from_panel();
+    }
+
+    pub(crate) fn mark_background_terminals_stopping_from_panel(&mut self) {
         self.unified_exec_processes.clear();
         self.sync_unified_exec_footer();
+        self.refresh_status_surfaces();
+        self.refresh_background_tasks_view_if_open();
         self.add_info_message(
             "Stopping all background terminals.".to_string(),
             /*hint*/ None,
         );
+    }
+
+    pub(crate) fn mark_background_terminal_stopping_from_panel(&mut self, process_id: &str) {
+        let before = self.unified_exec_processes.len();
+        self.unified_exec_processes
+            .retain(|process| process.key != process_id);
+        if self.unified_exec_processes.len() != before {
+            self.sync_unified_exec_footer();
+            self.refresh_status_surfaces();
+            self.refresh_background_tasks_view_if_open();
+        }
+        self.add_info_message(
+            format!("Stopping background terminal {process_id}."),
+            /*hint*/ None,
+        );
+    }
+
+    pub(crate) fn mark_background_subagent_stopping(&mut self, thread_id: ThreadId, label: &str) {
+        self.background_activities.retain(|activity| {
+            !activity
+                .cell
+                .as_any()
+                .downcast_ref::<multi_agents::CollabAgentActivityCell>()
+                .is_some_and(|cell| cell.thread_id() == thread_id)
+        });
+        self.task_backgrounded = self.should_mark_current_turn_backgrounded();
+        self.update_task_running_state();
+        self.refresh_status_surfaces();
+        self.refresh_background_tasks_view_if_open();
+        self.add_info_message(format!("Stopping subagent {label}."), /*hint*/ None);
     }
 
     fn stop_rate_limit_poller(&mut self) {}
@@ -10576,16 +10649,18 @@ impl ChatWidget {
                 .any(|activity| !activity.is_collab_agent_activity())
     }
 
-    fn show_background_activity_summary(&mut self) -> bool {
-        if !self.bottom_pane.no_modal_or_popup_active() {
-            return false;
-        }
-
-        if self.background_activities.is_empty() && self.unified_exec_processes.is_empty() {
-            return false;
-        }
-
-        let mut params = BackgroundTasksViewParams::default();
+    fn background_tasks_view_params(&self) -> BackgroundTasksViewParams {
+        let mut params = BackgroundTasksViewParams {
+            tasks: self
+                .last_plan_items
+                .iter()
+                .map(|item| PlanTaskItem {
+                    status: plan_task_status_marker(&item.status),
+                    step: item.step.clone(),
+                })
+                .collect(),
+            ..Default::default()
+        };
         for activity in &self.background_activities {
             let lines = activity.cell.display_lines(u16::MAX);
             let title = lines
@@ -10615,10 +10690,11 @@ impl ChatWidget {
                     detail,
                     status,
                     output_lines: Vec::new(),
+                    stoppable: true,
                 });
             } else {
                 params.terminals.push(BackgroundTaskItem {
-                    kind: BackgroundTaskKind::Terminal,
+                    kind: BackgroundTaskKind::Terminal { process_id: None },
                     title,
                     role: None,
                     task: None,
@@ -10626,6 +10702,7 @@ impl ChatWidget {
                     detail,
                     status: Some("running".to_string()),
                     output_lines: Vec::new(),
+                    stoppable: false,
                 });
             }
         }
@@ -10634,7 +10711,9 @@ impl ChatWidget {
             let mut detail = Vec::new();
             detail.extend(process.recent_chunks.clone());
             params.terminals.push(BackgroundTaskItem {
-                kind: BackgroundTaskKind::Terminal,
+                kind: BackgroundTaskKind::Terminal {
+                    process_id: Some(process.key.clone()),
+                },
                 title: process.command_display.clone(),
                 role: None,
                 task: None,
@@ -10642,9 +10721,33 @@ impl ChatWidget {
                 detail,
                 status: Some("running".to_string()),
                 output_lines: process.output_lines.clone(),
+                stoppable: true,
             });
         }
-        self.bottom_pane.show_background_tasks_view(params);
+        params
+    }
+
+    fn refresh_background_tasks_view_if_open(&mut self) {
+        let params = self.background_tasks_view_params();
+        self.bottom_pane
+            .update_background_tasks_view_if_active(params);
+    }
+
+    fn show_background_activity_summary(&mut self) -> bool {
+        if !self.bottom_pane.no_modal_or_popup_active() {
+            return false;
+        }
+
+        if self.background_activities.is_empty()
+            && self.unified_exec_processes.is_empty()
+            && self.last_plan_items.is_empty()
+        {
+            return false;
+        }
+
+        let params = self.background_tasks_view_params();
+        self.bottom_pane
+            .show_background_tasks_view(params, self.thread_id);
         true
     }
 
@@ -10684,14 +10787,11 @@ impl ChatWidget {
 
     // Review mode counts as cancellable work so Ctrl+C interrupts instead of quitting.
     fn is_cancellable_work_active(&self) -> bool {
-        self.foreground_turn_running() || self.mcp_startup_status.is_some() || self.is_review_mode
+        self.foreground_turn_running() || self.is_review_mode
     }
 
     fn should_interrupt_before_submitting_pending_input(&self) -> bool {
-        self.agent_turn_running
-            || self.mcp_startup_status.is_some()
-            || self.is_review_mode
-            || self.user_turn_pending_start
+        self.agent_turn_running || self.is_review_mode || self.user_turn_pending_start
     }
 
     /// Return the markdown body width available to an active stream.

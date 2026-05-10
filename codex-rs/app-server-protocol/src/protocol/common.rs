@@ -469,6 +469,13 @@ client_request_definitions! {
         serialization: thread_id(params.thread_id),
         response: v2::ThreadUnsubscribeResponse,
     },
+    #[experimental("thread/agent/close")]
+    /// Close a spawned subagent thread and any live descendants.
+    ThreadAgentClose => "thread/agent/close" {
+        params: v2::ThreadAgentCloseParams,
+        serialization: thread_id(params.thread_id),
+        response: v2::ThreadAgentCloseResponse,
+    },
     #[experimental("thread/increment_elicitation")]
     /// Increment the thread-local out-of-band elicitation counter.
     ///
@@ -553,6 +560,12 @@ client_request_definitions! {
         params: v2::ThreadBackgroundTerminalsCleanParams,
         serialization: thread_id(params.thread_id),
         response: v2::ThreadBackgroundTerminalsCleanResponse,
+    },
+    #[experimental("thread/backgroundTerminal/terminate")]
+    ThreadBackgroundTerminalTerminate => "thread/backgroundTerminal/terminate" {
+        params: v2::ThreadBackgroundTerminalTerminateParams,
+        serialization: thread_id(params.thread_id),
+        response: v2::ThreadBackgroundTerminalTerminateResponse,
     },
     ThreadRollback => "thread/rollback" {
         params: v2::ThreadRollbackParams,
@@ -2624,6 +2637,29 @@ mod tests {
                 "id": 8,
                 "params": {
                     "threadId": "thr_123"
+                }
+            }),
+            serde_json::to_value(&request)?,
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn serialize_thread_background_terminal_terminate() -> Result<()> {
+        let request = ClientRequest::ThreadBackgroundTerminalTerminate {
+            request_id: RequestId::Integer(9),
+            params: v2::ThreadBackgroundTerminalTerminateParams {
+                thread_id: "thr_123".to_string(),
+                process_id: "1001".to_string(),
+            },
+        };
+        assert_eq!(
+            json!({
+                "method": "thread/backgroundTerminal/terminate",
+                "id": 9,
+                "params": {
+                    "threadId": "thr_123",
+                    "processId": "1001"
                 }
             }),
             serde_json::to_value(&request)?,
