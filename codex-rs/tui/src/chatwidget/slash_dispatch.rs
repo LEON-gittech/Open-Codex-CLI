@@ -32,7 +32,34 @@ const SIDE_REVIEW_UNAVAILABLE_MESSAGE: &str =
 const SIDE_SLASH_COMMAND_UNAVAILABLE_HINT: &str = "Press Esc to return to the main thread first.";
 const GOAL_USAGE: &str = "Usage: /goal <objective>";
 const GOAL_USAGE_HINT: &str = "Example: /goal improve benchmark coverage";
+const EFFORT_USAGE: &str = "Usage: /effort [default|none|minimal|low|medium|high|xhigh]";
+const EXPORT_USAGE: &str = "Usage: /export <path>";
 const RAW_USAGE: &str = "Usage: /raw [on|off]";
+
+fn parse_effort_arg(value: &str) -> Option<Option<ReasoningEffortConfig>> {
+    match value.to_ascii_lowercase().as_str() {
+        "auto" | "default" => Some(None),
+        "none" => Some(Some(ReasoningEffortConfig::None)),
+        "min" | "minimal" => Some(Some(ReasoningEffortConfig::Minimal)),
+        "low" => Some(Some(ReasoningEffortConfig::Low)),
+        "med" | "medium" => Some(Some(ReasoningEffortConfig::Medium)),
+        "high" => Some(Some(ReasoningEffortConfig::High)),
+        "extra" | "max" | "ultra" | "ulw" | "xhigh" => Some(Some(ReasoningEffortConfig::XHigh)),
+        _ => None,
+    }
+}
+
+fn effort_command_label(effort: Option<ReasoningEffortConfig>) -> &'static str {
+    match effort {
+        Some(ReasoningEffortConfig::None) => "none",
+        Some(ReasoningEffortConfig::Minimal) => "minimal",
+        Some(ReasoningEffortConfig::Low) => "low",
+        Some(ReasoningEffortConfig::Medium) => "medium",
+        Some(ReasoningEffortConfig::High) => "high",
+        Some(ReasoningEffortConfig::XHigh) => "xhigh",
+        None => "default",
+    }
+}
 
 impl ChatWidget {
     /// Dispatch a bare slash command and record its staged local-history entry.
@@ -110,6 +137,31 @@ impl ChatWidget {
             .send(AppEvent::RawOutputModeChanged { enabled });
     }
 
+    fn set_reasoning_effort_selection(&mut self, effort: Option<ReasoningEffortConfig>) {
+        let model = self.current_model().to_string();
+        if self.should_prompt_plan_mode_reasoning_scope(&model, effort) {
+            self.app_event_tx
+                .send(AppEvent::OpenPlanReasoningScopePrompt { model, effort });
+            return;
+        }
+
+        self.app_event_tx
+            .send(AppEvent::CodexOp(AppCommand::override_turn_context(
+                /*cwd*/ None,
+                /*approval_policy*/ None,
+                /*approvals_reviewer*/ None,
+                /*permission_profile*/ None,
+                /*windows_sandbox_level*/ None,
+                /*model*/ None,
+                Some(effort),
+                /*summary*/ None,
+                /*service_tier*/ None,
+                /*collaboration_mode*/ None,
+                /*personality*/ None,
+            )));
+        self.apply_model_and_effort(model, effort);
+    }
+
     pub(super) fn dispatch_command(&mut self, cmd: SlashCommand) {
         if !self.ensure_slash_command_allowed_in_side_conversation(cmd) {
             return;
@@ -183,6 +235,13 @@ impl ChatWidget {
             }
             SlashCommand::Model => {
                 self.open_model_popup();
+            }
+            SlashCommand::Effort => {
+                let current = effort_command_label(self.effective_reasoning_effort());
+                self.add_info_message(
+                    format!("Current reasoning effort is {current}."),
+                    Some(EFFORT_USAGE.to_string()),
+                );
             }
             SlashCommand::Fast => {
                 self.toggle_fast_mode_from_ui();
@@ -320,6 +379,9 @@ impl ChatWidget {
             }
             SlashCommand::Copy => {
                 self.copy_last_agent_markdown();
+            }
+            SlashCommand::Export => {
+                self.add_error_message(EXPORT_USAGE.to_string());
             }
             SlashCommand::Raw => {
                 let enabled = self.toggle_raw_output_mode_and_notify();
@@ -572,6 +634,13 @@ impl ChatWidget {
         } = prepared;
         let trimmed = args.trim();
         match cmd {
+            SlashCommand::Effort => {
+                let Some(effort) = parse_effort_arg(trimmed) else {
+                    self.add_error_message(EFFORT_USAGE.to_string());
+                    return;
+                };
+                self.set_reasoning_effort_selection(effort);
+            }
             SlashCommand::Fast => {
                 match trimmed.to_ascii_lowercase().as_str() {
                     "on" => self.set_service_tier_selection(Some(ServiceTier::Fast)),
@@ -600,6 +669,11 @@ impl ChatWidget {
                 "verbose" => self.add_mcp_output(McpServerStatusDetail::Full),
                 _ => self.add_error_message("Usage: /mcp [verbose]".to_string()),
             },
+            SlashCommand::Export if !trimmed.is_empty() => {
+                self.app_event_tx.send(AppEvent::ExportTranscript {
+                    path: self.config.cwd.join(trimmed).to_path_buf(),
+                });
+            }
             SlashCommand::Keymap => match trimmed.to_ascii_lowercase().as_str() {
                 "" => self.open_keymap_picker(),
                 "debug" => {
@@ -896,11 +970,13 @@ impl ChatWidget {
         }
         match cmd {
             SlashCommand::Fast
+            | SlashCommand::Effort
             | SlashCommand::Ide
             | SlashCommand::Status
             | SlashCommand::DebugConfig
             | SlashCommand::Ps
             | SlashCommand::Stop
+            | SlashCommand::Export
             | SlashCommand::MemoryDrop
             | SlashCommand::MemoryUpdate
             | SlashCommand::Mcp

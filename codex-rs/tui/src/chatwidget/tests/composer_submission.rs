@@ -8,6 +8,14 @@ use codex_app_server_protocol::PermissionProfileFileSystemPermissions;
 use codex_app_server_protocol::PermissionProfileNetworkPermissions;
 use pretty_assertions::assert_eq;
 
+#[test]
+fn xhigh_reasoning_marker_matches_standalone_aliases() {
+    assert!(text_requests_xhigh_reasoning("ulw"));
+    assert!(text_requests_xhigh_reasoning("use ultra reasoning"));
+    assert!(text_requests_xhigh_reasoning("please run xhigh"));
+    assert!(!text_requests_xhigh_reasoning("ultramarine"));
+}
+
 #[tokio::test]
 async fn submission_preserves_text_elements_and_local_images() {
     let (mut chat, mut rx, mut op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
@@ -88,6 +96,70 @@ async fn submission_preserves_text_elements_and_local_images() {
     assert_eq!(stored_elements, text_elements);
     assert_eq!(stored_images, local_images);
     assert!(stored_remote_image_urls.is_empty());
+}
+
+#[tokio::test]
+async fn submission_ultra_marker_uses_xhigh_for_current_turn_only() {
+    let (mut chat, _rx, mut op_rx) = make_chatwidget_manual(Some("gpt-5.3-codex")).await;
+    chat.thread_id = Some(ThreadId::new());
+    set_chatgpt_auth(&mut chat);
+    chat.set_reasoning_effort(Some(ReasoningEffortConfig::Low));
+
+    chat.bottom_pane.set_composer_text(
+        "Use ultra reasoning for this query".to_string(),
+        Vec::new(),
+        Vec::new(),
+    );
+    chat.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+    match next_submit_op(&mut op_rx) {
+        Op::UserTurn {
+            effort,
+            collaboration_mode,
+            ..
+        } => {
+            assert_eq!(effort, Some(ReasoningEffortConfig::XHigh));
+            assert_eq!(
+                collaboration_mode.and_then(|mode| mode.reasoning_effort()),
+                Some(ReasoningEffortConfig::XHigh)
+            );
+        }
+        other => panic!("expected Op::UserTurn, got {other:?}"),
+    }
+    assert_eq!(
+        chat.current_reasoning_effort(),
+        Some(ReasoningEffortConfig::Low)
+    );
+}
+
+#[tokio::test]
+async fn submission_xhigh_marker_requires_standalone_token() {
+    let (mut chat, _rx, mut op_rx) = make_chatwidget_manual(Some("gpt-5.3-codex")).await;
+    chat.thread_id = Some(ThreadId::new());
+    set_chatgpt_auth(&mut chat);
+    chat.set_reasoning_effort(Some(ReasoningEffortConfig::Low));
+
+    chat.bottom_pane.set_composer_text(
+        "Use ultramarine as the color name".to_string(),
+        Vec::new(),
+        Vec::new(),
+    );
+    chat.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+    match next_submit_op(&mut op_rx) {
+        Op::UserTurn {
+            effort,
+            collaboration_mode,
+            ..
+        } => {
+            assert_eq!(effort, Some(ReasoningEffortConfig::Low));
+            assert_eq!(
+                collaboration_mode.and_then(|mode| mode.reasoning_effort()),
+                Some(ReasoningEffortConfig::Low)
+            );
+        }
+        other => panic!("expected Op::UserTurn, got {other:?}"),
+    }
 }
 
 #[tokio::test]

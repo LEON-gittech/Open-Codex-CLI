@@ -1615,6 +1615,16 @@ fn contains_plan_keyword(text: &str) -> bool {
         .any(|word| word.eq_ignore_ascii_case("plan"))
 }
 
+fn text_requests_xhigh_reasoning(text: &str) -> bool {
+    text.split(|ch: char| !ch.is_ascii_alphanumeric())
+        .any(|word| {
+            matches!(
+                word.to_ascii_lowercase().as_str(),
+                "ulw" | "ultra" | "xhigh"
+            )
+        })
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum ThreadItemRenderSource {
     Live,
@@ -5895,6 +5905,7 @@ impl ChatWidget {
             text_elements,
             mention_bindings,
         } = user_message;
+        let xhigh_effort_override = text_requests_xhigh_reasoning(&text);
 
         let render_in_history = !self.agent_turn_running;
         let mut items: Vec<UserInput> = Vec::new();
@@ -6058,11 +6069,24 @@ impl ChatWidget {
         self.maybe_apply_ide_context(&mut items);
 
         let collaboration_mode = if self.collaboration_modes_enabled() {
-            self.active_collaboration_mask
-                .as_ref()
-                .map(|_| effective_mode.clone())
+            self.active_collaboration_mask.as_ref().map(|_| {
+                if xhigh_effort_override {
+                    effective_mode.with_updates(
+                        /*model*/ None,
+                        Some(Some(ReasoningEffortConfig::XHigh)),
+                        /*developer_instructions*/ None,
+                    )
+                } else {
+                    effective_mode.clone()
+                }
+            })
         } else {
             None
+        };
+        let reasoning_effort = if xhigh_effort_override {
+            Some(ReasoningEffortConfig::XHigh)
+        } else {
+            effective_mode.reasoning_effort()
         };
         let pending_steer = (!render_in_history).then(|| PendingSteer {
             user_message: UserMessage {
@@ -6092,7 +6116,7 @@ impl ChatWidget {
             AskForApproval::from(self.config.permissions.approval_policy.value()),
             permission_profile,
             effective_mode.model().to_string(),
-            effective_mode.reasoning_effort(),
+            reasoning_effort,
             /*summary*/ None,
             service_tier,
             /*final_output_json_schema*/ None,
@@ -9730,6 +9754,7 @@ impl ChatWidget {
     pub(crate) fn can_toggle_fast_mode_from_keybinding(&self) -> bool {
         self.fast_mode_enabled()
             && !self.is_user_turn_pending_or_running()
+            && !self.bottom_pane.is_task_running()
             && self.bottom_pane.no_modal_or_popup_active()
     }
 

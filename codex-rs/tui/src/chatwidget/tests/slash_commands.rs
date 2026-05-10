@@ -1845,6 +1845,96 @@ async fn slash_rollout_handles_missing_path() {
 }
 
 #[tokio::test]
+async fn effort_slash_command_updates_runtime_and_persisted_reasoning() {
+    let (mut chat, mut rx, mut op_rx) = make_chatwidget_manual(Some("gpt-5.3-codex")).await;
+
+    chat.dispatch_command_with_args(SlashCommand::Effort, "xhigh".to_string(), Vec::new());
+
+    let events = std::iter::from_fn(|| rx.try_recv().ok()).collect::<Vec<_>>();
+    assert!(
+        events.iter().any(|event| matches!(
+            event,
+            AppEvent::CodexOp(Op::OverrideTurnContext {
+                effort: Some(Some(ReasoningEffortConfig::XHigh)),
+                ..
+            })
+        )),
+        "expected reasoning-effort override app event; events: {events:?}"
+    );
+    assert!(
+        events.iter().any(|event| matches!(
+            event,
+            AppEvent::UpdateReasoningEffort(Some(ReasoningEffortConfig::XHigh))
+        )),
+        "expected reasoning-effort update app event; events: {events:?}"
+    );
+    assert!(
+        events.iter().any(|event| matches!(
+            event,
+            AppEvent::PersistModelSelection {
+                model,
+                effort: Some(ReasoningEffortConfig::XHigh),
+            } if model == "gpt-5.3-codex"
+        )),
+        "expected reasoning-effort persistence app event; events: {events:?}"
+    );
+
+    assert_matches!(op_rx.try_recv(), Err(TryRecvError::Empty));
+}
+
+#[tokio::test]
+async fn effort_slash_command_can_clear_to_default() {
+    let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(Some("gpt-5.3-codex")).await;
+
+    chat.dispatch_command_with_args(SlashCommand::Effort, "default".to_string(), Vec::new());
+
+    let events = std::iter::from_fn(|| rx.try_recv().ok()).collect::<Vec<_>>();
+    assert!(
+        events.iter().any(|event| matches!(
+            event,
+            AppEvent::CodexOp(Op::OverrideTurnContext {
+                effort: Some(None),
+                ..
+            })
+        )),
+        "expected default reasoning-effort override app event; events: {events:?}"
+    );
+    assert!(
+        events.iter().any(|event| matches!(
+            event,
+            AppEvent::PersistModelSelection {
+                model,
+                effort: None,
+            } if model == "gpt-5.3-codex"
+        )),
+        "expected default reasoning-effort persistence app event; events: {events:?}"
+    );
+}
+
+#[tokio::test]
+async fn bare_effort_slash_command_reports_current_effort() {
+    let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(Some("gpt-5.3-codex")).await;
+    chat.set_reasoning_effort(Some(ReasoningEffortConfig::High));
+
+    chat.dispatch_command(SlashCommand::Effort);
+
+    let cells = drain_insert_history(&mut rx);
+    let rendered = cells
+        .iter()
+        .map(|lines| lines_to_single_string(lines))
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        rendered.contains("Current reasoning effort is high."),
+        "expected current effort status, got {rendered:?}"
+    );
+    assert!(
+        rendered.contains("Usage: /effort"),
+        "expected effort usage hint, got {rendered:?}"
+    );
+}
+
+#[tokio::test]
 async fn fast_slash_command_updates_and_persists_local_service_tier() {
     let (mut chat, mut rx, mut op_rx) = make_chatwidget_manual(Some("gpt-5.3-codex")).await;
     chat.set_feature_enabled(Feature::FastMode, /*enabled*/ true);
@@ -2081,7 +2171,7 @@ async fn raw_slash_command_reports_usage_for_invalid_arg() {
 
 #[tokio::test]
 async fn compact_queues_user_messages_snapshot() {
-    let (mut chat, _rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    let (mut chat, _rx, _op_rx) = make_chatwidget_manual(Some("gpt-5.4")).await;
     chat.thread_id = Some(ThreadId::new());
     handle_turn_started(&mut chat, "turn-1");
 

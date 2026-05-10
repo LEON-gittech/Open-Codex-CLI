@@ -13,6 +13,7 @@ pub enum SlashCommand {
     // DO NOT ALPHA-SORT! Enum order is presentation order in the popup, so
     // more frequently used commands should be listed first.
     Model,
+    Effort,
     Fast,
     Ide,
     Permissions,
@@ -41,6 +42,7 @@ pub enum SlashCommand {
     Agent,
     Side,
     Copy,
+    Export,
     Raw,
     Diff,
     Mention,
@@ -89,6 +91,7 @@ impl SlashCommand {
             SlashCommand::Fork => "fork the current chat",
             SlashCommand::Quit | SlashCommand::Exit => "exit Codex",
             SlashCommand::Copy => "copy last response as markdown",
+            SlashCommand::Export => "export current session transcript to a file",
             SlashCommand::Raw => "toggle raw scrollback mode for copy-friendly terminal selection",
             SlashCommand::Diff => "show git diff (including untracked files)",
             SlashCommand::Mention => "mention a file",
@@ -104,6 +107,7 @@ impl SlashCommand {
             SlashCommand::MemoryDrop => "DO NOT USE",
             SlashCommand::MemoryUpdate => "DO NOT USE",
             SlashCommand::Model => "choose what model and reasoning effort to use",
+            SlashCommand::Effort => "set reasoning effort for future turns",
             SlashCommand::Fast => {
                 "toggle Fast mode to enable fastest inference with increased plan usage"
             }
@@ -151,6 +155,8 @@ impl SlashCommand {
                 | SlashCommand::Rename
                 | SlashCommand::Plan
                 | SlashCommand::Goal
+                | SlashCommand::Effort
+                | SlashCommand::Export
                 | SlashCommand::Fast
                 | SlashCommand::Ide
                 | SlashCommand::Keymap
@@ -167,6 +173,7 @@ impl SlashCommand {
         matches!(
             self,
             SlashCommand::Copy
+                | SlashCommand::Export
                 | SlashCommand::Raw
                 | SlashCommand::Diff
                 | SlashCommand::Mention
@@ -184,6 +191,7 @@ impl SlashCommand {
             | SlashCommand::Init
             | SlashCommand::Compact
             | SlashCommand::Model
+            | SlashCommand::Effort
             | SlashCommand::Fast
             | SlashCommand::Personality
             | SlashCommand::Permissions
@@ -201,6 +209,7 @@ impl SlashCommand {
             | SlashCommand::MemoryUpdate => false,
             SlashCommand::Diff
             | SlashCommand::Copy
+            | SlashCommand::Export
             | SlashCommand::Raw
             | SlashCommand::Rename
             | SlashCommand::Mention
@@ -276,6 +285,13 @@ mod tests {
         assert!(SlashCommand::Raw.available_during_task());
         assert!(SlashCommand::Raw.available_in_side_conversation());
         assert!(SlashCommand::Raw.supports_inline_args());
+    }
+
+    #[test]
+    fn export_command_supports_inline_args() {
+        assert!(SlashCommand::Export.supports_inline_args());
+        assert!(SlashCommand::Export.available_during_task());
+        assert!(SlashCommand::Export.available_in_side_conversation());
     }
 
     #[test]
