@@ -653,8 +653,15 @@ impl ChatWidget {
                 .status_line_workspace_changes
                 .as_ref()
                 .and_then(|stats| {
-                    (stats.additions != 0 || stats.deletions != 0)
-                        .then(|| format!("+{}/-{}", stats.additions, stats.deletions))
+                    if stats.additions == 0 && stats.deletions == 0 && stats.untracked_files == 0 {
+                        return None;
+                    }
+
+                    let mut value = format!("+{}/-{}", stats.additions, stats.deletions);
+                    if stats.untracked_files > 0 {
+                        value.push_str(&format!(" ?{}", stats.untracked_files));
+                    }
+                    Some(value)
                 }),
             StatusLineItem::Status => Some(self.run_state_status_text()),
             StatusLineItem::UsedTokens => {

@@ -38,6 +38,8 @@ pub(crate) struct GitWorkspaceDiffStats {
     pub(crate) additions: u64,
     /// Total deleted lines in the current workspace.
     pub(crate) deletions: u64,
+    /// Untracked files in the current workspace.
+    pub(crate) untracked_files: u64,
 }
 
 /// Combined git metadata cached by the status line for one working directory.
@@ -139,11 +141,10 @@ pub(crate) async fn status_line_git_summary(
     }
 }
 
-/// Counts tracked workspace line changes relative to `HEAD`.
+/// Counts workspace changes relative to `HEAD`.
 ///
-/// Untracked files are intentionally ignored for this compact status-line probe. Counting their
-/// lines requires full-file reads or expensive `--no-index` diffs, which is too heavy for a
-/// background UI refresh.
+/// Tracked changes are counted as line additions/deletions. Untracked files are counted as files,
+/// not lines, so the compact status-line probe stays bounded and avoids expensive full-file diffs.
 pub(crate) async fn workspace_diff_stats(
     runner: &dyn WorkspaceCommandExecutor,
     cwd: &Path,
@@ -163,9 +164,11 @@ pub(crate) async fn workspace_diff_stats(
     }
 
     let (additions, deletions) = parse_numstat_totals(&numstat.stdout);
+    let untracked_files = untracked_file_count(runner, cwd).await.unwrap_or(0);
     Some(GitWorkspaceDiffStats {
         additions,
         deletions,
+        untracked_files,
     })
 }
 
@@ -230,6 +233,26 @@ fn parse_numstat_totals(stdout: &str) -> (u64, u64) {
             .unwrap_or(0);
         totals
     })
+}
+
+async fn untracked_file_count(runner: &dyn WorkspaceCommandExecutor, cwd: &Path) -> Option<u64> {
+    let output = run_git_command(
+        runner,
+        cwd,
+        &["ls-files", "--others", "--exclude-standard", "-z"],
+    )
+    .await
+    .ok()?;
+    if !output.success() {
+        return None;
+    }
+
+    let count = output
+        .stdout
+        .split('\0')
+        .filter(|path| !path.is_empty())
+        .count();
+    Some(count as u64)
 }
 
 /// Returns git remotes in the order used for default-branch discovery.
@@ -623,6 +646,11 @@ mod tests {
                 /*exit_code*/ 0,
                 "10\t2\tsrc/main.rs\n-\t-\tassets/logo.png\n3\t0\tREADME.md\n",
             ),
+            response(
+                &["git", "ls-files", "--others", "--exclude-standard", "-z"],
+                /*exit_code*/ 0,
+                "scratch.txt\0notes/todo.md\0",
+            ),
         ]);
 
         let stats = workspace_diff_stats(&runner, Path::new("/repo"))
@@ -634,6 +662,7 @@ mod tests {
             GitWorkspaceDiffStats {
                 additions: 13,
                 deletions: 2,
+                untracked_files: 2,
             }
         );
     }

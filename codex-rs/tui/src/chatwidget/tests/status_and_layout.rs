@@ -289,6 +289,7 @@ async fn status_line_workspace_changes_render_dirty_tracked_stats() {
     chat.status_line_workspace_changes = Some(crate::branch_summary::GitWorkspaceDiffStats {
         additions: 830,
         deletions: 281,
+        untracked_files: 0,
     });
 
     assert_eq!(
@@ -303,12 +304,76 @@ async fn status_line_workspace_changes_omits_clean_workspaces() {
     chat.status_line_workspace_changes = Some(crate::branch_summary::GitWorkspaceDiffStats {
         additions: 0,
         deletions: 0,
+        untracked_files: 0,
     });
 
     assert_eq!(
         chat.status_line_value_for_item(crate::bottom_pane::StatusLineItem::WorkspaceChanges),
         None
     );
+}
+
+#[tokio::test]
+async fn status_line_workspace_changes_render_untracked_file_count() {
+    let (mut chat, _rx, _ops) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.status_line_workspace_changes = Some(crate::branch_summary::GitWorkspaceDiffStats {
+        additions: 0,
+        deletions: 0,
+        untracked_files: 3,
+    });
+
+    assert_eq!(
+        chat.status_line_value_for_item(crate::bottom_pane::StatusLineItem::WorkspaceChanges),
+        Some("+0/-0 ?3".to_string())
+    );
+}
+
+#[tokio::test]
+async fn status_line_workspace_changes_async_event_renders_untracked_stats() {
+    let (mut chat, mut rx, _ops) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.config.tui_status_line = Some(vec!["workspace-changes".to_string()]);
+    let expected_cwd = chat.config.cwd.to_path_buf();
+    install_scripted_workspace_command_runner(
+        &mut chat,
+        vec![
+            workspace_response(
+                &["git", "rev-parse", "--git-dir"],
+                /*exit_code*/ 0,
+                ".git\n",
+            ),
+            workspace_response(
+                &["git", "diff", "--numstat", "HEAD", "--"],
+                /*exit_code*/ 0,
+                "2\t1\tsrc/lib.rs\n",
+            ),
+            workspace_response(
+                &["git", "ls-files", "--others", "--exclude-standard", "-z"],
+                /*exit_code*/ 0,
+                "scratch.txt\0",
+            ),
+        ],
+    );
+    chat.status_line_workspace_changes_cwd = None;
+    chat.status_line_workspace_changes_lookup_complete = false;
+
+    chat.refresh_status_line();
+    assert_eq!(status_line_text(&chat), None);
+
+    let event = tokio::time::timeout(std::time::Duration::from_secs(2), rx.recv())
+        .await
+        .expect("workspace changes event")
+        .expect("workspace changes event");
+    let crate::app_event::AppEvent::StatusLineWorkspaceChangesUpdated { cwd, stats } = event else {
+        panic!("expected workspace changes event, got {event:?}");
+    };
+    assert_eq!(cwd, expected_cwd);
+    chat.set_status_line_workspace_changes(cwd, stats);
+
+    assert_eq!(
+        chat.status_line_workspace_changes_cwd.as_deref(),
+        Some(expected_cwd.as_path())
+    );
+    assert_eq!(status_line_text(&chat), Some("+2/-1 ?1".to_string()));
 }
 
 #[tokio::test]
@@ -1625,6 +1690,62 @@ async fn status_line_branch_refreshes_after_interrupt() {
 
 fn install_noop_workspace_command_runner(chat: &mut ChatWidget) {
     chat.workspace_command_runner = Some(std::sync::Arc::new(NoopWorkspaceCommandRunner));
+}
+
+fn install_scripted_workspace_command_runner(
+    chat: &mut ChatWidget,
+    responses: Vec<WorkspaceCommandResponse>,
+) {
+    chat.workspace_command_runner = Some(std::sync::Arc::new(ScriptedWorkspaceCommandRunner {
+        responses: std::sync::Mutex::new(responses.into()),
+    }));
+}
+
+fn workspace_response(argv: &[&str], exit_code: i32, stdout: &str) -> WorkspaceCommandResponse {
+    WorkspaceCommandResponse {
+        argv: argv.iter().map(|arg| (*arg).to_string()).collect(),
+        output: crate::workspace_command::WorkspaceCommandOutput {
+            exit_code,
+            stdout: stdout.to_string(),
+            stderr: String::new(),
+        },
+    }
+}
+
+struct WorkspaceCommandResponse {
+    argv: Vec<String>,
+    output: crate::workspace_command::WorkspaceCommandOutput,
+}
+
+struct ScriptedWorkspaceCommandRunner {
+    responses: std::sync::Mutex<std::collections::VecDeque<WorkspaceCommandResponse>>,
+}
+
+impl crate::workspace_command::WorkspaceCommandExecutor for ScriptedWorkspaceCommandRunner {
+    fn run(
+        &self,
+        command: crate::workspace_command::WorkspaceCommand,
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<
+                    Output = Result<
+                        crate::workspace_command::WorkspaceCommandOutput,
+                        crate::workspace_command::WorkspaceCommandError,
+                    >,
+                > + Send
+                + '_,
+        >,
+    > {
+        Box::pin(async move {
+            let mut responses = self.responses.lock().expect("responses lock");
+            let index = responses
+                .iter()
+                .position(|response| response.argv == command.argv)
+                .unwrap_or_else(|| panic!("missing fake response for {:?}", command.argv));
+            let response = responses.remove(index).expect("fake response");
+            Ok(response.output)
+        })
+    }
 }
 
 struct NoopWorkspaceCommandRunner;
