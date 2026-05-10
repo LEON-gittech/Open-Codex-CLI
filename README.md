@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./.github/open-codexcli-icon.png" alt="Open Codex CLI icon" width="180" />
+  <img src="https://raw.githubusercontent.com/LEON-gittech/codex/main/.github/open-codexcli-icon.png" alt="Open Codex CLI icon" width="180" />
 </p>
 
 <h1 align="center">Open Codex CLI</h1>
@@ -18,7 +18,7 @@
 </p>
 
 <p align="center">
-  <img src="./.github/open-codex-cli-unleashed.png" alt="Open Codex CLI unleashed banner" width="960" />
+  <img src="https://raw.githubusercontent.com/LEON-gittech/codex/main/.github/open-codex-cli-unleashed.png" alt="Open Codex CLI unleashed banner" width="960" />
 </p>
 
 <p align="center">
