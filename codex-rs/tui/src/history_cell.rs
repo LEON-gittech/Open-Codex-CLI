@@ -691,14 +691,16 @@ impl HistoryCell for BtwQuestionCell {
         let Ok(state) = self.state.lock() else {
             return vec!["/btw state unavailable".red().into()];
         };
-        let mut lines = vec![vec!["/btw ".magenta().bold(), state.question.clone().dim()].into()];
+        let mut lines = vec![
+            vec!["Question ".magenta().bold(), state.question.clone().into()].into(),
+            Line::from(""),
+        ];
 
         if let Some(error) = &state.error {
             lines.push(vec!["  ".into(), format!("■ {error}").red()].into());
         } else if state.answer.trim().is_empty() && !state.completed {
             lines.push(
                 vec![
-                    "  ".into(),
                     activity_indicator(
                         Some(state.start_time),
                         MotionMode::from_animations_enabled(state.animations_enabled),
@@ -721,17 +723,7 @@ impl HistoryCell for BtwQuestionCell {
                 Some(self.cwd.as_path()),
                 &mut answer_lines,
             );
-            lines.extend(prefix_lines(answer_lines, "  ".into(), "  ".into()));
-        }
-
-        if state.completed {
-            lines.push(
-                vec![
-                    "  ".into(),
-                    "Space, Enter, or Escape to dismiss".dark_gray(),
-                ]
-                .into(),
-            );
+            lines.extend(answer_lines);
         }
         lines
     }

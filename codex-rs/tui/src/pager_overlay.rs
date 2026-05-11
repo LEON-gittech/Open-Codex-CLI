@@ -41,6 +41,9 @@ use ratatui::style::Stylize;
 use ratatui::text::Line;
 use ratatui::text::Span;
 use ratatui::text::Text;
+use ratatui::widgets::Block;
+use ratatui::widgets::BorderType;
+use ratatui::widgets::Borders;
 use ratatui::widgets::Clear;
 use ratatui::widgets::Paragraph;
 use ratatui::widgets::Widget;
@@ -50,6 +53,7 @@ use ratatui::widgets::Wrap;
 pub(crate) enum Overlay {
     Transcript(TranscriptOverlay),
     Static(StaticOverlay),
+    Btw(BtwOverlay),
 }
 
 impl Overlay {
@@ -73,10 +77,15 @@ impl Overlay {
         Self::Static(StaticOverlay::with_renderables(renderables, title, keymap))
     }
 
+    pub(crate) fn new_btw(cell: Arc<dyn HistoryCell>, keymap: PagerKeymap) -> Self {
+        Self::Btw(BtwOverlay::new(cell, keymap))
+    }
+
     pub(crate) fn handle_event(&mut self, tui: &mut tui::Tui, event: TuiEvent) -> Result<()> {
         match self {
             Overlay::Transcript(o) => o.handle_event(tui, event),
             Overlay::Static(o) => o.handle_event(tui, event),
+            Overlay::Btw(o) => o.handle_event(tui, event),
         }
     }
 
@@ -84,6 +93,7 @@ impl Overlay {
         match self {
             Overlay::Transcript(o) => o.is_done(),
             Overlay::Static(o) => o.is_done(),
+            Overlay::Btw(o) => o.is_done(),
         }
     }
 }
@@ -789,6 +799,169 @@ pub(crate) struct StaticOverlay {
     is_done: bool,
 }
 
+pub(crate) struct BtwOverlay {
+    cell: Arc<dyn HistoryCell>,
+    renderable: Box<dyn Renderable>,
+    keymap: PagerKeymap,
+    scroll_offset: usize,
+    is_done: bool,
+}
+
+impl BtwOverlay {
+    pub(crate) fn new(cell: Arc<dyn HistoryCell>, keymap: PagerKeymap) -> Self {
+        Self {
+            cell: cell.clone(),
+            renderable: Box::new(CachedRenderable::new(CellRenderable {
+                cell,
+                style: Style::default(),
+            })),
+            keymap,
+            scroll_offset: 0,
+            is_done: false,
+        }
+    }
+
+    fn modal_area(&self, area: Rect, content_height: u16) -> Rect {
+        if area.width <= 8 || area.height <= 4 {
+            return area;
+        }
+        let max_width = area.width.saturating_sub(4).max(1);
+        let min_width = max_width.min(40);
+        let width = max_width.min(104).max(min_width);
+        let max_height = area.height.saturating_sub(2).max(1);
+        let min_height = max_height.min(8);
+        let height = content_height
+            .saturating_add(4)
+            .min(max_height)
+            .max(min_height);
+        let x = area.x + area.width.saturating_sub(width) / 2;
+        let y = area.y + area.height.saturating_sub(height) / 3;
+        Rect::new(x, y, width, height)
+    }
+
+    fn padded_inner(area: Rect) -> Rect {
+        Rect::new(
+            area.x.saturating_add(1),
+            area.y,
+            area.width.saturating_sub(2),
+            area.height,
+        )
+    }
+
+    fn render_footer(&self, area: Rect, buf: &mut Buffer, can_scroll: bool) {
+        if area.is_empty() {
+            return;
+        }
+        let hint = if can_scroll {
+            "Esc/Enter/Space close · ↑/↓ scroll"
+        } else {
+            "Esc/Enter/Space close"
+        };
+        Paragraph::new(Line::from(hint).dim()).render(area, buf);
+    }
+
+    fn render(&mut self, area: Rect, buf: &mut Buffer) {
+        Clear.render(area, buf);
+        let preview_width = area.width.saturating_sub(8).clamp(1, 100);
+        let content_height = self.renderable.desired_height(preview_width);
+        let modal = self.modal_area(area, content_height);
+        let block = Block::default()
+            .title(" BTW ".magenta().bold())
+            .borders(Borders::ALL)
+            .border_type(BorderType::Rounded)
+            .border_style(Style::default().dim());
+        let inner = block.inner(modal);
+        block.render(modal, buf);
+
+        let inner = Self::padded_inner(inner);
+        if inner.height == 0 {
+            return;
+        }
+        let footer_height = 1.min(inner.height);
+        let content_area = Rect::new(
+            inner.x,
+            inner.y,
+            inner.width,
+            inner.height.saturating_sub(footer_height),
+        );
+        let footer_area = Rect::new(
+            inner.x,
+            inner.y + content_area.height,
+            inner.width,
+            footer_height,
+        );
+        let content_height = self.renderable.desired_height(content_area.width);
+        self.scroll_offset = self.scroll_offset.min(usize::from(
+            content_height.saturating_sub(content_area.height),
+        ));
+        render_offset_content(
+            content_area,
+            buf,
+            &*self.renderable,
+            self.scroll_offset as u16,
+        );
+        self.render_footer(footer_area, buf, content_height > content_area.height);
+    }
+
+    fn page_height(&self, tui: &tui::Tui) -> usize {
+        let modal = self.modal_area(tui.terminal.viewport_area, /*content_height*/ 1);
+        let inner = Self::padded_inner(Block::default().borders(Borders::ALL).inner(modal));
+        usize::from(inner.height.saturating_sub(1)).max(1)
+    }
+
+    fn handle_key_event(&mut self, tui: &mut tui::Tui, key_event: KeyEvent) -> Result<()> {
+        match key_event {
+            e if self.keymap.close.is_pressed(e)
+                || matches!(e.code, KeyCode::Esc | KeyCode::Enter | KeyCode::Char(' ')) =>
+            {
+                self.is_done = true;
+            }
+            e if self.keymap.scroll_up.is_pressed(e) => {
+                self.scroll_offset = self.scroll_offset.saturating_sub(1);
+            }
+            e if self.keymap.scroll_down.is_pressed(e) => {
+                self.scroll_offset = self.scroll_offset.saturating_add(1);
+            }
+            e if self.keymap.page_up.is_pressed(e) => {
+                self.scroll_offset = self.scroll_offset.saturating_sub(self.page_height(tui));
+            }
+            e if self.keymap.page_down.is_pressed(e) => {
+                self.scroll_offset = self.scroll_offset.saturating_add(self.page_height(tui));
+            }
+            e if self.keymap.jump_top.is_pressed(e) => {
+                self.scroll_offset = 0;
+            }
+            e if self.keymap.jump_bottom.is_pressed(e) => {
+                self.scroll_offset = usize::MAX;
+            }
+            _ => {}
+        }
+        tui.frame_requester().schedule_frame();
+        Ok(())
+    }
+
+    pub(crate) fn handle_event(&mut self, tui: &mut tui::Tui, event: TuiEvent) -> Result<()> {
+        match event {
+            TuiEvent::Key(key_event) => self.handle_key_event(tui, key_event),
+            TuiEvent::Draw | TuiEvent::Resize => {
+                tui.draw(u16::MAX, |frame| {
+                    self.render(frame.area(), frame.buffer);
+                })?;
+                if self.cell.transcript_animation_tick().is_some() {
+                    tui.frame_requester()
+                        .schedule_frame_in(crate::tui::TARGET_FRAME_INTERVAL);
+                }
+                Ok(())
+            }
+            _ => Ok(()),
+        }
+    }
+
+    pub(crate) fn is_done(&self) -> bool {
+        self.is_done
+    }
+}
+
 impl StaticOverlay {
     pub(crate) fn with_title(
         lines: Vec<Line<'static>>,
@@ -971,6 +1144,10 @@ mod tests {
         StaticOverlay::with_title(lines, title.to_string(), default_pager_keymap())
     }
 
+    fn btw_overlay(lines: Vec<Line<'static>>) -> BtwOverlay {
+        BtwOverlay::new(Arc::new(TestCell { lines }), default_pager_keymap())
+    }
+
     fn pager_view(
         renderables: Vec<Box<dyn Renderable>>,
         title: &str,
@@ -1036,6 +1213,20 @@ mod tests {
             }),
         ]);
         let mut term = Terminal::new(TestBackend::new(40, 10)).expect("term");
+        term.draw(|f| overlay.render(f.area(), f.buffer_mut()))
+            .expect("draw");
+        assert_snapshot!(term.backend());
+    }
+
+    #[test]
+    fn btw_overlay_snapshot_uses_compact_modal_chrome() {
+        let mut overlay = btw_overlay(vec![
+            vec!["Question ".magenta().bold(), "介绍谢赛宁".into()].into(),
+            Line::from(""),
+            Line::from("谢赛宁是一位计算机视觉研究者。"),
+        ]);
+
+        let mut term = Terminal::new(TestBackend::new(72, 16)).expect("term");
         term.draw(|f| overlay.render(f.area(), f.buffer_mut()))
             .expect("draw");
         assert_snapshot!(term.backend());

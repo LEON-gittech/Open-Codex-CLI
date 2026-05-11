@@ -162,10 +162,10 @@ fn event_requires_delivery(event: &InProcessServerEvent) -> bool {
 
 /// Returns `true` for notifications that must survive backpressure.
 ///
-/// Transcript events (`AgentMessageDelta`, `PlanDelta`, reasoning deltas) and
-/// the authoritative `ItemCompleted` / `TurnCompleted` form the lossless tier
-/// of the event stream. Dropping any of these corrupts the visible assistant
-/// output or leaves surfaces waiting for a completion signal that already
+/// Transcript events (`AgentMessageDelta`, `PlanDelta`, reasoning deltas), `/btw`
+/// lifecycle events, and the authoritative `ItemCompleted` / `TurnCompleted` form
+/// the lossless tier of the event stream. Dropping any of these corrupts the visible
+/// assistant output or leaves surfaces waiting for a completion signal that already
 /// fired. Everything else (`CommandExecutionOutputDelta`, progress, etc.) is
 /// best-effort and may be dropped with only cosmetic impact.
 ///
@@ -180,6 +180,8 @@ pub(crate) fn server_notification_requires_delivery(notification: &ServerNotific
             | ServerNotification::PlanDelta(_)
             | ServerNotification::ReasoningSummaryTextDelta(_)
             | ServerNotification::ReasoningTextDelta(_)
+            | ServerNotification::BtwTextDelta(_)
+            | ServerNotification::BtwCompleted(_)
     )
 }
 
@@ -2068,6 +2070,27 @@ mod tests {
                             phase: None,
                             memory_citation: None,
                         },
+                    }
+                )
+            )
+        ));
+        assert!(event_requires_delivery(
+            &InProcessServerEvent::ServerNotification(
+                codex_app_server_protocol::ServerNotification::BtwTextDelta(
+                    codex_app_server_protocol::BtwTextDeltaNotification {
+                        btw_id: "btw".to_string(),
+                        delta: "hello".to_string(),
+                    }
+                )
+            )
+        ));
+        assert!(event_requires_delivery(
+            &InProcessServerEvent::ServerNotification(
+                codex_app_server_protocol::ServerNotification::BtwCompleted(
+                    codex_app_server_protocol::BtwCompletedNotification {
+                        btw_id: "btw".to_string(),
+                        answer: Some("done".to_string()),
+                        error: None,
                     }
                 )
             )

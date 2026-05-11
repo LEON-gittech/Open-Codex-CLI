@@ -126,6 +126,9 @@ pub(crate) enum KeymapEditIntent {
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug)]
 pub(crate) enum AppEvent {
+    /// Schedule a frame because state changed outside the direct TUI event path.
+    RequestRedraw,
+
     /// Open the agent picker for switching active threads.
     OpenAgentPicker,
     /// Stop a spawned subagent from the background task panel.

@@ -102,7 +102,12 @@ pub const DEFAULT_IN_PROCESS_CHANNEL_CAPACITY: usize = CHANNEL_CAPACITY;
 type PendingClientRequestResponse = std::result::Result<Result, JSONRPCErrorError>;
 
 fn server_notification_requires_delivery(notification: &ServerNotification) -> bool {
-    matches!(notification, ServerNotification::TurnCompleted(_))
+    matches!(
+        notification,
+        ServerNotification::TurnCompleted(_)
+            | ServerNotification::BtwTextDelta(_)
+            | ServerNotification::BtwCompleted(_)
+    )
 }
 
 /// Input needed to start an in-process app-server runtime.
@@ -721,6 +726,8 @@ async fn start_uninitialized(args: InProcessStartArgs) -> IoResult<InProcessClie
 #[cfg(test)]
 mod tests {
     use super::*;
+    use codex_app_server_protocol::BtwCompletedNotification;
+    use codex_app_server_protocol::BtwTextDeltaNotification;
     use codex_app_server_protocol::ClientInfo;
     use codex_app_server_protocol::ConfigRequirementsReadResponse;
     use codex_app_server_protocol::SessionSource as ApiSessionSource;
@@ -884,6 +891,19 @@ mod tests {
                     completed_at: Some(0),
                     duration_ms: None,
                 },
+            })
+        ));
+        assert!(server_notification_requires_delivery(
+            &ServerNotification::BtwTextDelta(BtwTextDeltaNotification {
+                btw_id: "btw-1".to_string(),
+                delta: "hello".to_string(),
+            })
+        ));
+        assert!(server_notification_requires_delivery(
+            &ServerNotification::BtwCompleted(BtwCompletedNotification {
+                btw_id: "btw-1".to_string(),
+                answer: Some("done".to_string()),
+                error: None,
             })
         ));
     }

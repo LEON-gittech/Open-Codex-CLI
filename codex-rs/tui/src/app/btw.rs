@@ -64,15 +64,10 @@ impl App {
         self.pending_btw_questions
             .insert(btw_id.clone(), Arc::clone(&state));
         let _ = tui.enter_alt_screen();
-        let overlay_cell: Box<dyn history_cell::HistoryCell> = Box::new(
+        let overlay_cell: Arc<dyn history_cell::HistoryCell> = Arc::new(
             history_cell::new_btw_question_cell(Arc::clone(&state), cwd.as_path()),
         );
-        let overlay_renderable: Box<dyn Renderable> = Box::new(overlay_cell);
-        self.overlay = Some(Overlay::new_static_with_renderables(
-            vec![overlay_renderable],
-            "B T W".to_string(),
-            self.keymap.pager.clone(),
-        ));
+        self.overlay = Some(Overlay::new_btw(overlay_cell, self.keymap.pager.clone()));
         tui.frame_requester().schedule_frame();
 
         let response = app_server
@@ -104,6 +99,7 @@ impl App {
                 if let Ok(mut state) = state.lock() {
                     state.push_delta(&notification.delta);
                 }
+                self.app_event_tx.send(AppEvent::RequestRedraw);
                 true
             }
             ServerNotification::BtwCompleted(notification) => {
@@ -113,6 +109,7 @@ impl App {
                 if let Ok(mut state) = state.lock() {
                     state.complete(notification.answer.clone(), notification.error.clone());
                 }
+                self.app_event_tx.send(AppEvent::RequestRedraw);
                 true
             }
             _ => false,
