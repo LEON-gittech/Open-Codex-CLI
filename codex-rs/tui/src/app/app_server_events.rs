@@ -109,6 +109,10 @@ impl App {
             _ => {}
         }
 
+        if self.note_btw_notification(&notification) {
+            return;
+        }
+
         match server_notification_thread_target(&notification) {
             ServerNotificationThreadTarget::Thread(thread_id) => {
                 let result = if self.primary_thread_id == Some(thread_id)
@@ -144,6 +148,13 @@ impl App {
         app_server_client: &AppServerSession,
         request: ServerRequest,
     ) {
+        if self
+            .reject_btw_server_request(app_server_client, &request)
+            .await
+        {
+            return;
+        }
+
         if let Some(unsupported) = self
             .pending_app_server_requests
             .note_server_request(&request)

@@ -185,6 +185,7 @@ mod app_server_event_targets;
 mod app_server_events;
 pub(crate) mod app_server_requests;
 mod background_requests;
+mod btw;
 mod config_persistence;
 mod event_dispatch;
 mod history_ui;
@@ -205,6 +206,7 @@ mod thread_session_state;
 use self::agent_navigation::AgentNavigationDirection;
 use self::agent_navigation::AgentNavigationState;
 use self::app_server_requests::PendingAppServerRequests;
+use self::btw::BtwQuestionState;
 use self::loaded_threads::find_loaded_subagent_threads_for_primary;
 use self::pending_interactive_replay::PendingInteractiveReplayState;
 use self::platform_actions::*;
@@ -496,6 +498,7 @@ pub(crate) struct App {
     thread_event_listener_tasks: HashMap<ThreadId, JoinHandle<()>>,
     agent_navigation: AgentNavigationState,
     side_threads: HashMap<ThreadId, SideThreadState>,
+    pending_btw_questions: HashMap<ThreadId, BtwQuestionState>,
     active_thread_id: Option<ThreadId>,
     active_thread_rx: Option<mpsc::Receiver<ThreadBufferedEvent>>,
     primary_thread_id: Option<ThreadId>,
@@ -907,6 +910,7 @@ See the Codex keymap documentation for supported actions and examples."
             thread_event_listener_tasks: HashMap::new(),
             agent_navigation: AgentNavigationState::default(),
             side_threads: HashMap::new(),
+            pending_btw_questions: HashMap::new(),
             active_thread_id: None,
             active_thread_rx: None,
             primary_thread_id: None,

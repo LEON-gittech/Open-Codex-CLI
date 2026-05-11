@@ -1124,6 +1124,12 @@ pub(crate) struct UserMessage {
     mention_bindings: Vec<MentionBinding>,
 }
 
+impl UserMessage {
+    pub(crate) fn text(&self) -> &str {
+        &self.text
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 enum UserMessageHistoryRecord {
     UserMessageText,

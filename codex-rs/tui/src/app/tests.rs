@@ -3922,6 +3922,7 @@ async fn make_test_app() -> App {
         primary_session_configured: None,
         pending_primary_events: VecDeque::new(),
         pending_app_server_requests: PendingAppServerRequests::default(),
+        pending_btw_questions: HashMap::new(),
         pending_plugin_enabled_writes: HashMap::new(),
         pending_hook_enabled_writes: HashMap::new(),
     }
@@ -3985,6 +3986,7 @@ async fn make_test_app_with_channels() -> (
             primary_session_configured: None,
             pending_primary_events: VecDeque::new(),
             pending_app_server_requests: PendingAppServerRequests::default(),
+            pending_btw_questions: HashMap::new(),
             pending_plugin_enabled_writes: HashMap::new(),
             pending_hook_enabled_writes: HashMap::new(),
         },
@@ -4225,6 +4227,57 @@ fn thread_closed_notification(thread_id: ThreadId) -> ServerNotification {
     ServerNotification::ThreadClosed(ThreadClosedNotification {
         thread_id: thread_id.to_string(),
     })
+}
+
+#[tokio::test]
+async fn btw_notifications_collect_answer_and_emit_completion() {
+    let (mut app, mut app_event_rx, _op_rx) = make_test_app_with_channels().await;
+    let parent_thread_id = ThreadId::new();
+    let thread_id = ThreadId::new();
+    app.pending_btw_questions.insert(
+        thread_id,
+        BtwQuestionState {
+            parent_thread_id,
+            question: "what changed?".to_string(),
+            answer: String::new(),
+            completed: false,
+            failed: None,
+        },
+    );
+
+    assert!(
+        app.note_btw_notification(&ServerNotification::ItemCompleted(
+            codex_app_server_protocol::ItemCompletedNotification {
+                thread_id: thread_id.to_string(),
+                turn_id: "turn-1".to_string(),
+                completed_at_ms: 0,
+                item: ThreadItem::AgentMessage {
+                    id: "assistant-1".to_string(),
+                    text: "A short answer.".to_string(),
+                    phase: None,
+                    memory_citation: None,
+                },
+            },
+        ))
+    );
+    assert!(app.note_btw_notification(&turn_completed_notification(
+        thread_id,
+        "turn-1",
+        TurnStatus::Completed,
+    )));
+
+    let state = app
+        .pending_btw_questions
+        .get(&thread_id)
+        .expect("btw state remains until completion event is handled");
+    assert_eq!(state.answer, "A short answer.");
+    assert!(state.completed);
+    assert_matches!(
+        app_event_rx.try_recv(),
+        Ok(AppEvent::CompleteBtw {
+            thread_id: emitted_thread_id,
+        }) if emitted_thread_id == thread_id
+    );
 }
 
 fn token_usage_notification(

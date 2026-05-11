@@ -41,6 +41,7 @@ pub enum SlashCommand {
     Collab,
     Agent,
     Side,
+    Btw,
     Copy,
     Export,
     Raw,
@@ -122,6 +123,7 @@ impl SlashCommand {
             SlashCommand::Collab => "change collaboration mode (experimental)",
             SlashCommand::Agent | SlashCommand::MultiAgents => "switch the active agent thread",
             SlashCommand::Side => "start a side conversation in an ephemeral fork",
+            SlashCommand::Btw => "ask a quick side question without switching threads",
             SlashCommand::Permissions => "choose what Codex is allowed to do",
             SlashCommand::Keymap => "remap TUI shortcuts",
             SlashCommand::Vim => "toggle Vim mode for the composer",
@@ -162,6 +164,7 @@ impl SlashCommand {
                 | SlashCommand::Keymap
                 | SlashCommand::Mcp
                 | SlashCommand::Raw
+                | SlashCommand::Btw
                 | SlashCommand::Side
                 | SlashCommand::Resume
                 | SlashCommand::SandboxReadRoot
@@ -230,6 +233,7 @@ impl SlashCommand {
             | SlashCommand::Ide
             | SlashCommand::Quit
             | SlashCommand::Exit
+            | SlashCommand::Btw
             | SlashCommand::Side => true,
             SlashCommand::Rollout => true,
             SlashCommand::TestApproval => true,
@@ -282,6 +286,8 @@ mod tests {
         assert!(SlashCommand::Ide.available_during_task());
         assert!(SlashCommand::Title.available_during_task());
         assert!(SlashCommand::Statusline.available_during_task());
+        assert!(SlashCommand::Btw.available_during_task());
+        assert!(SlashCommand::Btw.supports_inline_args());
         assert!(SlashCommand::Raw.available_during_task());
         assert!(SlashCommand::Raw.available_in_side_conversation());
         assert!(SlashCommand::Raw.supports_inline_args());

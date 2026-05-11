@@ -1688,6 +1688,17 @@ impl App {
                     .handle_start_side(tui, app_server, parent_thread_id, user_message)
                     .await;
             }
+            AppEvent::StartBtw {
+                parent_thread_id,
+                user_message,
+            } => {
+                return self
+                    .handle_start_btw(app_server, parent_thread_id, user_message)
+                    .await;
+            }
+            AppEvent::CompleteBtw { thread_id } => {
+                self.handle_complete_btw(app_server, thread_id).await;
+            }
             AppEvent::OpenSkillsList => {
                 self.chat_widget.open_skills_list();
             }

@@ -269,6 +269,42 @@ async fn slash_side_requests_forked_side_question_while_task_running() {
 }
 
 #[tokio::test]
+async fn slash_btw_requests_lightweight_side_question_while_task_running() {
+    let (mut chat, mut rx, mut op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    let parent_thread_id = ThreadId::new();
+    chat.thread_id = Some(parent_thread_id);
+    chat.on_task_started();
+    chat.bottom_pane.set_composer_text(
+        "/btw summarize the current risk".to_string(),
+        Vec::new(),
+        Vec::new(),
+    );
+
+    chat.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+    assert_matches!(
+        rx.try_recv(),
+        Ok(AppEvent::StartBtw {
+            parent_thread_id: emitted_parent_thread_id,
+            user_message,
+        }) if emitted_parent_thread_id == parent_thread_id
+            && user_message
+                == UserMessage {
+                    text: "summarize the current risk".to_string(),
+                    local_images: Vec::new(),
+                    remote_image_urls: Vec::new(),
+                    text_elements: Vec::new(),
+                    mention_bindings: Vec::new(),
+                }
+    );
+    assert!(
+        op_rx.try_recv().is_err(),
+        "expected no op on the parent thread"
+    );
+    assert!(chat.queued_user_messages.is_empty());
+}
+
+#[tokio::test]
 async fn side_context_label_preserves_status_line_snapshot() {
     let (mut chat, _rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
     chat.show_welcome_banner = false;

@@ -35,6 +35,7 @@ const GOAL_USAGE_HINT: &str = "Example: /goal improve benchmark coverage";
 const EFFORT_USAGE: &str = "Usage: /effort [default|none|minimal|low|medium|high|xhigh]";
 const EXPORT_USAGE: &str = "Usage: /export <path>";
 const RAW_USAGE: &str = "Usage: /raw [on|off]";
+const BTW_USAGE: &str = "Usage: /btw <question>";
 
 fn parse_effort_arg(value: &str) -> Option<Option<ReasoningEffortConfig>> {
     match value.to_ascii_lowercase().as_str() {
@@ -130,6 +131,13 @@ impl ChatWidget {
         };
 
         self.request_side_conversation(parent_thread_id, /*user_message*/ None);
+    }
+
+    fn request_btw_side_question(&mut self, parent_thread_id: ThreadId, user_message: UserMessage) {
+        self.app_event_tx.send(AppEvent::StartBtw {
+            parent_thread_id,
+            user_message,
+        });
     }
 
     fn emit_raw_output_mode_changed(&self, enabled: bool) {
@@ -294,6 +302,9 @@ impl ChatWidget {
             }
             SlashCommand::Side => {
                 self.request_empty_side_conversation();
+            }
+            SlashCommand::Btw => {
+                self.add_info_message(BTW_USAGE.to_string(), /*hint*/ None);
             }
             SlashCommand::Agent | SlashCommand::MultiAgents => {
                 self.app_event_tx.send(AppEvent::OpenAgentPicker);
@@ -837,6 +848,23 @@ impl ChatWidget {
                 );
                 self.request_side_conversation(parent_thread_id, Some(user_message));
             }
+            SlashCommand::Btw if !trimmed.is_empty() => {
+                let Some(parent_thread_id) = self.thread_id else {
+                    self.add_error_message(
+                        "'/btw' is unavailable before the session starts.".to_string(),
+                    );
+                    return;
+                };
+                let user_message = self.prepared_inline_user_message(
+                    args,
+                    text_elements,
+                    local_images,
+                    remote_image_urls,
+                    mention_bindings,
+                    source,
+                );
+                self.request_btw_side_question(parent_thread_id, user_message);
+            }
             SlashCommand::Review if !trimmed.is_empty() => {
                 self.submit_op(AppCommand::review(ReviewTarget::Custom {
                     instructions: args,
@@ -985,6 +1013,7 @@ impl ChatWidget {
             | SlashCommand::Rollout
             | SlashCommand::Copy
             | SlashCommand::Raw
+            | SlashCommand::Btw
             | SlashCommand::Vim
             | SlashCommand::Diff
             | SlashCommand::Rename
