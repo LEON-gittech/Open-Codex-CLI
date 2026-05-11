@@ -133,6 +133,48 @@ async fn submission_ultra_marker_uses_xhigh_for_current_turn_only() {
 }
 
 #[tokio::test]
+async fn submission_xhigh_marker_is_visible_in_status_line_while_turn_runs() {
+    let (mut chat, _rx, mut op_rx) = make_chatwidget_manual(Some("gpt-5.3-codex")).await;
+    chat.thread_id = Some(ThreadId::new());
+    set_chatgpt_auth(&mut chat);
+    chat.config.tui_status_line = Some(vec!["model-with-reasoning".to_string()]);
+    chat.set_reasoning_effort(Some(ReasoningEffortConfig::High));
+    chat.refresh_status_line();
+    assert_eq!(
+        status_line_text(&chat),
+        Some("gpt-5.3-codex high".to_string())
+    );
+
+    chat.bottom_pane.set_composer_text(
+        "新bug, 目前保存的发票信息可以看到了，但是点击编辑抬头之后的format是空format，这不符合预期 xhigh"
+            .to_string(),
+        Vec::new(),
+        Vec::new(),
+    );
+    chat.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+    match next_submit_op(&mut op_rx) {
+        Op::UserTurn { effort, .. } => {
+            assert_eq!(effort, Some(ReasoningEffortConfig::XHigh));
+        }
+        other => panic!("expected Op::UserTurn, got {other:?}"),
+    }
+    handle_turn_started(&mut chat, "turn-1");
+
+    assert_eq!(
+        status_line_text(&chat),
+        Some("gpt-5.3-codex xhigh".to_string())
+    );
+
+    handle_turn_completed(&mut chat, "turn-1", /*duration_ms*/ None);
+
+    assert_eq!(
+        status_line_text(&chat),
+        Some("gpt-5.3-codex high".to_string())
+    );
+}
+
+#[tokio::test]
 async fn submission_xhigh_marker_requires_standalone_token() {
     let (mut chat, _rx, mut op_rx) = make_chatwidget_manual(Some("gpt-5.3-codex")).await;
     chat.thread_id = Some(ThreadId::new());
@@ -1025,6 +1067,7 @@ async fn restore_thread_input_state_syncs_sleep_inhibitor_state() {
         current_collaboration_mode: chat.current_collaboration_mode.clone(),
         active_collaboration_mask: chat.active_collaboration_mask.clone(),
         agent_turn_running: true,
+        active_turn_reasoning_effort: None,
         task_backgrounded: false,
     }));
 

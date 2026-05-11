@@ -1,6 +1,6 @@
 {
   "name": "@leonw24/open-codex",
-  "version": "0.129.12",
+  "version": "0.129.13",
   "license": "Apache-2.0",
   "bin": {
     "open-codex": "bin/codex.js"

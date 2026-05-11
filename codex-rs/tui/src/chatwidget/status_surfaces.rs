@@ -876,7 +876,15 @@ impl ChatWidget {
     }
 
     fn model_with_reasoning_display_name(&self) -> String {
-        let label = Self::status_line_reasoning_effort_label(self.effective_reasoning_effort());
+        let active_turn_reasoning_effort =
+            if self.user_turn_pending_start || self.foreground_turn_running() {
+                self.active_turn_reasoning_effort
+            } else {
+                None
+            };
+        let label = Self::status_line_reasoning_effort_label(
+            active_turn_reasoning_effort.or(self.effective_reasoning_effort()),
+        );
         let fast_label =
             if self.should_show_fast_status(self.current_model(), self.current_service_tier()) {
                 " fast"

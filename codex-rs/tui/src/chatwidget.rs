@@ -813,6 +813,11 @@ pub(crate) struct ChatWidget {
     /// This is kept separate from `mcp_startup_status` so that MCP startup progress (or completion)
     /// can update the status header without accidentally clearing the spinner for an active turn.
     agent_turn_running: bool,
+    /// Reasoning effort submitted with the foreground turn that is pending or running.
+    ///
+    /// This is transient UI state: it lets status surfaces describe the currently executing turn
+    /// without changing the session's persisted/default effort.
+    active_turn_reasoning_effort: Option<ReasoningEffortConfig>,
     /// True when an active agent turn has been detached from the foreground composer.
     ///
     /// The core turn remains running and cancellable; this only suppresses the bottom-pane running
@@ -1211,6 +1216,7 @@ pub(crate) struct ThreadInputState {
     current_collaboration_mode: CollaborationMode,
     active_collaboration_mask: Option<CollaborationModeMask>,
     agent_turn_running: bool,
+    active_turn_reasoning_effort: Option<ReasoningEffortConfig>,
     task_backgrounded: bool,
 }
 
@@ -2643,6 +2649,7 @@ impl ChatWidget {
         self.pending_status_indicator_restore = false;
         self.user_turn_pending_start = false;
         self.agent_turn_running = false;
+        self.active_turn_reasoning_effort = None;
         self.task_backgrounded = false;
         self.goal_status_active_turn_started_at = None;
         self.turn_sleep_inhibitor
@@ -2659,6 +2666,7 @@ impl ChatWidget {
         }
         self.task_backgrounded = self.should_mark_current_turn_backgrounded();
         self.update_task_running_state();
+        self.refresh_status_line();
         self.request_redraw();
 
         let had_pending_steers = !self.pending_steers.is_empty();
@@ -3138,6 +3146,7 @@ impl ChatWidget {
         // Reset running state and clear streaming buffers.
         self.user_turn_pending_start = false;
         self.agent_turn_running = false;
+        self.active_turn_reasoning_effort = None;
         self.task_backgrounded = self.should_mark_current_turn_backgrounded();
         self.goal_status_active_turn_started_at = None;
         self.turn_sleep_inhibitor
@@ -3152,6 +3161,7 @@ impl ChatWidget {
         self.request_status_line_branch_refresh();
         self.request_status_line_git_summary_refresh();
         self.request_status_line_workspace_changes_refresh();
+        self.refresh_status_line();
         self.maybe_show_pending_rate_limit_prompt();
     }
 
@@ -3462,6 +3472,7 @@ impl ChatWidget {
             current_collaboration_mode: self.current_collaboration_mode.clone(),
             active_collaboration_mask: self.active_collaboration_mask.clone(),
             agent_turn_running: self.agent_turn_running,
+            active_turn_reasoning_effort: self.active_turn_reasoning_effort,
             task_backgrounded: self.task_backgrounded,
         })
     }
@@ -3471,6 +3482,7 @@ impl ChatWidget {
             self.current_collaboration_mode = input_state.current_collaboration_mode;
             self.active_collaboration_mask = input_state.active_collaboration_mask;
             self.agent_turn_running = input_state.agent_turn_running;
+            self.active_turn_reasoning_effort = input_state.active_turn_reasoning_effort;
             self.task_backgrounded = input_state.task_backgrounded;
             self.goal_status_active_turn_started_at =
                 self.agent_turn_running.then_some(Instant::now());
@@ -3539,6 +3551,7 @@ impl ChatWidget {
             );
         } else {
             self.agent_turn_running = false;
+            self.active_turn_reasoning_effort = None;
             self.task_backgrounded = false;
             self.goal_status_active_turn_started_at = None;
             self.user_turn_pending_start = false;
@@ -5145,6 +5158,7 @@ impl ChatWidget {
             task_complete_pending: false,
             unified_exec_processes: Vec::new(),
             agent_turn_running: false,
+            active_turn_reasoning_effort: None,
             task_backgrounded: false,
             mcp_startup_status: None,
             last_agent_markdown: None,
@@ -6128,7 +6142,9 @@ impl ChatWidget {
             return (false, None);
         }
         if render_in_history {
+            self.active_turn_reasoning_effort = reasoning_effort;
             self.user_turn_pending_start = true;
+            self.refresh_status_line();
         }
 
         // Persist the submitted text to cross-session message history. Mentions are encoded into
