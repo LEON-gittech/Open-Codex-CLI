@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "properties": {
+    "answer": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "btwId": {
+      "type": "string"
+    },
+    "error": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "btwId"
+  ],
+  "title": "BtwCompletedNotification",
+  "type": "object"
+}

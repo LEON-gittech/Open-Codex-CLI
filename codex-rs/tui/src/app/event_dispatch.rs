@@ -1693,11 +1693,8 @@ impl App {
                 user_message,
             } => {
                 return self
-                    .handle_start_btw(app_server, parent_thread_id, user_message)
+                    .handle_start_btw(tui, app_server, parent_thread_id, user_message)
                     .await;
-            }
-            AppEvent::CompleteBtw { thread_id } => {
-                self.handle_complete_btw(app_server, thread_id).await;
             }
             AppEvent::OpenSkillsList => {
                 self.chat_widget.open_skills_list();

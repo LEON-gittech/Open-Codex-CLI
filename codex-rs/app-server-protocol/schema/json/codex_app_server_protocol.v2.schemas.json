@@ -866,6 +866,104 @@
       ],
       "type": "string"
     },
+    "BtwCompletedNotification": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "answer": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "btwId": {
+          "type": "string"
+        },
+        "error": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "btwId"
+      ],
+      "title": "BtwCompletedNotification",
+      "type": "object"
+    },
+    "BtwStartParams": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "btwId": {
+          "type": "string"
+        },
+        "effort": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ReasoningEffort"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "model": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "question": {
+          "type": "string"
+        },
+        "serviceTier": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "threadId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "btwId",
+        "question",
+        "threadId"
+      ],
+      "title": "BtwStartParams",
+      "type": "object"
+    },
+    "BtwStartResponse": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "btwId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "btwId"
+      ],
+      "title": "BtwStartResponse",
+      "type": "object"
+    },
+    "BtwTextDeltaNotification": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "btwId": {
+          "type": "string"
+        },
+        "delta": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "btwId",
+        "delta"
+      ],
+      "title": "BtwTextDeltaNotification",
+      "type": "object"
+    },
     "ByteRange": {
       "properties": {
         "end": {
@@ -2023,6 +2121,30 @@
             "params"
           ],
           "title": "Turn/interruptRequest",
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "$ref": "#/definitions/RequestId"
+            },
+            "method": {
+              "enum": [
+                "btw/start"
+              ],
+              "title": "Btw/startRequestMethod",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/definitions/BtwStartParams"
+            }
+          },
+          "required": [
+            "id",
+            "method",
+            "params"
+          ],
+          "title": "Btw/startRequest",
           "type": "object"
         },
         {
@@ -11851,6 +11973,46 @@
             "params"
           ],
           "title": "Item/reasoning/textDeltaNotification",
+          "type": "object"
+        },
+        {
+          "properties": {
+            "method": {
+              "enum": [
+                "btw/textDelta"
+              ],
+              "title": "Btw/textDeltaNotificationMethod",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/definitions/BtwTextDeltaNotification"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ],
+          "title": "Btw/textDeltaNotification",
+          "type": "object"
+        },
+        {
+          "properties": {
+            "method": {
+              "enum": [
+                "btw/completed"
+              ],
+              "title": "Btw/completedNotificationMethod",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/definitions/BtwCompletedNotification"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ],
+          "title": "Btw/completedNotification",
           "type": "object"
         },
         {

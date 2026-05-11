@@ -842,6 +842,32 @@ impl ThreadManager {
         .await
     }
 
+    pub async fn fork_internal_thread_from_history<S>(
+        &self,
+        snapshot: S,
+        config: Config,
+        history: InitialHistory,
+        session_source: SessionSource,
+    ) -> CodexResult<NewThread>
+    where
+        S: Into<ForkSnapshot>,
+    {
+        let interrupted_marker = InterruptedTurnHistoryMarker::from_config(&config);
+        let history = fork_history_from_snapshot(snapshot.into(), history, interrupted_marker);
+        Box::pin(self.state.fork_thread_with_source(
+            config,
+            history,
+            self.agent_control(),
+            session_source,
+            /*thread_source*/ None,
+            /*persist_extended_history*/ false,
+            /*inherited_shell_snapshot*/ None,
+            /*inherited_exec_policy*/ None,
+            /*environments*/ None,
+        ))
+        .await
+    }
+
     async fn fork_thread_with_initial_history(
         &self,
         snapshot: ForkSnapshot,

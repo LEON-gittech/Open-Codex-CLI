@@ -152,11 +152,6 @@ pub(crate) enum AppEvent {
         user_message: UserMessage,
     },
 
-    /// Finalize a hidden `/btw` fork after its turn completes.
-    CompleteBtw {
-        thread_id: ThreadId,
-    },
-
     /// Submit an op to the specified thread, regardless of current focus.
     SubmitThreadOp {
         thread_id: ThreadId,

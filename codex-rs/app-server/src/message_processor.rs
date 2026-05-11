@@ -1119,6 +1119,11 @@ impl MessageProcessor {
                     .turn_interrupt(&request_id, params)
                     .await
             }
+            ClientRequest::BtwStart { params, .. } => {
+                self.thread_processor
+                    .btw_start(request_id.clone(), params)
+                    .await
+            }
             ClientRequest::ThreadRealtimeStart { params, .. } => {
                 self.turn_processor
                     .thread_realtime_start(&request_id, params)

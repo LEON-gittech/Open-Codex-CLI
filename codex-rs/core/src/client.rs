@@ -1638,6 +1638,9 @@ fn subagent_header_value(session_source: &SessionSource) -> Option<String> {
         SessionSource::Internal(InternalSessionSource::MemoryConsolidation) => {
             Some("memory_consolidation".to_string())
         }
+        SessionSource::Internal(InternalSessionSource::BtwSideQuestion) => {
+            Some("btw_side_question".to_string())
+        }
         SessionSource::Cli
         | SessionSource::VSCode
         | SessionSource::Exec

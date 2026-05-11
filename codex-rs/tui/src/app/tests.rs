@@ -4231,53 +4231,43 @@ fn thread_closed_notification(thread_id: ThreadId) -> ServerNotification {
 
 #[tokio::test]
 async fn btw_notifications_collect_answer_and_emit_completion() {
-    let (mut app, mut app_event_rx, _op_rx) = make_test_app_with_channels().await;
-    let parent_thread_id = ThreadId::new();
-    let thread_id = ThreadId::new();
-    app.pending_btw_questions.insert(
-        thread_id,
-        BtwQuestionState {
-            parent_thread_id,
-            question: "what changed?".to_string(),
-            answer: String::new(),
-            completed: false,
-            failed: None,
+    let (mut app, _app_event_rx, _op_rx) = make_test_app_with_channels().await;
+    let btw_id = "btw-test".to_string();
+    let state = std::sync::Arc::new(std::sync::Mutex::new(
+        history_cell::BtwQuestionCellState::new(
+            "what changed?".to_string(),
+            /*animations_enabled*/ false,
+        ),
+    ));
+    app.pending_btw_questions
+        .insert(btw_id.clone(), std::sync::Arc::clone(&state));
+
+    assert!(app.note_btw_notification(&ServerNotification::BtwTextDelta(
+        codex_app_server_protocol::BtwTextDeltaNotification {
+            btw_id: btw_id.clone(),
+            delta: "A short".to_string(),
         },
-    );
-
-    assert!(
-        app.note_btw_notification(&ServerNotification::ItemCompleted(
-            codex_app_server_protocol::ItemCompletedNotification {
-                thread_id: thread_id.to_string(),
-                turn_id: "turn-1".to_string(),
-                completed_at_ms: 0,
-                item: ThreadItem::AgentMessage {
-                    id: "assistant-1".to_string(),
-                    text: "A short answer.".to_string(),
-                    phase: None,
-                    memory_citation: None,
-                },
-            },
-        ))
-    );
-    assert!(app.note_btw_notification(&turn_completed_notification(
-        thread_id,
-        "turn-1",
-        TurnStatus::Completed,
     )));
-
-    let state = app
-        .pending_btw_questions
-        .get(&thread_id)
-        .expect("btw state remains until completion event is handled");
-    assert_eq!(state.answer, "A short answer.");
-    assert!(state.completed);
-    assert_matches!(
-        app_event_rx.try_recv(),
-        Ok(AppEvent::CompleteBtw {
-            thread_id: emitted_thread_id,
-        }) if emitted_thread_id == thread_id
-    );
+    assert!(app.note_btw_notification(&ServerNotification::BtwCompleted(
+        codex_app_server_protocol::BtwCompletedNotification {
+            btw_id: btw_id.clone(),
+            answer: Some("A short answer.".to_string()),
+            error: None,
+        },
+    )));
+    assert!(!app.pending_btw_questions.contains_key(&btw_id));
+    let lines =
+        history_cell::new_btw_question_cell(state, std::path::Path::new("/tmp")).raw_lines();
+    let rendered = lines
+        .into_iter()
+        .map(|line| {
+            line.spans
+                .into_iter()
+                .map(|span| span.content)
+                .collect::<String>()
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(rendered, vec!["/btw what changed?", "A short answer."]);
 }
 
 fn token_usage_notification(

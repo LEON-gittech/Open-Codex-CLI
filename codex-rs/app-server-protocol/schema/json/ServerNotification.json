@@ -455,6 +455,44 @@
       ],
       "type": "string"
     },
+    "BtwCompletedNotification": {
+      "properties": {
+        "answer": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "btwId": {
+          "type": "string"
+        },
+        "error": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "btwId"
+      ],
+      "type": "object"
+    },
+    "BtwTextDeltaNotification": {
+      "properties": {
+        "btwId": {
+          "type": "string"
+        },
+        "delta": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "btwId",
+        "delta"
+      ],
+      "type": "object"
+    },
     "ByteRange": {
       "properties": {
         "end": {
@@ -5727,6 +5765,46 @@
         "params"
       ],
       "title": "Item/reasoning/textDeltaNotification",
+      "type": "object"
+    },
+    {
+      "properties": {
+        "method": {
+          "enum": [
+            "btw/textDelta"
+          ],
+          "title": "Btw/textDeltaNotificationMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/BtwTextDeltaNotification"
+        }
+      },
+      "required": [
+        "method",
+        "params"
+      ],
+      "title": "Btw/textDeltaNotification",
+      "type": "object"
+    },
+    {
+      "properties": {
+        "method": {
+          "enum": [
+            "btw/completed"
+          ],
+          "title": "Btw/completedNotificationMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/BtwCompletedNotification"
+        }
+      },
+      "required": [
+        "method",
+        "params"
+      ],
+      "title": "Btw/completedNotification",
       "type": "object"
     },
     {

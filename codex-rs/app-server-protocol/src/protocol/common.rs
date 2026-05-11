@@ -751,6 +751,11 @@ client_request_definitions! {
         serialization: thread_id(params.thread_id),
         response: v2::TurnInterruptResponse,
     },
+    BtwStart => "btw/start" {
+        params: v2::BtwStartParams,
+        serialization: thread_id(params.thread_id),
+        response: v2::BtwStartResponse,
+    },
     #[experimental("thread/realtime/start")]
     ThreadRealtimeStart => "thread/realtime/start" {
         params: v2::ThreadRealtimeStartParams,
@@ -1478,6 +1483,8 @@ server_notification_definitions! {
     ReasoningSummaryTextDelta => "item/reasoning/summaryTextDelta" (v2::ReasoningSummaryTextDeltaNotification),
     ReasoningSummaryPartAdded => "item/reasoning/summaryPartAdded" (v2::ReasoningSummaryPartAddedNotification),
     ReasoningTextDelta => "item/reasoning/textDelta" (v2::ReasoningTextDeltaNotification),
+    BtwTextDelta => "btw/textDelta" (v2::BtwTextDeltaNotification),
+    BtwCompleted => "btw/completed" (v2::BtwCompletedNotification),
     /// Deprecated: Use `ContextCompaction` item type instead.
     ContextCompacted => "thread/compacted" (v2::ContextCompactedNotification),
     ModelRerouted => "model/rerouted" (v2::ModelReroutedNotification),

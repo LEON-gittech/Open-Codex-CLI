@@ -92,6 +92,8 @@ use std::collections::HashMap;
 use std::io::Cursor;
 use std::path::Path;
 use std::path::PathBuf;
+use std::sync::Arc;
+use std::sync::Mutex;
 use std::time::Duration;
 use std::time::Instant;
 use tracing::error;
@@ -630,6 +632,141 @@ impl HistoryCell for AgentMarkdownCell {
     fn raw_lines(&self) -> Vec<Line<'static>> {
         raw_lines_from_source(&self.markdown_source)
     }
+}
+
+#[derive(Debug)]
+pub(crate) struct BtwQuestionCellState {
+    question: String,
+    answer: String,
+    error: Option<String>,
+    completed: bool,
+    start_time: Instant,
+    animations_enabled: bool,
+}
+
+impl BtwQuestionCellState {
+    pub(crate) fn new(question: String, animations_enabled: bool) -> Self {
+        Self {
+            question,
+            answer: String::new(),
+            error: None,
+            completed: false,
+            start_time: Instant::now(),
+            animations_enabled,
+        }
+    }
+
+    pub(crate) fn push_delta(&mut self, delta: &str) {
+        self.answer.push_str(delta);
+    }
+
+    pub(crate) fn complete(&mut self, answer: Option<String>, error: Option<String>) {
+        if let Some(answer) = answer
+            && !answer.trim().is_empty()
+        {
+            self.answer = answer;
+        }
+        self.error = error;
+        self.completed = true;
+    }
+}
+
+#[derive(Debug)]
+pub(crate) struct BtwQuestionCell {
+    state: Arc<Mutex<BtwQuestionCellState>>,
+    cwd: PathBuf,
+}
+
+impl BtwQuestionCell {
+    pub(crate) fn new(state: Arc<Mutex<BtwQuestionCellState>>, cwd: &Path) -> Self {
+        Self {
+            state,
+            cwd: cwd.to_path_buf(),
+        }
+    }
+}
+
+impl HistoryCell for BtwQuestionCell {
+    fn display_lines(&self, width: u16) -> Vec<Line<'static>> {
+        let Ok(state) = self.state.lock() else {
+            return vec!["/btw state unavailable".red().into()];
+        };
+        let mut lines = vec![vec!["/btw ".magenta().bold(), state.question.clone().dim()].into()];
+
+        if let Some(error) = &state.error {
+            lines.push(vec!["  ".into(), format!("■ {error}").red()].into());
+        } else if state.answer.trim().is_empty() && !state.completed {
+            lines.push(
+                vec![
+                    "  ".into(),
+                    activity_indicator(
+                        Some(state.start_time),
+                        MotionMode::from_animations_enabled(state.animations_enabled),
+                        ReducedMotionIndicator::StaticBullet,
+                    )
+                    .unwrap_or_else(|| "•".dim()),
+                    " ".into(),
+                    "Answering...".magenta(),
+                ]
+                .into(),
+            );
+        } else if state.answer.trim().is_empty() {
+            lines.push(vec!["  ".into(), "No response received".dim()].into());
+        } else {
+            let wrap_width = usize::from(width.saturating_sub(2).max(1));
+            let mut answer_lines = Vec::new();
+            append_markdown(
+                &state.answer,
+                Some(wrap_width),
+                Some(self.cwd.as_path()),
+                &mut answer_lines,
+            );
+            lines.extend(prefix_lines(answer_lines, "  ".into(), "  ".into()));
+        }
+
+        if state.completed {
+            lines.push(
+                vec![
+                    "  ".into(),
+                    "Space, Enter, or Escape to dismiss".dark_gray(),
+                ]
+                .into(),
+            );
+        }
+        lines
+    }
+
+    fn raw_lines(&self) -> Vec<Line<'static>> {
+        let Ok(state) = self.state.lock() else {
+            return vec![Line::from("/btw state unavailable")];
+        };
+        let mut lines = vec![Line::from(format!("/btw {}", state.question))];
+        if let Some(error) = &state.error {
+            lines.push(Line::from(format!("Error: {error}")));
+        } else if !state.answer.trim().is_empty() {
+            lines.extend(raw_lines_from_source(&state.answer));
+        } else if !state.completed {
+            lines.push(Line::from("Answering..."));
+        }
+        lines
+    }
+
+    fn transcript_animation_tick(&self) -> Option<u64> {
+        let Ok(state) = self.state.lock() else {
+            return None;
+        };
+        if !state.animations_enabled || state.completed {
+            return None;
+        }
+        Some((state.start_time.elapsed().as_millis() / 50) as u64)
+    }
+}
+
+pub(crate) fn new_btw_question_cell(
+    state: Arc<Mutex<BtwQuestionCellState>>,
+    cwd: &Path,
+) -> BtwQuestionCell {
+    BtwQuestionCell::new(state, cwd)
 }
 
 #[derive(Debug)]

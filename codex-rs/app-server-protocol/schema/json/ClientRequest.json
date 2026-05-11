@@ -104,6 +104,47 @@
         }
       ]
     },
+    "BtwStartParams": {
+      "properties": {
+        "btwId": {
+          "type": "string"
+        },
+        "effort": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ReasoningEffort"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "model": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "question": {
+          "type": "string"
+        },
+        "serviceTier": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "threadId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "btwId",
+        "question",
+        "threadId"
+      ],
+      "type": "object"
+    },
     "ByteRange": {
       "properties": {
         "end": {
@@ -5465,6 +5506,30 @@
         "params"
       ],
       "title": "Turn/interruptRequest",
+      "type": "object"
+    },
+    {
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/RequestId"
+        },
+        "method": {
+          "enum": [
+            "btw/start"
+          ],
+          "title": "Btw/startRequestMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/BtwStartParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "title": "Btw/startRequest",
       "type": "object"
     },
     {

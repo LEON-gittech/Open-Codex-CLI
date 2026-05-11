@@ -95,6 +95,7 @@ impl UnifiedExecShellMode {
 
 #[derive(Debug, Clone)]
 pub struct ToolsConfig {
+    pub toolless: bool,
     pub available_models: Vec<ModelPreset>,
     pub shell_type: ConfigShellToolType,
     pub shell_command_backend: ShellCommandBackendConfig,
@@ -233,7 +234,8 @@ impl ToolsConfig {
                     if label.starts_with("agent_job:")
             );
 
-        Self {
+        let mut config = Self {
+            toolless: false,
             available_models: available_models.to_vec(),
             shell_type,
             shell_command_backend,
@@ -267,7 +269,40 @@ impl ToolsConfig {
             agent_jobs_worker_tools,
             memory_tools_enabled: features.enabled(Feature::MemoryTool),
             agent_type_description: String::new(),
+        };
+        if matches!(
+            session_source,
+            SessionSource::Internal(
+                codex_protocol::protocol::InternalSessionSource::BtwSideQuestion,
+            )
+        ) {
+            config.disable_all_tools();
         }
+        config
+    }
+
+    fn disable_all_tools(&mut self) {
+        self.toolless = true;
+        self.shell_type = ConfigShellToolType::Disabled;
+        self.environment_mode = ToolEnvironmentMode::None;
+        self.apply_patch_tool_type = None;
+        self.web_search_mode = None;
+        self.web_search_config = None;
+        self.image_gen_tool = false;
+        self.search_tool = false;
+        self.namespace_tools = false;
+        self.tool_suggest = false;
+        self.exec_permission_approvals_enabled = false;
+        self.request_permissions_tool_enabled = false;
+        self.code_mode_enabled = false;
+        self.code_mode_only_enabled = false;
+        self.collab_tools = false;
+        self.goal_tools = false;
+        self.multi_agent_v2 = false;
+        self.spawn_agent_usage_hint = false;
+        self.agent_jobs_tools = false;
+        self.agent_jobs_worker_tools = false;
+        self.memory_tools_enabled = false;
     }
 
     pub fn with_agent_type_description(mut self, agent_type_description: String) -> Self {

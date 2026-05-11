@@ -7,6 +7,17 @@ const PERSIST_EXTENDED_HISTORY_DEPRECATION_SUMMARY: &str =
     "persistExtendedHistory is deprecated and ignored";
 const PERSIST_EXTENDED_HISTORY_DEPRECATION_DETAILS: &str =
     "Remove this parameter. App-server always uses limited history persistence.";
+const BTW_DEVELOPER_INSTRUCTIONS: &str = r#"You are answering a one-shot /btw side question.
+
+The main thread is not interrupted. Use the inherited context only as reference. Answer the user's side question directly in one response.
+
+Do not call tools, read files, run commands, request approvals, modify files, modify git state, or take any workspace action. If the answer is not available from the inherited context, say so briefly instead of trying to investigate."#;
+
+fn wrap_btw_question(question: &str) -> String {
+    format!(
+        "<system-reminder>This is a /btw side question. Answer directly in one response. You have no tools available and must not take actions.</system-reminder>\n\n{question}"
+    )
+}
 
 struct ThreadListFilters {
     model_providers: Option<Vec<String>>,
@@ -381,6 +392,202 @@ impl ThreadRequestProcessor {
         self.thread_unsubscribe_response_inner(params, request_id.connection_id)
             .await
             .map(|response| Some(response.into()))
+    }
+
+    pub(crate) async fn btw_start(
+        &self,
+        request_id: ConnectionRequestId,
+        params: BtwStartParams,
+    ) -> Result<Option<ClientResponsePayload>, JSONRPCErrorError> {
+        let btw_id = params.btw_id.clone();
+        let error_btw_id = btw_id.clone();
+        let connection_id = request_id.connection_id;
+        let processor = self.clone();
+        self.background_tasks.spawn(async move {
+            if let Err(err) = processor.run_btw_side_question(connection_id, params).await {
+                processor
+                    .send_btw_completed(connection_id, error_btw_id, None, Some(err))
+                    .await;
+            }
+        });
+        Ok(Some(BtwStartResponse { btw_id }.into()))
+    }
+
+    async fn run_btw_side_question(
+        &self,
+        connection_id: ConnectionId,
+        params: BtwStartParams,
+    ) -> std::result::Result<(), String> {
+        let BtwStartParams {
+            btw_id,
+            thread_id,
+            question,
+            model,
+            service_tier,
+            effort,
+        } = params;
+        let source_thread = self
+            .read_stored_thread_for_resume(&thread_id, None, /*include_history*/ true)
+            .await
+            .map_err(|err| err.message)?;
+        let source_thread_id = source_thread.thread_id;
+        let history_items = source_thread
+            .history
+            .as_ref()
+            .map(|history| history.items.clone())
+            .ok_or_else(|| {
+                format!("thread {source_thread_id} did not include persisted history")
+            })?;
+        let mut overrides = self.build_thread_config_overrides(
+            model,
+            /*model_provider*/ None,
+            service_tier.map(Some),
+            /*cwd*/ None,
+            /*approval_policy*/ None,
+            /*approvals_reviewer*/ None,
+            /*sandbox*/ None,
+            /*permissions*/ None,
+            /*base_instructions*/ None,
+            /*developer_instructions*/ None,
+            /*personality*/ None,
+        );
+        overrides.ephemeral = Some(true);
+        let mut config = self
+            .config_manager
+            .load_for_cwd(
+                /*config_overrides*/ None,
+                overrides,
+                Some(source_thread.cwd.clone()),
+            )
+            .await
+            .map_err(|err| config_load_error(&err).message)?;
+        config.ephemeral = true;
+        config.model_reasoning_effort = effort;
+        config.developer_instructions = Some(match config.developer_instructions {
+            Some(existing) if !existing.trim().is_empty() => {
+                format!("{existing}\n\n{BTW_DEVELOPER_INSTRUCTIONS}")
+            }
+            _ => BTW_DEVELOPER_INSTRUCTIONS.to_string(),
+        });
+
+        let NewThread { thread, .. } = self
+            .thread_manager
+            .fork_internal_thread_from_history(
+                ForkSnapshot::Interrupted,
+                config,
+                InitialHistory::Resumed(ResumedHistory {
+                    conversation_id: source_thread_id,
+                    history: history_items,
+                    rollout_path: source_thread.rollout_path.clone(),
+                }),
+                SessionSource::Internal(InternalSessionSource::BtwSideQuestion),
+            )
+            .await
+            .map_err(|err| format!("failed to start /btw side question: {err}"))?;
+
+        thread
+            .submit(Op::UserInput {
+                environments: None,
+                items: vec![CoreInputItem::Text {
+                    text: wrap_btw_question(&question),
+                    text_elements: Vec::new(),
+                }],
+                final_output_json_schema: None,
+                responsesapi_client_metadata: None,
+            })
+            .await
+            .map_err(|err| format!("failed to submit /btw side question: {err}"))?;
+
+        let mut answer = String::new();
+        loop {
+            let event = thread
+                .next_event()
+                .await
+                .map_err(|err| format!("/btw side question failed: {err}"))?;
+            match event.msg {
+                EventMsg::AgentMessageContentDelta(delta) => {
+                    answer.push_str(&delta.delta);
+                    self.send_btw_text_delta(connection_id, btw_id.clone(), delta.delta)
+                        .await;
+                }
+                EventMsg::AgentMessage(message) => {
+                    if answer.trim().is_empty() {
+                        answer.push_str(&message.message);
+                    }
+                }
+                EventMsg::ItemCompleted(item) => {
+                    if let TurnItem::AgentMessage(message) = item.item {
+                        let text = message
+                            .content
+                            .into_iter()
+                            .map(|content| match content {
+                                codex_protocol::items::AgentMessageContent::Text { text } => text,
+                            })
+                            .collect::<Vec<_>>()
+                            .join("\n\n");
+                        if answer.trim().is_empty() && !text.trim().is_empty() {
+                            answer = text;
+                        }
+                    }
+                }
+                EventMsg::TurnComplete(_) => {
+                    let answer = (!answer.trim().is_empty()).then_some(answer);
+                    self.send_btw_completed(connection_id, btw_id, answer, None)
+                        .await;
+                    let _ = thread.submit(Op::Shutdown {}).await;
+                    break;
+                }
+                EventMsg::TurnAborted(aborted) => {
+                    self.send_btw_completed(
+                        connection_id,
+                        btw_id,
+                        None,
+                        Some(format!(
+                            "/btw side question was interrupted: {:?}",
+                            aborted.reason
+                        )),
+                    )
+                    .await;
+                    let _ = thread.submit(Op::Shutdown {}).await;
+                    break;
+                }
+                _ => {}
+            }
+        }
+        Ok(())
+    }
+
+    async fn send_btw_text_delta(
+        &self,
+        connection_id: ConnectionId,
+        btw_id: String,
+        delta: String,
+    ) {
+        self.outgoing
+            .send_server_notification_to_connections(
+                &[connection_id],
+                ServerNotification::BtwTextDelta(BtwTextDeltaNotification { btw_id, delta }),
+            )
+            .await;
+    }
+
+    async fn send_btw_completed(
+        &self,
+        connection_id: ConnectionId,
+        btw_id: String,
+        answer: Option<String>,
+        error: Option<String>,
+    ) {
+        self.outgoing
+            .send_server_notification_to_connections(
+                &[connection_id],
+                ServerNotification::BtwCompleted(BtwCompletedNotification {
+                    btw_id,
+                    answer,
+                    error,
+                }),
+            )
+            .await;
     }
 
     pub(crate) async fn thread_resume(
