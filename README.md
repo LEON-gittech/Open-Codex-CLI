@@ -105,7 +105,19 @@ From recent fork-specific changes:
 
 This brings a Claude Code-style export flow into the TUI without requiring external scripts or manual transcript scraping.
 
-### 6. Parallel-first subagent planning policy
+### 6. Reasoning effort controls and per-turn status visibility
+
+From recent fork-specific changes:
+
+- adds `/effort` for changing the active reasoning effort directly from the TUI
+- supports one-turn high-effort markers in the user query: standalone `ulw`, `ultra`, or `xhigh` submit that turn with `xhigh` reasoning
+- keeps marker-based `xhigh` current-turn-only, so it does not mutate the session's default effort
+- shows the submitted per-turn effort in the `model-with-reasoning` status-line item while that foreground turn is pending or running
+- restores the status line to the session/default effort when the turn completes, fails, or is interrupted
+
+This closes the UX gap between "the request was submitted with xhigh" and "the footer still looks like high": the status line now describes the active foreground turn without making a temporary marker look like a persistent configuration change.
+
+### 7. Parallel-first subagent planning policy
 
 Implemented through the user-scope `~/.codex/AGENTS.md` instruction layer, with an extracted repo example in [`docs/parallel-first-agent-execution.md`](docs/parallel-first-agent-execution.md):
 
@@ -116,7 +128,7 @@ Implemented through the user-scope `~/.codex/AGENTS.md` instruction layer, with 
 
 This is an instruction-policy feature rather than a hardcoded scheduler: it enables a more aggressive subagent mechanism while keeping shared-file edits coordinated.
 
-### 7. Nonblocking background execution
+### 8. Nonblocking background execution
 
 From recent fork-specific TUI changes:
 
@@ -139,7 +151,7 @@ The shared interaction model is:
 
 This is the essential interaction change behind the Claude Code-style behavior: background work stays visible and controllable, but it no longer blocks normal chat flow.
 
-### 8. Status line token throughput visibility (Beta)
+### 9. Status line token throughput visibility (Beta)
 
 From commit `85e937b855`:
 
@@ -150,7 +162,7 @@ From commit `85e937b855`:
 
 This is intentionally marked **Beta**: the current value is useful as a rough responsiveness signal, but it is not yet an exact real-time throughput metric.
 
-### 9. Workspace git status in the status line
+### 10. Workspace git status in the status line
 
 The status line can now surface the current workspace diff through the configurable `workspace-changes` item:
 
@@ -353,7 +365,19 @@ Codex CLI 是开源的，但上游仓库当前对外部代码贡献采用 invita
 
 这让类似 Claude Code 的会话导出能力直接进入 TUI，而不需要额外脚本或手工抓 transcript。
 
-### 6. Parallel-first subagent planning policy
+### 6. Reasoning effort 控制与单 turn 状态可见性
+
+来自最近几条 fork 自有改动：
+
+- 增加 `/effort`，可以直接在 TUI 中切换当前 reasoning effort
+- 支持在用户 query 中用 standalone `ulw`、`ultra` 或 `xhigh` 触发单 turn `xhigh` reasoning
+- marker 触发的 `xhigh` 保持 current-turn-only，不会修改 session 默认 effort
+- 当前 foreground turn 处于 pending/running 时，`model-with-reasoning` status-line item 会显示这次提交实际使用的 per-turn effort
+- turn 完成、失败或被打断后，status line 会恢复为 session/default effort
+
+这补上了“请求实际按 xhigh 提交，但底部仍显示 high”的 UX 缺口：status line 会描述当前前台 turn，但不会把一次性的 marker 伪装成持久配置变更。
+
+### 7. Parallel-first subagent planning policy
 
 通过 user-scope `~/.codex/AGENTS.md` 指令层实现，并在 repo 中抽取了示例文件：[`docs/parallel-first-agent-execution.md`](docs/parallel-first-agent-execution.md)。
 
@@ -364,7 +388,7 @@ Codex CLI 是开源的，但上游仓库当前对外部代码贡献采用 invita
 
 这不是硬编码 scheduler，而是 instruction-policy feature：它启用了更激进的 subagent 机制，同时避免多个执行 lane 争抢同一批文件。
 
-### 7. 非阻塞后台执行
+### 8. 非阻塞后台执行
 
 来自最近几条 fork 自有 TUI 改动：
 
@@ -387,7 +411,7 @@ Codex CLI 是开源的，但上游仓库当前对外部代码贡献采用 invita
 
 这是 Claude Code 风格体验背后的本质交互变化：后台工作仍然可见、可管理，但不会阻塞正常聊天流。
 
-### 8. Status line token throughput visibility（Beta）
+### 9. Status line token throughput visibility（Beta）
 
 来自 commit `85e937b855`：
 
@@ -398,7 +422,7 @@ Codex CLI 是开源的，但上游仓库当前对外部代码贡献采用 invita
 
 这个能力目前标记为 **Beta**：它可以作为粗略 responsiveness signal，但还不是准确的 real-time throughput metric。
 
-### 9. Status line 中显示 workspace git status
+### 10. Status line 中显示 workspace git status
 
 status line 现在可以通过可配置的 `workspace-changes` item 显示当前 workspace diff：
 
