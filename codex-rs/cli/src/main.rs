@@ -45,6 +45,7 @@ mod app_cmd;
 mod desktop_app;
 mod marketplace_cmd;
 mod mcp_cmd;
+mod npm_status;
 #[cfg(not(windows))]
 mod wsl_paths;
 
@@ -83,6 +84,10 @@ use codex_terminal_detection::TerminalName;
     override_usage = "codex [OPTIONS] [PROMPT]\n       codex [OPTIONS] <COMMAND> [ARGS]"
 )]
 struct MultitoolCli {
+    /// Print npm download status for the published Open Codex package and exit.
+    #[arg(long = "npm-status", default_value_t = false)]
+    npm_status: bool,
+
     #[clap(flatten)]
     pub config_overrides: CliConfigOverrides,
 
@@ -760,7 +765,13 @@ async fn cli_main(arg0_paths: Arg0DispatchPaths) -> anyhow::Result<()> {
         remote,
         mut interactive,
         subcommand,
+        npm_status,
     } = MultitoolCli::parse();
+
+    if npm_status {
+        npm_status::print_npm_status().await?;
+        return Ok(());
+    }
 
     // Fold --enable/--disable into config overrides so they flow to all subcommands.
     let toggle_overrides = feature_toggles.to_overrides()?;
@@ -1748,6 +1759,7 @@ mod tests {
             subcommand,
             feature_toggles: _,
             remote: _,
+            npm_status: _,
         } = cli;
 
         let Subcommand::Resume(ResumeCommand {
@@ -1781,6 +1793,7 @@ mod tests {
             subcommand,
             feature_toggles: _,
             remote: _,
+            npm_status: _,
         } = cli;
 
         let Subcommand::Fork(ForkCommand {
@@ -1919,6 +1932,14 @@ mod tests {
                 .get_subcommands()
                 .all(|subcommand| subcommand.get_name() != "responses")
         );
+    }
+
+    #[test]
+    fn npm_status_parses_as_top_level_flag() {
+        let cli = MultitoolCli::try_parse_from(["codex", "--npm-status"]).expect("parse");
+
+        assert!(cli.npm_status);
+        assert!(cli.subcommand.is_none());
     }
 
     fn help_from_args(args: &[&str]) -> String {
