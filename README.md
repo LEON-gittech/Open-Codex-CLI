@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/LEON-gittech/codex/main/.github/open-codexcli-icon.png" alt="Open Codex CLI icon" width="180" />
+  <img src="https://raw.githubusercontent.com/LEON-gittech/Open-Codex-CLI/main/.github/open-codexcli-icon.png" alt="Open Codex CLI icon" width="180" />
 </p>
 
 <h1 align="center">Open Codex CLI</h1>
@@ -18,12 +18,16 @@
 </p>
 
 <p align="center">
+  <a href="https://www.npmjs.com/package/@leonw24/open-codex"><img src="https://raw.githubusercontent.com/LEON-gittech/Open-Codex-CLI/main/.github/npm-weekly-downloads.svg" alt="Open Codex CLI weekly npm downloads chart" width="960" /></a>
+</p>
+
+<p align="center">
   <a href="#english"><img alt="English" src="https://img.shields.io/badge/English-default-111111?style=for-the-badge" /></a>
   <a href="#简体中文"><img alt="简体中文" src="https://img.shields.io/badge/简体中文-switch-444444?style=for-the-badge" /></a>
 </p>
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/LEON-gittech/codex/main/.github/open-codex-cli-unleashed.png" alt="Open Codex CLI unleashed banner" width="960" />
+  <img src="https://raw.githubusercontent.com/LEON-gittech/Open-Codex-CLI/main/.github/open-codex-cli-unleashed.png" alt="Open Codex CLI unleashed banner" width="960" />
 </p>
 
 <p align="center">
