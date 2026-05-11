@@ -13,6 +13,11 @@
 </p>
 
 <p align="center">
+  <a href="https://www.npmjs.com/package/@leonw24/open-codex"><img alt="npm weekly downloads" src="https://img.shields.io/npm/dw/%40leonw24%2Fopen-codex?label=weekly%20downloads" /></a>
+  <a href="https://www.npmjs.com/package/@leonw24/open-codex"><img alt="npm total downloads" src="https://img.shields.io/npm/dt/%40leonw24%2Fopen-codex?label=total%20downloads" /></a>
+</p>
+
+<p align="center">
   <a href="#english"><img alt="English" src="https://img.shields.io/badge/English-default-111111?style=for-the-badge" /></a>
   <a href="#简体中文"><img alt="简体中文" src="https://img.shields.io/badge/简体中文-switch-444444?style=for-the-badge" /></a>
 </p>
