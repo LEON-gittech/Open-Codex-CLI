@@ -126,18 +126,29 @@ From recent fork-specific changes:
 
 This closes the UX gap between "the request was submitted with xhigh" and "the footer still looks like high": the status line now describes the active foreground turn without making a temporary marker look like a persistent configuration change.
 
-### 7. Parallel-first subagent planning policy
+### 7. Lightweight `/btw` side questions
+
+From recent fork-specific changes:
+
+- ask quick side questions with `/btw <question>` without taking over the main chat
+- keep short follow-ups inside the BTW bottom pane instead of turning them into the primary task
+- use the same model, effort, permission, and tool behavior users expect from the main session
+
+This is intended for "by the way" questions that are useful during work but should not become the primary task thread.
+
+### 8. Parallel-first subagent planning policy
 
 Implemented through the user-scope `~/.codex/AGENTS.md` instruction layer, with an extracted repo example in [`docs/parallel-first-agent-execution.md`](docs/parallel-first-agent-execution.md):
 
 - overrides Codex's default conservative stance against automatic agent spawning with an explicit, more aggressive subagent policy for complex work
 - classifies non-trivial work by independent investigation, review, test, docs, and validation axes before editing
 - prefers read-only subagents for evidence gathering, with one final implementation lane unless edit boundaries are clearly disjoint
-- sets concrete lane-count guidance, prompt requirements, stop conditions, and final-response evidence requirements
+- keeps the stable profile set small (`default`, `explorer`, `worker`) while describing each subtask with clear task context and ownership
+- encourages subagents across exploration, review, verification, and release checks when those lanes are genuinely independent
 
 This is an instruction-policy feature rather than a hardcoded scheduler: it enables a more aggressive subagent mechanism while keeping shared-file edits coordinated.
 
-### 8. Nonblocking background execution
+### 9. Nonblocking background execution
 
 From recent fork-specific TUI changes:
 
@@ -148,19 +159,17 @@ The feature is centered on two background lanes:
 
 The shared interaction model is:
 
-- **Manual backgrounding** — `Ctrl+B` sends the current active exec/terminal activity to the background without submitting a core op, clearing the foreground task-running UI while preserving streamed output.
-- **Foreground state** — foreground model activity still drives the normal `Working` status, while background work is counted separately in the status line as `bg <n> subagent / <m> terminal`.
-- **Down task panel** — pressing `Down` opens a persistent bottom-pane task panel instead of inserting a chat-stream summary. The panel updates in place and separates `Tasks`, `Subagents`, and `Terminals`.
-- **List navigation** — `Up`/`Down` moves selection, `Enter` opens details, `x` stops the selected stoppable terminal, and `Esc`/`Left` closes the panel.
-- **Terminal details** — terminal detail view shows status, elapsed runtime, wrapped command/task metadata, and the recent output tail. `x` stops the terminal through the same cleanup path as `/stop` when the terminal is stoppable.
-- **Slash commands** — `/ps` prints a chat-history summary of running background terminals, while `/stop` terminates all running background terminal processes for the thread.
-- **Subagent details** — subagent detail view shows agent title, role, task prompt, status, elapsed runtime, and progress lines. Subagents are inspectable in the background picker and switchable through the agent-thread workflow; non-stoppable subagents do not expose `x stop`.
-- **Plan tasks** — the same `Down` panel also surfaces the latest visible plan/task list, including completed tasks, so task history is inspectable without relying only on the compact status-line count.
-- **Completed background work** — completed background exec cells are flushed back into history once they finish, preserving the command and captured output without re-foregrounding the task.
+- `Ctrl+B` sends the current terminal activity to the background while keeping streamed output available.
+- `Down` opens a live task panel with separate `Tasks`, `Subagents`, and `Terminals` sections.
+- `Enter` opens details, `x` stops the selected stoppable background item, and `Esc`/`Left` closes the panel.
+- the status line keeps foreground `Working` state separate from background subagent/terminal counts.
+- terminal details show runtime and recent output; subagent details show role, task, status, runtime, progress, and task-boundary context.
+- `/agent` shows available agent profiles, while `/subagents` keeps the subagent thread picker/switching workflow.
+- completed background command output is preserved in history without pulling the task back into the foreground.
 
 This is the essential interaction change behind the Claude Code-style behavior: background work stays visible and controllable, but it no longer blocks normal chat flow.
 
-### 9. Status line token throughput visibility (Beta)
+### 10. Status line token throughput visibility (Beta)
 
 From commit `85e937b855`:
 
@@ -171,7 +180,7 @@ From commit `85e937b855`:
 
 This is intentionally marked **Beta**: the current value is useful as a rough responsiveness signal, but it is not yet an exact real-time throughput metric.
 
-### 10. Workspace git status in the status line
+### 11. Workspace git status in the status line
 
 The status line can now surface the current workspace diff through the configurable `workspace-changes` item:
 
@@ -386,18 +395,29 @@ Codex CLI 是开源的，但上游仓库当前对外部代码贡献采用 invita
 
 这补上了“请求实际按 xhigh 提交，但底部仍显示 high”的 UX 缺口：status line 会描述当前前台 turn，但不会把一次性的 marker 伪装成持久配置变更。
 
-### 7. Parallel-first subagent planning policy
+### 7. 轻量 `/btw` side questions
+
+来自最近几条 fork 自有改动：
+
+- 用 `/btw <question>` 快速提出 side question，不接管主聊天
+- 在 BTW bottom pane 里继续短 follow-up，而不是把侧聊变成主任务
+- 复用主 session 里用户熟悉的 model、effort、permission 和 tool 行为
+
+这个能力适合“顺便问一下”的问题：它对当前工作有帮助，但不应该接管主任务线程。
+
+### 8. Parallel-first subagent planning policy
 
 通过 user-scope `~/.codex/AGENTS.md` 指令层实现，并在 repo 中抽取了示例文件：[`docs/parallel-first-agent-execution.md`](docs/parallel-first-agent-execution.md)。
 
 - 显式覆盖 Codex 原本对 automatic agent spawning 的保守/禁止姿态，为复杂任务启用更激进的 subagent policy
 - 在编辑前先按 independent investigation、review、test、docs、validation 等轴判断任务是否适合拆分
 - 默认优先使用 read-only subagents 收集证据，除非 edit boundary 明确 disjoint，否则保留一个最终 implementation lane
-- 明确 lane 数量建议、subagent prompt 要求、stop conditions，以及 final response 的 evidence 要求
+- 保持稳定 profile 集合足够小（`default`、`explorer`、`worker`），用清晰的 task context 和 ownership 描述每个子任务
+- 鼓励在 exploration、review、verification、release check 等阶段使用真正独立的 subagent lane
 
 这不是硬编码 scheduler，而是 instruction-policy feature：它启用了更激进的 subagent 机制，同时避免多个执行 lane 争抢同一批文件。
 
-### 8. 非阻塞后台执行
+### 9. 非阻塞后台执行
 
 来自最近几条 fork 自有 TUI 改动：
 
@@ -408,19 +428,17 @@ Codex CLI 是开源的，但上游仓库当前对外部代码贡献采用 invita
 
 共享交互模型是：
 
-- **Manual backgrounding** — `Ctrl+B` 会把当前 active exec/terminal activity 送到后台，不提交 core op，并清掉前台 task-running UI，同时保留后续 streamed output。
-- **Foreground state** — 前台模型活动仍然驱动正常的 `Working` 状态，后台工作则在 status line 中单独计数为 `bg <n> subagent / <m> terminal`。
-- **Down task panel** — 按 `Down` 会打开一个持久的底部 task panel，而不是往 chat stream 插入 summary。这个 panel 会原地更新，并区分 `Tasks`、`Subagents`、`Terminals`。
-- **List navigation** — `Up`/`Down` 移动选择，`Enter` 打开详情，`x` 停止当前选中的 stoppable terminal，`Esc`/`Left` 关闭 panel。
-- **Terminal details** — terminal detail view 会显示 status、elapsed runtime、自动换行的 command/task metadata，以及最近的 output tail。当 terminal 是 stoppable 时，`x` 会通过和 `/stop` 相同的 cleanup path 停止它。
-- **Slash commands** — `/ps` 会把 running background terminals 的摘要打印到 chat history，`/stop` 会终止当前 thread 下所有 running background terminal processes。
-- **Subagent details** — subagent detail view 会显示 agent title、role、task prompt、status、elapsed runtime 和 progress lines。Subagents 可以在 background picker 中查看，并通过 agent-thread workflow 切换；不可停止的 subagents 不会暴露 `x stop`。
-- **Plan tasks** — 同一个 `Down` panel 也会展示最近可见的 plan/task list，包括已经完成的 tasks，因此不用只依赖 status line 上的 compact task count 才能了解任务历史。
-- **Completed background work** — background exec 完成后会把对应 cell 刷回 history，保留 command 和已捕获 output，但不会把任务重新拉回前台。
+- `Ctrl+B` 把当前 terminal activity 送到后台，同时保留后续 streamed output。
+- `Down` 打开实时 task panel，并区分 `Tasks`、`Subagents`、`Terminals`。
+- `Enter` 打开详情，`x` 停止当前选中的 stoppable 后台项，`Esc`/`Left` 关闭 panel。
+- status line 会把前台 `Working` 状态和后台 subagent/terminal 数量分开显示。
+- terminal detail 展示运行时间和最近输出；subagent detail 展示 role、task、status、运行时间、progress 和任务边界信息。
+- `/agent` 用于查看可用 agent profiles，`/subagents` 保留 subagent thread picker / 切换工作流。
+- background command 完成后会保留输出到 history，但不会把任务重新拉回前台。
 
 这是 Claude Code 风格体验背后的本质交互变化：后台工作仍然可见、可管理，但不会阻塞正常聊天流。
 
-### 9. Status line token throughput visibility（Beta）
+### 10. Status line token throughput visibility（Beta）
 
 来自 commit `85e937b855`：
 
@@ -431,7 +449,7 @@ Codex CLI 是开源的，但上游仓库当前对外部代码贡献采用 invita
 
 这个能力目前标记为 **Beta**：它可以作为粗略 responsiveness signal，但还不是准确的 real-time throughput metric。
 
-### 10. Status line 中显示 workspace git status
+### 11. Status line 中显示 workspace git status
 
 status line 现在可以通过可配置的 `workspace-changes` item 显示当前 workspace diff：
 
