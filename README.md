@@ -214,6 +214,27 @@ Continue improving the Codex CLI experience under `zellij`, especially around re
 
 - **Better task management experience**
 
+## Positioning vs. Wrapper Projects
+
+Open Codex CLI is intentionally a native Codex fork, not a wrapper layer around the official CLI. Projects such as [everything-claude-code](https://github.com/affaan-m/everything-claude-code) and [oh-my-codex](https://github.com/Yeachan-Heo/oh-my-codex) are valuable because they can iterate quickly in TypeScript or configuration space: skills, prompts, hooks, setup flows, agent teams, and higher-level workflow policies can move faster outside the Rust runtime.
+
+This fork targets the complementary layer: source-level CLI behavior that has to be correct inside Codex itself. That includes TUI rendering contracts, turn routing, foreground/background task state, status-line truth, memory-session integration, app-server protocol surfaces, update detection, and npm package identity. Wrapper projects can orchestrate those capabilities, but they should not have to emulate them with prompts or hooks.
+
+| Dimension | Open Codex CLI | Wrapper/workflow projects |
+| --- | --- | --- |
+| Primary layer | Native Codex runtime and distribution | External orchestration around Codex or multiple coding agents |
+| Typical implementation | Rust source changes in `codex-rs`, launcher/package changes in `codex-cli`, protocol/schema changes | TypeScript, shell scripts, config files, prompts, skills, hooks, MCP setup |
+| Best for | TUI correctness, turn/session contracts, background task state, status-line truth, memory-session integration, app-server protocol, fork-aware updates | Fast workflow iteration, project setup, agent teams, prompt routing, skills, hooks, policy packs, cross-tool conventions |
+| Iteration speed | Slower, because changes need Rust builds, tests, and upstream-merge discipline | Faster, because behavior can change through TS/config/prompt layers |
+| Contract strength | Can enforce behavior inside the CLI engine | Can guide or orchestrate behavior, but should not have to simulate native runtime guarantees |
+| Relationship | Provides a stronger Codex engine | Composes and operates the engine |
+
+The intended boundary is:
+
+- use Open Codex CLI for native runtime improvements that require changes in `codex-rs`, `codex-cli`, or the app-server protocol
+- use wrapper/workflow projects for fast-moving orchestration, setup, prompts, skills, hooks, and project-specific operating policies
+- keep the fork close enough to upstream that wrapper projects can treat it as a stronger Codex engine rather than a separate product family
+
 ## Maintenance Philosophy
 
 This fork is maintained with a conservative strategy:
@@ -482,6 +503,27 @@ status line 现在可以通过可配置的 `workspace-changes` item 显示当前
 #### 下一阶段重点
 
 - **更好的 task management 体验**
+
+## 与外层封装项目的定位关系
+
+Open Codex CLI 的定位是原生 Codex fork，而不是包在官方 CLI 外面的 wrapper layer。[everything-claude-code](https://github.com/affaan-m/everything-claude-code) 和 [oh-my-codex](https://github.com/Yeachan-Heo/oh-my-codex) 这类项目的价值在于可以用 TypeScript 或配置层快速迭代：skills、prompts、hooks、setup flows、agent teams，以及更高层的 workflow policy，都适合在 Rust runtime 外面快速演进。
+
+这个 fork 针对的是互补的一层：必须在 Codex 本体里保证正确性的 source-level CLI behavior。比如 TUI rendering contract、turn routing、foreground/background task state、status-line truth、memory-session integration、app-server protocol surfaces、update detection 和 npm package identity。这些能力可以被 wrapper 项目编排和调用，但不应该靠 prompts 或 hooks 在外层模拟。
+
+| 维度 | Open Codex CLI | 外层 wrapper/workflow 项目 |
+| --- | --- | --- |
+| 主要层级 | 原生 Codex runtime 与分发层 | 围绕 Codex 或多种 coding agent 的外部编排层 |
+| 典型实现方式 | `codex-rs` 的 Rust 源码改动、`codex-cli` launcher/package 改动、protocol/schema 改动 | TypeScript、shell scripts、配置文件、prompts、skills、hooks、MCP setup |
+| 最适合承载 | TUI correctness、turn/session contracts、background task state、status-line truth、memory-session integration、app-server protocol、fork-aware updates | 快速 workflow iteration、project setup、agent teams、prompt routing、skills、hooks、policy packs、跨工具约定 |
+| 迭代速度 | 较慢，需要 Rust build、测试和 upstream merge 纪律 | 较快，可以通过 TS/config/prompt 层快速变化 |
+| Contract 强度 | 能在 CLI engine 内部强制保证行为 | 能引导和编排行为，但不应该模拟 native runtime guarantees |
+| 二者关系 | 提供更强的 Codex engine | 组合、操作和扩展这个 engine |
+
+预期边界是：
+
+- Open Codex CLI 负责那些需要改 `codex-rs`、`codex-cli` 或 app-server protocol 的原生 runtime 改进
+- 外层 wrapper/workflow 项目负责快速变化的 orchestration、setup、prompts、skills、hooks 和项目级 operating policies
+- fork 保持足够贴近 upstream，让 wrapper 项目可以把它当作更强的 Codex engine，而不是另一个完全独立的产品线
 
 ## 维护思路
 
