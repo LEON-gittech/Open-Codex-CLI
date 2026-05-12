@@ -61,6 +61,7 @@ use crate::bottom_pane::StatusSurfacePreviewData;
 use crate::bottom_pane::StatusSurfacePreviewItem;
 use crate::bottom_pane::TerminalTitleItem;
 use crate::bottom_pane::TerminalTitleSetupView;
+use crate::bottom_pane::slash_commands::ServiceTierCommand;
 use crate::diff_model::FileChange;
 use crate::legacy_core::DEFAULT_AGENTS_MD_FILENAME;
 use crate::legacy_core::config::Config;
@@ -1885,6 +1886,9 @@ impl ChatWidget {
                 self.app_event_tx.send(AppEvent::ConsolidateAgentMessage {
                     source,
                     cwd: self.config.cwd.to_path_buf(),
+                    scrollback_reflow:
+                        crate::app_event::ConsolidationScrollbackReflow::IfResizeReflowRan,
+                    deferred_history_cell: None,
                 });
             }
         }
@@ -5659,6 +5663,9 @@ impl ChatWidget {
                     InputResult::Command(cmd) => {
                         self.handle_slash_command_dispatch(cmd);
                     }
+                    InputResult::ServiceTierCommand(command) => {
+                        self.handle_service_tier_command_dispatch(command);
+                    }
                     InputResult::CommandWithArgs(cmd, args, text_elements) => {
                         self.handle_slash_command_with_args_dispatch(cmd, args, text_elements);
                     }
@@ -6579,6 +6586,7 @@ impl ChatWidget {
             }
             ServerRequest::DynamicToolCall { .. }
             | ServerRequest::ChatgptAuthTokensRefresh { .. }
+            | ServerRequest::AttestationGenerate { .. }
             | ServerRequest::ApplyPatchApproval { .. }
             | ServerRequest::ExecCommandApproval { .. } => {
                 if replay_kind.is_none() {
@@ -9829,11 +9837,8 @@ impl ChatWidget {
         self.effective_service_tier
     }
 
-    pub(crate) fn configured_service_tier(&self) -> Option<ServiceTier> {
-        self.config
-            .service_tier
-            .as_deref()
-            .and_then(ServiceTier::from_request_value)
+    pub(crate) fn configured_service_tier(&self) -> Option<String> {
+        self.config.service_tier.clone()
     }
 
     pub(crate) fn fast_default_opt_out(&self) -> Option<bool> {
@@ -9946,7 +9951,16 @@ impl ChatWidget {
                 /*personality*/ None,
             )));
         self.app_event_tx
-            .send(AppEvent::PersistServiceTierSelection { service_tier });
+            .send(AppEvent::PersistServiceTierSelection {
+                service_tier: service_tier
+                    .map(|service_tier| service_tier.request_value().to_string()),
+            });
+    }
+
+    pub(crate) fn handle_service_tier_command_dispatch(&mut self, command: ServiceTierCommand) {
+        if let Some(service_tier) = ServiceTier::from_request_value(&command.id) {
+            self.set_service_tier_selection(Some(service_tier));
+        }
     }
 
     pub(crate) fn toggle_fast_mode_from_ui(&mut self) {
@@ -10007,7 +10021,7 @@ impl ChatWidget {
 
     fn sync_fast_command_enabled(&mut self) {
         self.bottom_pane
-            .set_fast_command_enabled(self.fast_mode_enabled());
+            .set_service_tier_commands_enabled(self.fast_mode_enabled());
     }
 
     fn sync_personality_command_enabled(&mut self) {

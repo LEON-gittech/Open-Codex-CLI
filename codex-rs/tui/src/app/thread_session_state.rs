@@ -55,7 +55,7 @@ impl App {
         let service_tier = self
             .chat_widget
             .configured_service_tier()
-            .map(|service_tier| service_tier.request_value().to_string());
+            .map(|service_tier| service_tier.to_string());
         let reasoning_effort = self.chat_widget.current_reasoning_effort();
         let update_session = |session: &mut ThreadSessionState| {
             session.model = model.clone();

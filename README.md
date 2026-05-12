@@ -270,8 +270,8 @@ If you want to use this fork from source, build the Rust workspace and install t
 
 ```shell
 # Clone the fork and build the CLI
-git clone https://github.com/LEON-gittech/codex.git
-cd codex/codex-rs
+git clone https://github.com/LEON-gittech/Open-Codex-CLI.git
+cd Open-Codex-CLI/codex-rs
 cargo build --release
 ```
 
@@ -539,8 +539,8 @@ open-codex --version
 
 ```shell
 # 克隆仓库并构建 CLI
-git clone https://github.com/LEON-gittech/codex.git
-cd codex/codex-rs
+git clone https://github.com/LEON-gittech/Open-Codex-CLI.git
+cd Open-Codex-CLI/codex-rs
 cargo build --release
 ```
 

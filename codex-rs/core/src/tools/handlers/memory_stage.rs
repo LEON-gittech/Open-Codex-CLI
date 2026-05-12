@@ -6,7 +6,6 @@ use crate::tools::handlers::memory_stage_spec::MEMORY_STAGE_UPDATE_TOOL_NAME;
 use crate::tools::handlers::memory_stage_spec::create_memory_stage_update_tool;
 use crate::tools::handlers::parse_arguments;
 use crate::tools::registry::ToolHandler;
-use crate::tools::registry::ToolKind;
 use chrono::Utc;
 use codex_tools::ToolName;
 use codex_tools::ToolSpec;
@@ -53,10 +52,6 @@ impl ToolHandler for MemoryStageUpdateHandler {
 
     fn spec(&self) -> Option<ToolSpec> {
         Some(create_memory_stage_update_tool())
-    }
-
-    fn kind(&self) -> ToolKind {
-        ToolKind::Function
     }
 
     async fn handle(&self, invocation: ToolInvocation) -> Result<Self::Output, FunctionCallError> {

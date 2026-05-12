@@ -68,6 +68,7 @@ use codex_app_server_protocol::TurnStatus;
 use codex_app_server_protocol::UserInput;
 use codex_app_server_protocol::UserInput as AppServerUserInput;
 use codex_app_server_protocol::WarningNotification;
+use codex_exec_server::EnvironmentManager;
 use codex_otel::SessionTelemetry;
 use codex_protocol::ThreadId;
 use codex_protocol::config_types::CollaborationMode;
@@ -319,17 +320,6 @@ async fn ignore_same_thread_resume_allows_reattaching_displayed_inactive_thread(
 
     assert!(!ignored);
     assert!(app.transcript_cells.is_empty());
-}
-
-#[test]
-fn hooks_needing_review_startup_warning_snapshot() {
-    let message = startup_prompts::hooks_needing_review_warning(/*count*/ 2)
-        .expect("review-needed hooks should produce a startup warning");
-    let rendered = lines_to_single_string(
-        &history_cell::new_warning_event(message).display_lines(/*width*/ 80),
-    );
-
-    assert_app_snapshot!("hooks_needing_review_startup_warning", rendered);
 }
 
 #[tokio::test]

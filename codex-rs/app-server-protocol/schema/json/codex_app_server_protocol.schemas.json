@@ -83,6 +83,25 @@
       "title": "ApplyPatchApprovalResponse",
       "type": "object"
     },
+    "AttestationGenerateParams": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "AttestationGenerateParams",
+      "type": "object"
+    },
+    "AttestationGenerateResponse": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "token": {
+          "description": "Opaque client attestation token.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "token"
+      ],
+      "title": "AttestationGenerateResponse",
+      "type": "object"
+    },
     "ChatgptAuthTokensRefreshParams": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "properties": {
@@ -2644,6 +2663,11 @@
             "array",
             "null"
           ]
+        },
+        "requestAttestation": {
+          "default": false,
+          "description": "Opt into `attestation/generate` requests for upstream `x-oai-attestation`.",
+          "type": "boolean"
         }
       },
       "type": "object"
@@ -5272,6 +5296,31 @@
           "type": "object"
         },
         {
+          "description": "Generate a fresh upstream attestation result on demand.",
+          "properties": {
+            "id": {
+              "$ref": "#/definitions/v2/RequestId"
+            },
+            "method": {
+              "enum": [
+                "attestation/generate"
+              ],
+              "title": "Attestation/generateRequestMethod",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/definitions/AttestationGenerateParams"
+            }
+          },
+          "required": [
+            "id",
+            "method",
+            "params"
+          ],
+          "title": "Attestation/generateRequest",
+          "type": "object"
+        },
+        {
           "description": "DEPRECATED APIs below Request to approve a patch. This request is used for Turns started via the legacy APIs (i.e. SendUserTurn, SendUserMessage).",
           "properties": {
             "id": {
@@ -7886,6 +7935,12 @@
               },
               "command": {
                 "type": "string"
+              },
+              "commandWindows": {
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "statusMessage": {
                 "type": [
@@ -12433,10 +12488,20 @@
               "null"
             ]
           },
+          "discoverability": {
+            "anyOf": [
+              {
+                "$ref": "#/definitions/v2/PluginShareDiscoverability"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "remotePluginId": {
             "type": "string"
           },
-          "shareTargets": {
+          "sharePrincipals": {
             "items": {
               "$ref": "#/definitions/v2/PluginSharePrincipal"
             },
@@ -12497,14 +12562,10 @@
           },
           "plugin": {
             "$ref": "#/definitions/v2/PluginSummary"
-          },
-          "shareUrl": {
-            "type": "string"
           }
         },
         "required": [
-          "plugin",
-          "shareUrl"
+          "plugin"
         ],
         "type": "object"
       },
@@ -12539,14 +12600,26 @@
           },
           "principalType": {
             "$ref": "#/definitions/v2/PluginSharePrincipalType"
+          },
+          "role": {
+            "$ref": "#/definitions/v2/PluginSharePrincipalRole"
           }
         },
         "required": [
           "name",
           "principalId",
-          "principalType"
+          "principalType",
+          "role"
         ],
         "type": "object"
+      },
+      "PluginSharePrincipalRole": {
+        "enum": [
+          "reader",
+          "editor",
+          "owner"
+        ],
+        "type": "string"
       },
       "PluginSharePrincipalType": {
         "enum": [
@@ -12618,13 +12691,24 @@
           },
           "principalType": {
             "$ref": "#/definitions/v2/PluginSharePrincipalType"
+          },
+          "role": {
+            "$ref": "#/definitions/v2/PluginShareTargetRole"
           }
         },
         "required": [
           "principalId",
-          "principalType"
+          "principalType",
+          "role"
         ],
         "type": "object"
+      },
+      "PluginShareTargetRole": {
+        "enum": [
+          "reader",
+          "editor"
+        ],
+        "type": "string"
       },
       "PluginShareUpdateDiscoverability": {
         "enum": [
@@ -12835,6 +12919,13 @@
           },
           "name": {
             "type": "string"
+          },
+          "remotePluginId": {
+            "description": "Backend remote plugin identifier when available.",
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "shareContext": {
             "anyOf": [
@@ -13518,7 +13609,7 @@
       },
       "RemoteControlStatusChangedNotification": {
         "$schema": "http://json-schema.org/draft-07/schema#",
-        "description": "Current remote-control connection status and environment id exposed to clients.",
+        "description": "Current remote-control connection status and remote identity exposed to clients.",
         "properties": {
           "environmentId": {
             "type": [
@@ -13526,11 +13617,15 @@
               "null"
             ]
           },
+          "installationId": {
+            "type": "string"
+          },
           "status": {
             "$ref": "#/definitions/v2/RemoteControlConnectionStatus"
           }
         },
         "required": [
+          "installationId",
           "status"
         ],
         "title": "RemoteControlStatusChangedNotification",
