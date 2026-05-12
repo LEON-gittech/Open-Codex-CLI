@@ -22,13 +22,12 @@ def parse_args():
     return parser.parse_args()
 
 
-def latest_complete_week_end():
-    today = date.today()
-    return today - timedelta(days=today.weekday() + 1)
+def latest_complete_period_end():
+    return date.today() - timedelta(days=1)
 
 
 def fetch_daily_downloads(package_name, weeks):
-    end = latest_complete_week_end()
+    end = latest_complete_period_end()
     start = end - timedelta(days=(weeks * 7) - 1)
     encoded = urllib.parse.quote(package_name, safe="")
     url = "https://api.npmjs.org/downloads/range/{start}:{end}/{package}".format(
@@ -45,13 +44,9 @@ def fetch_daily_downloads(package_name, weeks):
     return payload.get("downloads", [])
 
 
-def week_start(day):
-    return day - timedelta(days=day.weekday())
-
-
 def aggregate_weeks(daily_rows, weeks):
-    end = latest_complete_week_end()
-    first_week = week_start(end) - timedelta(days=(weeks - 1) * 7)
+    end = latest_complete_period_end()
+    first_week = end - timedelta(days=(weeks * 7) - 1)
     buckets = []
     totals = {}
     for i in range(weeks):
@@ -61,9 +56,9 @@ def aggregate_weeks(daily_rows, weeks):
 
     for row in daily_rows:
         day = datetime.strptime(row["day"], "%Y-%m-%d").date()
-        start = week_start(day)
-        if start in totals:
-            totals[start] += int(row.get("downloads", 0))
+        index = (day - first_week).days // 7
+        if 0 <= index < weeks:
+            totals[buckets[index]] += int(row.get("downloads", 0))
 
     return [(start, totals[start]) for start in buckets]
 
@@ -178,7 +173,7 @@ def generate_svg(package_name, weekly_rows):
 
     return """<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}" role="img" aria-labelledby="title desc">
   <title id="title">{package_name} weekly npm downloads</title>
-  <desc id="desc">Weekly npm downloads over the last {weeks} full weeks. Latest full week: {latest} downloads.</desc>
+  <desc id="desc">Weekly npm downloads over the last {weeks} complete 7-day periods. Latest period: {latest} downloads.</desc>
   <defs>
     <linearGradient id="line" x1="0" x2="1" y1="0" y2="0">
       <stop offset="0%" stop-color="#22d3ee" />
@@ -193,7 +188,7 @@ def generate_svg(package_name, weekly_rows):
   <rect width="{width}" height="{height}" rx="16" fill="#0b1020" />
   <rect x="1" y="1" width="{inner_w}" height="{inner_h}" rx="15" fill="none" stroke="#26324a" />
   <text x="{left}" y="30" font-family="Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="18" font-weight="700" fill="#f8fafc">npm weekly downloads</text>
-  <text x="{left}" y="50" font-family="Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="12" fill="#8b9ab8">{package_name} · latest full week {latest_fmt} · {total_fmt} over {weeks} weeks · through {through}</text>
+  <text x="{left}" y="50" font-family="Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="12" fill="#8b9ab8">{package_name} · latest 7-day period {latest_fmt} · {total_fmt} over {weeks} periods · through {through}</text>
   <g font-family="Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif">
     {grid}
     <line x1="{left}" y1="{baseline:.1f}" x2="{right_x}" y2="{baseline:.1f}" stroke="#3a4867" stroke-width="1.2" />
