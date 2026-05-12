@@ -284,7 +284,13 @@ Expected: push succeeds to `LEON-gittech/Open-Codex-CLI`.
 - npm vendor payload under `codex-cli/`
 - generated npm tarballs
 
-- [ ] **Step 1: Build release-fast binary**
+**Temp-space invariant:** Do not use `/tmp` for npm staging, `npm pack`, publish, or
+fresh-install smoke tests. Use `/home/admin/zzw/tmp/` and export `TMPDIR` plus
+`npm_config_cache` under that tree so release packaging never fills the root filesystem.
+If a previous attempt created Open-Codex release/test artifacts in `/tmp`, remove those
+Codex-owned temp files before retrying.
+
+- [x] **Step 1: Build release-fast binary**
 
 Run:
 
@@ -300,17 +306,27 @@ Expected:
 codex-cli 0.130.1
 ```
 
-- [ ] **Step 2: Package npm payload**
+Result: `release-fast` build completed in 11m01s; `./target/release-fast/codex --version`
+reported `codex-cli 0.130.1`.
+
+- [x] **Step 2: Package npm payload**
 
 Use the repo's existing npm packaging scripts. Before publishing, verify tarball metadata and embedded binary:
 
 ```bash
-npm pack --json --registry=https://registry.npmjs.org
+export TMPDIR=/home/admin/zzw/tmp/open-codex-release-tmp
+export npm_config_cache=/home/admin/zzw/tmp/open-codex-npm-cache
+mkdir -p "$TMPDIR" "$npm_config_cache"
+python codex-cli/scripts/build_npm_package.py ... --staging-dir /home/admin/zzw/tmp/... --pack-output dist/npm/...
 ```
 
 Expected: meta package and linux payload package versions are `0.130.1` / `0.130.1-linux-x64` as applicable, and the platform package contains the release-fast binary.
 
-- [ ] **Step 3: Publish npm packages**
+Result: generated `dist/npm/codex-npm-linux-x64-0.130.1.tgz` and
+`dist/npm/codex-npm-0.130.1.tgz`; the platform tarball contains `codex`, `rg`, and
+`bwrap`, and the meta package depends on the linux-x64 alias.
+
+- [x] **Step 3: Publish npm packages**
 
 Publish platform payload first, then meta package:
 
@@ -321,11 +337,17 @@ npm publish <meta-tarball> --tag latest --registry=https://registry.npmjs.org
 
 Expected: both publish commands succeed.
 
-- [ ] **Step 4: Fresh install smoke test**
+Result: published `@leonw24/open-codex@0.130.1-linux-x64` with tag `linux-x64`,
+then `@leonw24/open-codex@0.130.1` with tag `latest`.
+
+- [x] **Step 4: Fresh install smoke test**
 
 Run in a temp directory:
 
 ```bash
+export TMPDIR=/home/admin/zzw/tmp/open-codex-release-tmp
+export npm_config_cache=/home/admin/zzw/tmp/open-codex-npm-cache
+mkdir -p "$TMPDIR" "$npm_config_cache"
 npm install @leonw24/open-codex@0.130.1 --registry=https://registry.npmjs.org
 ./node_modules/.bin/open-codex --version
 ```
@@ -335,6 +357,10 @@ Expected:
 ```text
 codex-cli 0.130.1
 ```
+
+Result: `npm install --prefix /home/admin/zzw/tmp/open-codex-npm-smoke-0.130.1/fresh-prefix
+@leonw24/open-codex@0.130.1 --registry=https://registry.npmjs.org` installed two
+packages, and the installed `open-codex --version` reported `codex-cli 0.130.1`.
 
 ## Acceptance Criteria
 
