@@ -1021,6 +1021,16 @@ pub struct CollabAgentState {
     pub agent_nickname: Option<String>,
     #[serde(default)]
     pub agent_role: Option<String>,
+    #[serde(default)]
+    pub phase: Option<String>,
+    #[serde(default)]
+    pub lane: Option<String>,
+    #[serde(default)]
+    pub ownership: Option<String>,
+    #[serde(default)]
+    pub output_contract: Option<String>,
+    #[serde(default)]
+    pub spawn_reason: Option<String>,
 }
 
 impl From<CoreAgentStatus> for CollabAgentState {
@@ -1031,44 +1041,85 @@ impl From<CoreAgentStatus> for CollabAgentState {
                 message: None,
                 agent_nickname: None,
                 agent_role: None,
+                phase: None,
+                lane: None,
+                ownership: None,
+                output_contract: None,
+                spawn_reason: None,
             },
             CoreAgentStatus::Running => Self {
                 status: CollabAgentStatus::Running,
                 message: None,
                 agent_nickname: None,
                 agent_role: None,
+                phase: None,
+                lane: None,
+                ownership: None,
+                output_contract: None,
+                spawn_reason: None,
             },
             CoreAgentStatus::Interrupted => Self {
                 status: CollabAgentStatus::Interrupted,
                 message: None,
                 agent_nickname: None,
                 agent_role: None,
+                phase: None,
+                lane: None,
+                ownership: None,
+                output_contract: None,
+                spawn_reason: None,
             },
             CoreAgentStatus::Completed(message) => Self {
                 status: CollabAgentStatus::Completed,
                 message,
                 agent_nickname: None,
                 agent_role: None,
+                phase: None,
+                lane: None,
+                ownership: None,
+                output_contract: None,
+                spawn_reason: None,
             },
             CoreAgentStatus::Errored(message) => Self {
                 status: CollabAgentStatus::Errored,
                 message: Some(message),
                 agent_nickname: None,
                 agent_role: None,
+                phase: None,
+                lane: None,
+                ownership: None,
+                output_contract: None,
+                spawn_reason: None,
             },
             CoreAgentStatus::Shutdown => Self {
                 status: CollabAgentStatus::Shutdown,
                 message: None,
                 agent_nickname: None,
                 agent_role: None,
+                phase: None,
+                lane: None,
+                ownership: None,
+                output_contract: None,
+                spawn_reason: None,
             },
             CoreAgentStatus::NotFound => Self {
                 status: CollabAgentStatus::NotFound,
                 message: None,
                 agent_nickname: None,
                 agent_role: None,
+                phase: None,
+                lane: None,
+                ownership: None,
+                output_contract: None,
+                spawn_reason: None,
             },
         }
+    }
+}
+
+impl Default for CollabAgentState {
+    fn default() -> Self {
+        Self::from(CoreAgentStatus::NotFound)
     }
 }
 
@@ -1080,6 +1131,22 @@ impl CollabAgentState {
     ) -> Self {
         self.agent_nickname = agent_nickname;
         self.agent_role = agent_role;
+        self
+    }
+
+    pub fn with_task_metadata(
+        mut self,
+        phase: Option<String>,
+        lane: Option<String>,
+        ownership: Option<String>,
+        output_contract: Option<String>,
+        spawn_reason: Option<String>,
+    ) -> Self {
+        self.phase = phase;
+        self.lane = lane;
+        self.ownership = ownership;
+        self.output_contract = output_contract;
+        self.spawn_reason = spawn_reason;
         self
     }
 }

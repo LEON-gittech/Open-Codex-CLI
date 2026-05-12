@@ -1705,6 +1705,35 @@ async fn slash_mcp_requests_inventory_via_app_server() {
 }
 
 #[tokio::test]
+async fn slash_agent_opens_profile_manager_instead_of_thread_picker() {
+    let (mut chat, mut rx, mut op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+
+    chat.dispatch_command(SlashCommand::Agent);
+
+    let popup = render_bottom_popup(&chat, /*width*/ 100);
+    assert!(popup.contains("Agent profiles"));
+    assert!(popup.contains("default"));
+    assert!(popup.contains("explorer"));
+    assert!(popup.contains("worker"));
+    assert!(popup.contains("Profiles define stable capability boundaries"));
+    assert!(
+        rx.try_recv().is_err(),
+        "/agent should not ask the app layer to switch subagent threads"
+    );
+    assert!(op_rx.try_recv().is_err(), "expected no core op to be sent");
+}
+
+#[tokio::test]
+async fn slash_subagents_keeps_thread_picker_semantics() {
+    let (mut chat, mut rx, mut op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+
+    chat.dispatch_command(SlashCommand::MultiAgents);
+
+    assert_matches!(rx.try_recv(), Ok(AppEvent::OpenAgentPicker));
+    assert!(op_rx.try_recv().is_err(), "expected no core op to be sent");
+}
+
+#[tokio::test]
 async fn slash_mcp_verbose_requests_full_inventory_via_app_server() {
     let (mut chat, mut rx, mut op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
 

@@ -88,6 +88,7 @@ async fn collab_spawn_end_shows_requested_model_and_effort() {
                         message: None,
                         agent_nickname: None,
                         agent_role: None,
+                        ..Default::default()
                     },
                 )]),
             },
@@ -136,6 +137,11 @@ async fn down_uses_collab_agent_metadata_from_agent_state() {
                         message: None,
                         agent_nickname: Some("Robie".to_string()),
                         agent_role: Some("explorer".to_string()),
+                        phase: Some("exploration".to_string()),
+                        lane: Some("upstream-reference".to_string()),
+                        ownership: Some("read-only comparison".to_string()),
+                        output_contract: Some("findings with paths".to_string()),
+                        spawn_reason: Some("orthogonal to implementation".to_string()),
                     },
                 )]),
             },
@@ -149,6 +155,14 @@ async fn down_uses_collab_agent_metadata_from_agent_state() {
     let rendered = render_bottom_popup(&chat, /*width*/ 96);
     assert!(rendered.contains("Robie [explorer]: Running"));
     assert!(rendered.contains("Explore the repo"));
+    assert!(rendered.contains("Phase: exploration"));
+    assert!(rendered.contains("Lane: upstream-reference"));
+
+    chat.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    let rendered = render_bottom_popup(&chat, /*width*/ 96);
+    assert!(rendered.contains("Ownership: read-only comparison"));
+    assert!(rendered.contains("Output: findings with paths"));
+    assert!(rendered.contains("Reason: orthogonal to implementation"));
     assert!(
         !rendered.contains(&spawned_thread_id.to_string()),
         "background task title should prefer nickname over raw thread id: {rendered:?}"
@@ -207,6 +221,7 @@ async fn down_lists_spawned_agent_activity_without_submitting_core_op() {
                         message: None,
                         agent_nickname: None,
                         agent_role: None,
+                        ..Default::default()
                     },
                 )]),
             },
@@ -288,6 +303,7 @@ async fn down_enter_subagent_opens_agent_detail_without_selecting_thread() {
                         message: Some("Reading files".to_string()),
                         agent_nickname: Some("Robie".to_string()),
                         agent_role: Some("explorer".to_string()),
+                        ..Default::default()
                     },
                 )]),
             },
@@ -350,6 +366,7 @@ async fn down_x_subagent_requests_stop_event() {
                         message: Some("Reading files".to_string()),
                         agent_nickname: Some("Robie".to_string()),
                         agent_role: Some("explorer".to_string()),
+                        ..Default::default()
                     },
                 )]),
             },
@@ -404,6 +421,7 @@ async fn background_subagent_completion_inserts_visible_notice() {
                         message: Some("Reading files".to_string()),
                         agent_nickname: Some("Robie".to_string()),
                         agent_role: Some("explorer".to_string()),
+                        ..Default::default()
                     },
                 )]),
             },
@@ -434,6 +452,7 @@ async fn background_subagent_completion_inserts_visible_notice() {
                         message: Some("Final summary ready".to_string()),
                         agent_nickname: Some("Robie".to_string()),
                         agent_role: Some("explorer".to_string()),
+                        ..Default::default()
                     },
                 )]),
             },
@@ -519,6 +538,7 @@ async fn spawned_agent_activity_survives_parent_turn_completion_and_can_be_liste
                         message: None,
                         agent_nickname: None,
                         agent_role: None,
+                        ..Default::default()
                     },
                 )]),
             },
@@ -580,6 +600,7 @@ async fn wait_completion_clears_foregrounded_agent_activity() {
                         message: None,
                         agent_nickname: None,
                         agent_role: None,
+                        ..Default::default()
                     },
                 )]),
             },
@@ -610,6 +631,7 @@ async fn wait_completion_clears_foregrounded_agent_activity() {
                         message: Some("Done".to_string()),
                         agent_nickname: None,
                         agent_role: None,
+                        ..Default::default()
                     },
                 )]),
             },
@@ -1001,6 +1023,7 @@ async fn live_app_server_collab_wait_items_render_history() {
                             message: Some("Done".to_string()),
                             agent_nickname: None,
                             agent_role: None,
+                            ..Default::default()
                         },
                     ),
                     (
@@ -1010,6 +1033,7 @@ async fn live_app_server_collab_wait_items_render_history() {
                             message: None,
                             agent_nickname: None,
                             agent_role: None,
+                            ..Default::default()
                         },
                     ),
                 ]),
@@ -1075,6 +1099,7 @@ async fn live_app_server_collab_spawn_completed_renders_requested_model_and_effo
                         message: None,
                         agent_nickname: None,
                         agent_role: None,
+                        ..Default::default()
                     },
                 )]),
             },

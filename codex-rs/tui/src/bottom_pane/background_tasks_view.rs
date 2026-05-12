@@ -221,12 +221,6 @@ impl BackgroundTasksView {
             .into(),
         ];
 
-        if total == 0 && self.params.tasks.is_empty() {
-            lines.push("".into());
-            lines.push("No background tasks.".italic().into());
-            return lines;
-        }
-
         append_task_section(&mut lines, &self.params.tasks);
         append_section(
             &mut lines,

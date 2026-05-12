@@ -76,6 +76,11 @@ impl ToolHandler for Handler {
                     prompt: prompt.clone(),
                     model: args.model.clone().unwrap_or_default(),
                     reasoning_effort: args.reasoning_effort.unwrap_or_default(),
+                    phase: None,
+                    lane: None,
+                    ownership: None,
+                    output_contract: None,
+                    spawn_reason: None,
                 }
                 .into(),
             )
@@ -177,6 +182,11 @@ impl ToolHandler for Handler {
                     model: effective_model,
                     reasoning_effort: effective_reasoning_effort,
                     status,
+                    phase: None,
+                    lane: None,
+                    ownership: None,
+                    output_contract: None,
+                    spawn_reason: None,
                 }
                 .into(),
             )

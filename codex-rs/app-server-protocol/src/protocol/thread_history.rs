@@ -646,6 +646,13 @@ impl ThreadHistoryBuilder {
                     payload.status.clone(),
                     payload.new_agent_nickname.clone(),
                     payload.new_agent_role.clone(),
+                )
+                .with_task_metadata(
+                    payload.phase.clone(),
+                    payload.lane.clone(),
+                    payload.ownership.clone(),
+                    payload.output_contract.clone(),
+                    payload.spawn_reason.clone(),
                 );
                 (
                     vec![receiver_id.clone()],
@@ -2828,6 +2835,11 @@ mod tests {
                         message: None,
                         agent_nickname: None,
                         agent_role: None,
+                        phase: None,
+                        lane: None,
+                        ownership: None,
+                        output_contract: None,
+                        spawn_reason: None,
                     },
                 )]
                 .into_iter()
@@ -2860,6 +2872,11 @@ mod tests {
                 model: "gpt-5.4-mini".into(),
                 reasoning_effort: codex_protocol::openai_models::ReasoningEffort::Medium,
                 status: AgentStatus::Running,
+                phase: None,
+                lane: None,
+                ownership: None,
+                output_contract: None,
+                spawn_reason: None,
             }),
         ];
 
@@ -2888,6 +2905,11 @@ mod tests {
                         message: None,
                         agent_nickname: Some("Scout".into()),
                         agent_role: Some("explorer".into()),
+                        phase: None,
+                        lane: None,
+                        ownership: None,
+                        output_contract: None,
+                        spawn_reason: None,
                     },
                 )]
                 .into_iter()
@@ -2960,6 +2982,11 @@ mod tests {
                         message: None,
                         agent_nickname: None,
                         agent_role: None,
+                        phase: None,
+                        lane: None,
+                        ownership: None,
+                        output_contract: None,
+                        spawn_reason: None,
                     },
                 )]
                 .into_iter()

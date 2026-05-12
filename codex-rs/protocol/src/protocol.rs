@@ -3714,6 +3714,21 @@ pub struct CollabAgentSpawnBeginEvent {
     pub prompt: String,
     pub model: String,
     pub reasoning_effort: ReasoningEffortConfig,
+    /// Optional execution phase, for example `exploration`, `implementation`, or `verification`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub phase: Option<String>,
+    /// Optional lane name that explains what independent track this agent owns.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lane: Option<String>,
+    /// Optional ownership boundary, especially for worker agents that may edit files.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ownership: Option<String>,
+    /// Optional expected output shape for the spawned agent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_contract: Option<String>,
+    /// Optional reason this work was delegated instead of handled locally.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub spawn_reason: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, JsonSchema, TS)]
@@ -3767,6 +3782,21 @@ pub struct CollabAgentSpawnEndEvent {
     pub reasoning_effort: ReasoningEffortConfig,
     /// Last known status of the new agent reported to the sender agent.
     pub status: AgentStatus,
+    /// Optional execution phase, for example `exploration`, `implementation`, or `verification`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub phase: Option<String>,
+    /// Optional lane name that explains what independent track this agent owns.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lane: Option<String>,
+    /// Optional ownership boundary, especially for worker agents that may edit files.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ownership: Option<String>,
+    /// Optional expected output shape for the spawned agent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_contract: Option<String>,
+    /// Optional reason this work was delegated instead of handled locally.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub spawn_reason: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, JsonSchema, TS)]

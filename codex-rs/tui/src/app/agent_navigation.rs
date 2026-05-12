@@ -91,6 +91,9 @@ impl AgentNavigationState {
             AgentPickerThreadEntry {
                 agent_nickname,
                 agent_role,
+                phase: None,
+                lane: None,
+                ownership: None,
                 is_closed,
             },
         );

@@ -1671,6 +1671,92 @@ async fn multi_agent_v2_spawn_omits_agent_id_when_named() {
 }
 
 #[tokio::test]
+async fn multi_agent_v2_spawn_returns_task_metadata() {
+    let (mut session, mut turn) = make_session_and_context().await;
+    let manager = thread_manager();
+    let root = manager
+        .start_thread((*turn.config).clone())
+        .await
+        .expect("root thread should start");
+    session.services.agent_control = manager.agent_control();
+    session.conversation_id = root.thread_id;
+    let mut config = (*turn.config).clone();
+    config
+        .features
+        .enable(Feature::MultiAgentV2)
+        .expect("test config should allow feature update");
+    turn.config = Arc::new(config);
+
+    let output = SpawnAgentHandlerV2::default()
+        .handle(invocation(
+            Arc::new(session),
+            Arc::new(turn),
+            "spawn_agent",
+            function_payload(json!({
+                "message": "inspect this repo",
+                "task_name": "reference_check",
+                "phase": "exploration",
+                "lane": "upstream-reference",
+                "output_contract": "Return findings and source paths",
+                "spawn_reason": "Can run independently while main lane edits core code"
+            })),
+        ))
+        .await
+        .expect("spawn_agent should succeed");
+    let (content, success) = expect_text_output(output);
+    let result: serde_json::Value =
+        serde_json::from_str(&content).expect("spawn_agent result should be json");
+
+    assert_eq!(result["task_name"], "/root/reference_check");
+    assert_eq!(result["metadata"]["phase"], "exploration");
+    assert_eq!(result["metadata"]["lane"], "upstream-reference");
+    assert_eq!(
+        result["metadata"]["output_contract"],
+        "Return findings and source paths"
+    );
+    assert_eq!(success, Some(true));
+}
+
+#[tokio::test]
+async fn multi_agent_v2_worker_requires_ownership() {
+    let (mut session, mut turn) = make_session_and_context().await;
+    let manager = thread_manager();
+    let root = manager
+        .start_thread((*turn.config).clone())
+        .await
+        .expect("root thread should start");
+    session.services.agent_control = manager.agent_control();
+    session.conversation_id = root.thread_id;
+    let mut config = (*turn.config).clone();
+    config
+        .features
+        .enable(Feature::MultiAgentV2)
+        .expect("test config should allow feature update");
+    turn.config = Arc::new(config);
+
+    let err = SpawnAgentHandlerV2::default()
+        .handle(invocation(
+            Arc::new(session),
+            Arc::new(turn),
+            "spawn_agent",
+            function_payload(json!({
+                "message": "edit the UI",
+                "task_name": "ui_worker",
+                "agent_type": "worker"
+            })),
+        ))
+        .await
+        .expect_err("worker spawn without ownership should fail");
+
+    assert_eq!(
+        err,
+        FunctionCallError::RespondToModel(
+            "worker subagents require `ownership` to describe the files/modules or responsibility lane they may edit".to_string()
+        )
+    );
+}
+
+#[tokio::test]
 async fn multi_agent_v2_spawn_surfaces_task_name_validation_errors() {
     let (mut session, mut turn) = make_session_and_context().await;
     let manager = thread_manager();

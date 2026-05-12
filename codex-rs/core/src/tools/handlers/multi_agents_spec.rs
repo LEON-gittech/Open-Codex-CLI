@@ -75,6 +75,7 @@ pub fn create_spawn_agent_tool_v2(options: SpawnAgentToolOptions) -> ToolSpec {
                 .to_string(),
         )),
     );
+    properties.extend(spawn_agent_task_metadata_properties());
 
     ToolSpec::Function(ResponsesApiTool {
         name: "spawn_agent".to_string(),
@@ -360,6 +361,18 @@ fn spawn_agent_output_schema_v2(hide_agent_metadata: bool) -> Value {
             "nickname": {
                 "type": ["string", "null"],
                 "description": "User-facing nickname for the spawned agent when available."
+            },
+            "metadata": {
+                "type": "object",
+                "description": "Optional phase, lane, ownership, output contract, and spawn reason metadata when provided.",
+                "properties": {
+                    "phase": { "type": "string" },
+                    "lane": { "type": "string" },
+                    "ownership": { "type": "string" },
+                    "output_contract": { "type": "string" },
+                    "spawn_reason": { "type": "string" }
+                },
+                "additionalProperties": false
             }
         },
         "required": ["task_name", "nickname"],
@@ -581,6 +594,46 @@ fn spawn_agent_common_properties_v2(agent_type_description: &str) -> BTreeMap<St
     ])
 }
 
+fn spawn_agent_task_metadata_properties() -> BTreeMap<String, JsonSchema> {
+    BTreeMap::from([
+        (
+            "phase".to_string(),
+            JsonSchema::string(Some(
+                "Optional execution phase, for example `exploration`, `implementation`, or `verification`."
+                    .to_string(),
+            )),
+        ),
+        (
+            "lane".to_string(),
+            JsonSchema::string(Some(
+                "Optional independent work lane name. Use this to show how the subagent is orthogonal to the main rollout."
+                    .to_string(),
+            )),
+        ),
+        (
+            "ownership".to_string(),
+            JsonSchema::string(Some(
+                "Optional ownership boundary for this task. Required when `agent_type` is `worker`; describe files/modules or responsibility the worker may edit."
+                    .to_string(),
+            )),
+        ),
+        (
+            "output_contract".to_string(),
+            JsonSchema::string(Some(
+                "Optional expected output shape, such as findings, changed paths, tests run, or a concise final recommendation."
+                    .to_string(),
+            )),
+        ),
+        (
+            "spawn_reason".to_string(),
+            JsonSchema::string(Some(
+                "Optional reason this work should run in a background subagent instead of on the main critical path."
+                    .to_string(),
+            )),
+        ),
+    ])
+}
+
 fn hide_spawn_agent_metadata_options(properties: &mut BTreeMap<String, JsonSchema>) {
     properties.remove("agent_type");
     properties.remove("model");
@@ -681,6 +734,7 @@ The spawned agent will have the same tools as you and the ability to spawn its o
 {SPAWN_AGENT_INHERITED_MODEL_GUIDANCE}
 It will be able to send you and other running agents messages, and its final answer will be provided to you when it finishes.
 The new agent's canonical task name will be provided to it along with the message.
+Use `phase`, `lane`, `ownership`, `output_contract`, and `spawn_reason` to make task management visible without inventing one-off agent profiles. `worker` subagents must include `ownership`.
 {concurrency_guidance}"#
     );
 

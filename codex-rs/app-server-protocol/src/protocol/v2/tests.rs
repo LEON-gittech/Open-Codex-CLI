@@ -197,6 +197,11 @@ fn collab_agent_state_maps_interrupted_status() {
             message: None,
             agent_nickname: None,
             agent_role: None,
+            phase: None,
+            lane: None,
+            ownership: None,
+            output_contract: None,
+            spawn_reason: None,
         }
     );
 }

@@ -109,6 +109,13 @@ pub fn item_event_to_server_notification(
                         end_event.status.clone(),
                         end_event.new_agent_nickname,
                         end_event.new_agent_role,
+                    )
+                    .with_task_metadata(
+                        end_event.phase,
+                        end_event.lane,
+                        end_event.ownership,
+                        end_event.output_contract,
+                        end_event.spawn_reason,
                     );
                     (
                         vec![receiver_id.clone()],

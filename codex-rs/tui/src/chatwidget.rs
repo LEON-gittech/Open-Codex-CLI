@@ -1072,6 +1072,28 @@ fn background_elapsed_text(started_at: Instant) -> String {
     fmt_elapsed_compact(started_at.elapsed().as_secs())
 }
 
+fn append_background_metadata_detail(
+    detail: &mut Vec<String>,
+    label: &'static str,
+    value: Option<&str>,
+) {
+    let Some(value) = value.map(str::trim).filter(|value| !value.is_empty()) else {
+        return;
+    };
+    detail.push(format!("{label}: {value}"));
+}
+
+fn agent_profile_item(name: &str, description: &str, built_in: bool) -> SelectionItem {
+    let source = if built_in { "built-in" } else { "custom" };
+    SelectionItem {
+        name: name.to_string(),
+        description: Some(format!("{source} · {description}")),
+        search_value: Some(format!("{name} {description} {source}")),
+        dismiss_on_select: false,
+        ..Default::default()
+    }
+}
+
 fn plan_task_status_marker(status: &StepStatus) -> String {
     match status {
         StepStatus::Pending => " ".to_string(),
@@ -1737,13 +1759,37 @@ impl ChatWidget {
         agent_nickname: Option<String>,
         agent_role: Option<String>,
     ) {
+        let existing = self.collab_agent_metadata(thread_id);
         self.collab_agent_metadata.insert(
             thread_id,
             AgentMetadata {
                 agent_nickname,
                 agent_role,
+                phase: existing.phase,
+                lane: existing.lane,
+                ownership: existing.ownership,
+                output_contract: existing.output_contract,
+                spawn_reason: existing.spawn_reason,
             },
         );
+    }
+
+    fn set_collab_agent_task_metadata(
+        &mut self,
+        thread_id: ThreadId,
+        phase: Option<String>,
+        lane: Option<String>,
+        ownership: Option<String>,
+        output_contract: Option<String>,
+        spawn_reason: Option<String>,
+    ) {
+        let mut metadata = self.collab_agent_metadata(thread_id);
+        metadata.phase = phase.or(metadata.phase);
+        metadata.lane = lane.or(metadata.lane);
+        metadata.ownership = ownership.or(metadata.ownership);
+        metadata.output_contract = output_contract.or(metadata.output_contract);
+        metadata.spawn_reason = spawn_reason.or(metadata.spawn_reason);
+        self.collab_agent_metadata.insert(thread_id, metadata);
     }
 
     /// Returns the cached metadata for a thread, defaulting to empty if none has been registered.
@@ -1760,7 +1806,14 @@ impl ChatWidget {
         };
 
         for (thread_id, state) in agents_states {
-            if state.agent_nickname.is_none() && state.agent_role.is_none() {
+            if state.agent_nickname.is_none()
+                && state.agent_role.is_none()
+                && state.phase.is_none()
+                && state.lane.is_none()
+                && state.ownership.is_none()
+                && state.output_contract.is_none()
+                && state.spawn_reason.is_none()
+            {
                 continue;
             }
             let Ok(thread_id) = ThreadId::from_string(thread_id) else {
@@ -1771,6 +1824,14 @@ impl ChatWidget {
                 thread_id,
                 state.agent_nickname.clone().or(existing.agent_nickname),
                 state.agent_role.clone().or(existing.agent_role),
+            );
+            self.set_collab_agent_task_metadata(
+                thread_id,
+                state.phase.clone(),
+                state.lane.clone(),
+                state.ownership.clone(),
+                state.output_contract.clone(),
+                state.spawn_reason.clone(),
             );
         }
     }
@@ -2885,6 +2946,47 @@ impl ChatWidget {
         self.bottom_pane.show_selection_view(SelectionViewParams {
             title: Some(MULTI_AGENT_ENABLE_TITLE.to_string()),
             subtitle: Some("Subagents are currently disabled in your config.".to_string()),
+            footer_hint: Some(standard_popup_hint_line()),
+            items,
+            ..Default::default()
+        });
+    }
+
+    pub(crate) fn open_agent_profiles_popup(&mut self) {
+        let mut items = vec![
+            agent_profile_item(
+                "default",
+                "General-purpose profile. Use this when a task does not need a narrower capability boundary.",
+                true,
+            ),
+            agent_profile_item(
+                "explorer",
+                "Read-only codebase or reference exploration. Prefer this for investigation, review, and test discovery lanes.",
+                true,
+            ),
+            agent_profile_item(
+                "worker",
+                "Bounded implementation profile. Use only with explicit ownership for files, modules, or responsibility lanes.",
+                true,
+            ),
+        ];
+
+        for (role_name, role) in &self.config.agent_roles {
+            items.push(agent_profile_item(
+                role_name,
+                role.description
+                    .as_deref()
+                    .unwrap_or("User-defined agent profile."),
+                false,
+            ));
+        }
+
+        self.bottom_pane.show_selection_view(SelectionViewParams {
+            title: Some("Agent profiles".to_string()),
+            subtitle: Some(
+                "Profiles define stable capability boundaries; phase, lane, and ownership belong on each spawned task."
+                    .to_string(),
+            ),
             footer_hint: Some(standard_popup_hint_line()),
             items,
             ..Default::default()
@@ -4652,6 +4754,7 @@ impl ChatWidget {
                         self.background_activities.insert(insert_index, activity);
                     }
                 }
+                self.refresh_background_tasks_view_if_open();
             }
             ExecEndTarget::ActiveTracked => {
                 if let Some(cell) = self
@@ -10791,6 +10894,25 @@ impl ChatWidget {
                     .task
                     .as_deref()
                     .map(|task| truncate_text(task, 240));
+                let metadata = cell.metadata();
+                let mut detail = detail;
+                append_background_metadata_detail(&mut detail, "Phase", metadata.phase.as_deref());
+                append_background_metadata_detail(&mut detail, "Lane", metadata.lane.as_deref());
+                append_background_metadata_detail(
+                    &mut detail,
+                    "Ownership",
+                    metadata.ownership.as_deref(),
+                );
+                append_background_metadata_detail(
+                    &mut detail,
+                    "Output",
+                    metadata.output_contract.as_deref(),
+                );
+                append_background_metadata_detail(
+                    &mut detail,
+                    "Reason",
+                    metadata.spawn_reason.as_deref(),
+                );
                 params.subagents.push(BackgroundTaskItem {
                     kind: BackgroundTaskKind::Subagent {
                         thread_id: cell.thread_id(),

@@ -1299,6 +1299,9 @@ async fn open_agent_picker_keeps_missing_threads_for_replay() -> Result<()> {
         Some(&AgentPickerThreadEntry {
             agent_nickname: None,
             agent_role: None,
+            phase: None,
+            lane: None,
+            ownership: None,
             is_closed: true,
         })
     );
@@ -1332,6 +1335,9 @@ async fn open_agent_picker_preserves_cached_metadata_for_replay_threads() -> Res
         Some(&AgentPickerThreadEntry {
             agent_nickname: Some("Robie".to_string()),
             agent_role: Some("explorer".to_string()),
+            phase: None,
+            lane: None,
+            ownership: None,
             is_closed: true,
         })
     );
@@ -1386,6 +1392,9 @@ async fn open_agent_picker_marks_terminal_read_errors_closed() -> Result<()> {
         Some(&AgentPickerThreadEntry {
             agent_nickname: Some("Robie".to_string()),
             agent_role: Some("explorer".to_string()),
+            phase: None,
+            lane: None,
+            ownership: None,
             is_closed: true,
         })
     );
@@ -1424,6 +1433,9 @@ fn open_agent_picker_marks_loaded_threads_open() -> Result<()> {
             Some(&AgentPickerThreadEntry {
                 agent_nickname: None,
                 agent_role: None,
+                phase: None,
+                lane: None,
+                ownership: None,
                 is_closed: false,
             })
         );
@@ -2998,6 +3010,9 @@ async fn inactive_thread_started_notification_initializes_replay_session() -> Re
         Some(&AgentPickerThreadEntry {
             agent_nickname: Some("Robie".to_string()),
             agent_role: Some("explorer".to_string()),
+            phase: None,
+            lane: None,
+            ownership: None,
             is_closed: false,
         })
     );
@@ -4948,6 +4963,7 @@ async fn replace_chat_widget_reseeds_collab_agent_metadata_for_replay() {
                                     message: Some("Done".to_string()),
                                     agent_nickname: None,
                                     agent_role: None,
+                                    ..Default::default()
                                 },
                             )]),
                         },

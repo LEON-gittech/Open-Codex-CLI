@@ -36,6 +36,12 @@ pub(crate) struct AgentPickerThreadEntry {
     pub(crate) agent_nickname: Option<String>,
     /// Agent type shown in brackets when present, for example `worker`.
     pub(crate) agent_role: Option<String>,
+    /// Optional execution phase, for example `exploration`, `implementation`, or `verification`.
+    pub(crate) phase: Option<String>,
+    /// Optional independent work lane shown in management panels.
+    pub(crate) lane: Option<String>,
+    /// Optional ownership boundary for worker-style subagents.
+    pub(crate) ownership: Option<String>,
     /// Whether the thread has emitted a close event and should render dimmed.
     pub(crate) is_closed: bool,
 }
@@ -46,6 +52,16 @@ pub(crate) struct AgentMetadata {
     pub(crate) agent_nickname: Option<String>,
     /// Agent type shown in brackets when present, for example `worker`.
     pub(crate) agent_role: Option<String>,
+    /// Optional execution phase, for example `exploration`, `implementation`, or `verification`.
+    pub(crate) phase: Option<String>,
+    /// Optional independent work lane shown in management panels.
+    pub(crate) lane: Option<String>,
+    /// Optional ownership boundary for worker-style subagents.
+    pub(crate) ownership: Option<String>,
+    /// Optional expected output shape.
+    pub(crate) output_contract: Option<String>,
+    /// Optional reason this work was delegated.
+    pub(crate) spawn_reason: Option<String>,
 }
 
 #[derive(Clone, Copy)]
@@ -92,6 +108,10 @@ impl CollabAgentActivityCell {
 
     pub(crate) fn agent_role(&self) -> Option<&str> {
         self.metadata.agent_role.as_deref()
+    }
+
+    pub(crate) fn metadata(&self) -> &AgentMetadata {
+        &self.metadata
     }
 }
 
@@ -893,6 +913,11 @@ mod tests {
             message: message.map(str::to_string),
             agent_nickname: None,
             agent_role: None,
+            phase: None,
+            lane: None,
+            ownership: None,
+            output_contract: None,
+            spawn_reason: None,
         }
     }
 
@@ -901,11 +926,13 @@ mod tests {
             AgentMetadata {
                 agent_nickname: Some("Robie".to_string()),
                 agent_role: Some("explorer".to_string()),
+                ..Default::default()
             }
         } else if thread_id == bob_id {
             AgentMetadata {
                 agent_nickname: Some("Bob".to_string()),
                 agent_role: Some("worker".to_string()),
+                ..Default::default()
             }
         } else {
             AgentMetadata::default()

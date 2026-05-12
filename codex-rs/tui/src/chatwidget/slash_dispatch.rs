@@ -306,7 +306,10 @@ impl ChatWidget {
             SlashCommand::Btw => {
                 self.add_info_message(BTW_USAGE.to_string(), /*hint*/ None);
             }
-            SlashCommand::Agent | SlashCommand::MultiAgents => {
+            SlashCommand::Agent => {
+                self.open_agent_profiles_popup();
+            }
+            SlashCommand::MultiAgents => {
                 self.app_event_tx.send(AppEvent::OpenAgentPicker);
             }
             SlashCommand::Permissions => {

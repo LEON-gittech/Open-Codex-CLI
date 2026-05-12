@@ -180,7 +180,42 @@
             "null"
           ]
         },
+        "lane": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "message": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "outputContract": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "ownership": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "phase": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "spawnReason": {
+          "default": null,
           "type": [
             "string",
             "null"
