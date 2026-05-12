@@ -1699,6 +1699,13 @@ impl App {
                     .handle_start_btw(tui, app_server, parent_thread_id, user_message)
                     .await;
             }
+            AppEvent::SubmitBtwFollowup { thread_id, text } => {
+                self.submit_btw_followup(app_server, thread_id, text)
+                    .await?;
+            }
+            AppEvent::CloseBtw { thread_id } => {
+                self.close_btw_thread(app_server, thread_id).await;
+            }
             AppEvent::OpenSkillsList => {
                 self.chat_widget.open_skills_list();
             }

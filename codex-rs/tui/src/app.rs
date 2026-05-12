@@ -497,8 +497,7 @@ pub(crate) struct App {
     thread_event_listener_tasks: HashMap<ThreadId, JoinHandle<()>>,
     agent_navigation: AgentNavigationState,
     side_threads: HashMap<ThreadId, SideThreadState>,
-    pending_btw_questions:
-        HashMap<String, Arc<std::sync::Mutex<history_cell::BtwQuestionCellState>>>,
+    btw_threads: HashMap<ThreadId, Arc<std::sync::Mutex<history_cell::BtwQuestionCellState>>>,
     active_thread_id: Option<ThreadId>,
     active_thread_rx: Option<mpsc::Receiver<ThreadBufferedEvent>>,
     primary_thread_id: Option<ThreadId>,
@@ -910,7 +909,7 @@ See the Codex keymap documentation for supported actions and examples."
             thread_event_listener_tasks: HashMap::new(),
             agent_navigation: AgentNavigationState::default(),
             side_threads: HashMap::new(),
-            pending_btw_questions: HashMap::new(),
+            btw_threads: HashMap::new(),
             active_thread_id: None,
             active_thread_rx: None,
             primary_thread_id: None,

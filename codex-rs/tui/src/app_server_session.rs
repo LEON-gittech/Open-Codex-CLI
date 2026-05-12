@@ -17,8 +17,6 @@ use codex_app_server_client::TypedRequestError;
 use codex_app_server_protocol::Account;
 use codex_app_server_protocol::AskForApproval;
 use codex_app_server_protocol::AuthMode;
-use codex_app_server_protocol::BtwStartParams;
-use codex_app_server_protocol::BtwStartResponse;
 use codex_app_server_protocol::ClientRequest;
 use codex_app_server_protocol::ConfigBatchWriteParams;
 use codex_app_server_protocol::ConfigWriteResponse;
@@ -592,14 +590,6 @@ impl AppServerSession {
             .await
             .wrap_err("turn/interrupt failed in TUI")?;
         Ok(())
-    }
-
-    pub(crate) async fn btw_start(&mut self, params: BtwStartParams) -> Result<BtwStartResponse> {
-        let request_id = self.next_request_id();
-        self.client
-            .request_typed(ClientRequest::BtwStart { request_id, params })
-            .await
-            .wrap_err("btw/start failed in TUI")
     }
 
     pub(crate) async fn startup_interrupt(&mut self, thread_id: ThreadId) -> Result<()> {

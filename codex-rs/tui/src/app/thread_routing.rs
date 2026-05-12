@@ -931,12 +931,14 @@ impl App {
         }
         session.message_history = None;
         session.rollout_path = rollout_path;
-        self.upsert_agent_picker_thread(
-            thread_id,
-            notification.thread.agent_nickname.clone(),
-            notification.thread.agent_role.clone(),
-            /*is_closed*/ false,
-        );
+        if !self.btw_threads.contains_key(&thread_id) {
+            self.upsert_agent_picker_thread(
+                thread_id,
+                notification.thread.agent_nickname.clone(),
+                notification.thread.agent_role.clone(),
+                /*is_closed*/ false,
+            );
+        }
         Some(session)
     }
 

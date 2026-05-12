@@ -660,6 +660,22 @@ impl BtwQuestionCellState {
         self.answer.push_str(delta);
     }
 
+    pub(crate) fn replace_answer(&mut self, answer: String) {
+        self.answer = answer;
+    }
+
+    pub(crate) fn is_completed(&self) -> bool {
+        self.completed
+    }
+
+    pub(crate) fn start_follow_up(&mut self, question: String) {
+        self.question = question;
+        self.answer.clear();
+        self.error = None;
+        self.completed = false;
+        self.start_time = Instant::now();
+    }
+
     pub(crate) fn complete(&mut self, answer: Option<String>, error: Option<String>) {
         if let Some(answer) = answer
             && !answer.trim().is_empty()

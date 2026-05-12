@@ -109,9 +109,7 @@ impl App {
             _ => {}
         }
 
-        if self.note_btw_notification(&notification) {
-            return;
-        }
+        self.note_btw_notification(&notification);
 
         match server_notification_thread_target(&notification) {
             ServerNotificationThreadTarget::Thread(thread_id) => {

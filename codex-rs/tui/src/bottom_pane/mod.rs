@@ -23,6 +23,7 @@ use crate::app_event_sender::AppEventSender;
 use crate::bottom_pane::pending_input_preview::PendingInputPreview;
 use crate::bottom_pane::pending_thread_approvals::PendingThreadApprovals;
 use crate::bottom_pane::unified_exec_footer::UnifiedExecFooter;
+use crate::history_cell;
 use crate::key_hint;
 use crate::key_hint::KeyBinding;
 use crate::keymap::RuntimeKeymap;
@@ -52,6 +53,7 @@ mod action_required_title;
 mod app_link_view;
 mod approval_overlay;
 mod background_tasks_view;
+mod btw_view;
 mod mcp_server_elicitation;
 mod multi_select_picker;
 mod request_user_input;
@@ -74,6 +76,7 @@ pub(crate) use background_tasks_view::BackgroundTaskKind;
 pub(crate) use background_tasks_view::BackgroundTasksView;
 pub(crate) use background_tasks_view::BackgroundTasksViewParams;
 pub(crate) use background_tasks_view::PlanTaskItem;
+use btw_view::BtwView;
 pub(crate) use mcp_server_elicitation::McpServerElicitationFormRequest;
 pub(crate) use mcp_server_elicitation::McpServerElicitationOverlay;
 pub(crate) use request_user_input::RequestUserInputOverlay;
@@ -1224,6 +1227,20 @@ impl BottomPane {
 
     pub(crate) fn show_view(&mut self, view: Box<dyn BottomPaneView>) {
         self.push_view(view);
+    }
+
+    pub(crate) fn show_btw_view(
+        &mut self,
+        thread_id: ThreadId,
+        state: std::sync::Arc<std::sync::Mutex<history_cell::BtwQuestionCellState>>,
+        cwd: PathBuf,
+    ) {
+        self.push_view(Box::new(BtwView::new(
+            thread_id,
+            state,
+            cwd,
+            self.app_event_tx.clone(),
+        )));
     }
 
     pub(crate) fn show_background_tasks_view(

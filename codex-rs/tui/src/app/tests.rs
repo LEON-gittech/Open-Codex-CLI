@@ -3922,7 +3922,7 @@ async fn make_test_app() -> App {
         primary_session_configured: None,
         pending_primary_events: VecDeque::new(),
         pending_app_server_requests: PendingAppServerRequests::default(),
-        pending_btw_questions: HashMap::new(),
+        btw_threads: HashMap::new(),
         pending_plugin_enabled_writes: HashMap::new(),
         pending_hook_enabled_writes: HashMap::new(),
     }
@@ -3986,7 +3986,7 @@ async fn make_test_app_with_channels() -> (
             primary_session_configured: None,
             pending_primary_events: VecDeque::new(),
             pending_app_server_requests: PendingAppServerRequests::default(),
-            pending_btw_questions: HashMap::new(),
+            btw_threads: HashMap::new(),
             pending_plugin_enabled_writes: HashMap::new(),
             pending_hook_enabled_writes: HashMap::new(),
         },
@@ -4232,30 +4232,38 @@ fn thread_closed_notification(thread_id: ThreadId) -> ServerNotification {
 #[tokio::test]
 async fn btw_notifications_collect_answer_and_emit_completion() {
     let (mut app, _app_event_rx, _op_rx) = make_test_app_with_channels().await;
-    let btw_id = "btw-test".to_string();
+    let thread_id = ThreadId::new();
     let state = std::sync::Arc::new(std::sync::Mutex::new(
         history_cell::BtwQuestionCellState::new(
             "what changed?".to_string(),
             /*animations_enabled*/ false,
         ),
     ));
-    app.pending_btw_questions
-        .insert(btw_id.clone(), std::sync::Arc::clone(&state));
+    app.btw_threads
+        .insert(thread_id, std::sync::Arc::clone(&state));
 
-    assert!(app.note_btw_notification(&ServerNotification::BtwTextDelta(
-        codex_app_server_protocol::BtwTextDeltaNotification {
-            btw_id: btw_id.clone(),
-            delta: "A short".to_string(),
+    app.note_btw_notification(&agent_message_delta_notification(
+        thread_id, "turn-1", "item-1", "A short",
+    ));
+    app.note_btw_notification(&ServerNotification::ItemCompleted(
+        codex_app_server_protocol::ItemCompletedNotification {
+            item: ThreadItem::AgentMessage {
+                id: "item-1".to_string(),
+                text: "A short answer.".to_string(),
+                phase: None,
+                memory_citation: None,
+            },
+            thread_id: thread_id.to_string(),
+            turn_id: "turn-1".to_string(),
+            completed_at_ms: 0,
         },
-    )));
-    assert!(app.note_btw_notification(&ServerNotification::BtwCompleted(
-        codex_app_server_protocol::BtwCompletedNotification {
-            btw_id: btw_id.clone(),
-            answer: Some("A short answer.".to_string()),
-            error: None,
-        },
-    )));
-    assert!(!app.pending_btw_questions.contains_key(&btw_id));
+    ));
+    app.note_btw_notification(&turn_completed_notification(
+        thread_id,
+        "turn-1",
+        TurnStatus::Completed,
+    ));
+    assert!(app.btw_threads.contains_key(&thread_id));
     let lines =
         history_cell::new_btw_question_cell(state, std::path::Path::new("/tmp")).raw_lines();
     let rendered = lines

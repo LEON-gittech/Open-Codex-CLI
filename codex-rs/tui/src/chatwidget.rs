@@ -1627,7 +1627,7 @@ fn contains_plan_keyword(text: &str) -> bool {
         .any(|word| word.eq_ignore_ascii_case("plan"))
 }
 
-fn text_requests_xhigh_reasoning(text: &str) -> bool {
+pub(crate) fn text_requests_xhigh_reasoning(text: &str) -> bool {
     text.split(|ch: char| !ch.is_ascii_alphanumeric())
         .any(|word| {
             matches!(
@@ -5611,6 +5611,16 @@ impl ChatWidget {
     pub(crate) fn show_selection_view(&mut self, params: SelectionViewParams) {
         self.bottom_pane.show_selection_view(params);
         self.refresh_plan_mode_nudge();
+        self.request_redraw();
+    }
+
+    pub(crate) fn show_btw_view(
+        &mut self,
+        thread_id: ThreadId,
+        state: std::sync::Arc<std::sync::Mutex<history_cell::BtwQuestionCellState>>,
+        cwd: PathBuf,
+    ) {
+        self.bottom_pane.show_btw_view(thread_id, state, cwd);
         self.request_redraw();
     }
 
@@ -9853,6 +9863,27 @@ impl ChatWidget {
             .as_ref()
             .and_then(|mask| mask.model.as_deref())
             .unwrap_or_else(|| self.current_collaboration_mode.model())
+    }
+
+    pub(crate) fn current_submission_collaboration_mode(
+        &self,
+        xhigh_effort_override: bool,
+    ) -> Option<CollaborationMode> {
+        if !self.collaboration_modes_enabled() {
+            return None;
+        }
+        self.active_collaboration_mask.as_ref().map(|_| {
+            let effective_mode = self.effective_collaboration_mode();
+            if xhigh_effort_override {
+                effective_mode.with_updates(
+                    /*model*/ None,
+                    Some(Some(ReasoningEffortConfig::XHigh)),
+                    /*developer_instructions*/ None,
+                )
+            } else {
+                effective_mode
+            }
+        })
     }
 
     pub(crate) fn realtime_conversation_is_live(&self) -> bool {

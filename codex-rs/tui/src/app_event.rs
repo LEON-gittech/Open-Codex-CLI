@@ -149,10 +149,21 @@ pub(crate) enum AppEvent {
         user_message: Option<UserMessage>,
     },
 
-    /// Fork the current thread into a hidden, one-shot `/btw` side question.
+    /// Fork the current thread into a hidden `/btw` side question.
     StartBtw {
         parent_thread_id: ThreadId,
         user_message: UserMessage,
+    },
+
+    /// Submit a follow-up message to a hidden `/btw` thread.
+    SubmitBtwFollowup {
+        thread_id: ThreadId,
+        text: String,
+    },
+
+    /// Close and clean up a hidden `/btw` thread.
+    CloseBtw {
+        thread_id: ThreadId,
     },
 
     /// Submit an op to the specified thread, regardless of current focus.
