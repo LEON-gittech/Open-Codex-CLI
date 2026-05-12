@@ -474,7 +474,7 @@ pub struct Config {
     /// This top-level setting only takes effect when `[features].codex_git_commit`
     /// is enabled.
     ///
-    /// - `None`: use default attribution (`Codex <noreply@openai.com>`)
+    /// - `None`: use default attribution (`Open Codex <hff582580@gmail.com>`)
     /// - `Some("")` or whitespace-only: disable commit attribution
     /// - `Some("...")`: use the provided attribution text verbatim
     pub commit_attribution: Option<String>,

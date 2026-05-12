@@ -179,7 +179,7 @@ pub struct ConfigToml {
     /// This top-level setting only takes effect when `[features].codex_git_commit`
     /// is enabled.
     ///
-    /// When enabled and unset, Codex uses `Codex <noreply@openai.com>`.
+    /// When enabled and unset, Codex uses `Open Codex <hff582580@gmail.com>`.
     /// Set to an empty string to disable automatic commit attribution.
     pub commit_attribution: Option<String>,
 
