@@ -55,6 +55,12 @@ fn use_linux_sandbox_bwrap_is_removed_and_disabled_by_default() {
 }
 
 #[test]
+fn codex_git_commit_is_stable_and_enabled_by_default() {
+    assert_eq!(Feature::CodexGitCommit.stage(), Stage::Stable);
+    assert_eq!(Feature::CodexGitCommit.default_enabled(), true);
+}
+
+#[test]
 fn undo_is_removed_and_disabled_by_default() {
     assert_eq!(Feature::GhostCommit.stage(), Stage::Removed);
     assert_eq!(Feature::GhostCommit.default_enabled(), false);

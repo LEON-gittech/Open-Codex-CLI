@@ -768,12 +768,11 @@ pub const FEATURES: &[FeatureSpec] = &[
         stage: Stage::Removed,
         default_enabled: false,
     },
-    // Experimental program. Rendered in the `/experimental` menu for users.
     FeatureSpec {
         id: Feature::CodexGitCommit,
         key: "codex_git_commit",
-        stage: Stage::UnderDevelopment,
-        default_enabled: false,
+        stage: Stage::Stable,
+        default_enabled: true,
     },
     FeatureSpec {
         id: Feature::RuntimeMetrics,

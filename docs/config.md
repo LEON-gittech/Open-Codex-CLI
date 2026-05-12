@@ -10,22 +10,19 @@ For a full configuration reference, see [this documentation](https://developers.
 
 Open Codex can add a [git trailer](https://git-scm.com/docs/git-interpret-trailers)
 to generated commit messages so commits make Open Codex's involvement explicit.
-This behavior is gated by the `codex_git_commit` feature flag; the top-level
-`commit_attribution` setting is only used when that feature is enabled.
+This behavior is enabled by default. The top-level `commit_attribution` setting
+can override the default trailer identity.
 
 Add the following to `~/.codex/config.toml`:
 
 ```toml
 commit_attribution = "Open Codex <hff582580@gmail.com>"
-
-[features]
-codex_git_commit = true
 ```
 
-When enabled, Open Codex appends a `Co-authored-by:` trailer using the configured
-attribution value. If `commit_attribution` is omitted, Open Codex uses
+Open Codex appends a `Co-authored-by:` trailer using the configured attribution
+value. If `commit_attribution` is omitted, Open Codex uses
 `Open Codex <hff582580@gmail.com>`. Set `commit_attribution = ""` to disable the
-trailer while leaving the feature flag enabled.
+trailer.
 
 ## OpenTelemetry Trace Metadata
 
