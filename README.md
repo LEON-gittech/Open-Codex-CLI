@@ -165,6 +165,7 @@ The shared interaction model is:
 - the status line keeps foreground `Working` state separate from background subagent/terminal counts.
 - terminal details show runtime and recent output; subagent details show role, task, status, runtime, progress, and task-boundary context.
 - `/agent` shows available agent profiles, while `/subagents` keeps the subagent thread picker/switching workflow.
+- completed subagent work wakes the parent turn through a core completion event, so results can be integrated without manually calling `wait_agent` or closing the agent.
 - completed background command output is preserved in history without pulling the task back into the foreground.
 
 This is the essential interaction change behind the Claude Code-style behavior: background work stays visible and controllable, but it no longer blocks normal chat flow.
@@ -455,6 +456,7 @@ Codex CLI 是开源的，但上游仓库当前对外部代码贡献采用 invita
 - status line 会把前台 `Working` 状态和后台 subagent/terminal 数量分开显示。
 - terminal detail 展示运行时间和最近输出；subagent detail 展示 role、task、status、运行时间、progress 和任务边界信息。
 - `/agent` 用于查看可用 agent profiles，`/subagents` 保留 subagent thread picker / 切换工作流。
+- subagent 完成后会通过 core completion event 唤醒 parent turn，因此不需要手动调用 `wait_agent` 或关闭 agent 才能继续整合结果。
 - background command 完成后会保留输出到 history，但不会把任务重新拉回前台。
 
 这是 Claude Code 风格体验背后的本质交互变化：后台工作仍然可见、可管理，但不会阻塞正常聊天流。

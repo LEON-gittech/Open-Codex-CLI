@@ -198,6 +198,21 @@ async fn wait_for_subagent_notification(parent_thread: &Arc<CodexThread>) -> boo
     timeout(Duration::from_secs(10), wait).await.is_ok()
 }
 
+async fn wait_for_turn_started(thread: &Arc<CodexThread>) -> bool {
+    let wait = async {
+        loop {
+            let event = thread
+                .next_event()
+                .await
+                .expect("thread event channel open");
+            if matches!(event.msg, EventMsg::TurnStarted(_)) {
+                return true;
+            }
+        }
+    };
+    timeout(Duration::from_secs(5), wait).await.is_ok()
+}
+
 async fn persist_thread_for_tree_resume(thread: &Arc<CodexThread>, message: &str) {
     thread
         .inject_user_message_without_turn(message.to_string())
@@ -1311,7 +1326,7 @@ async fn multi_agent_v2_completion_ignores_dead_direct_parent() {
 async fn multi_agent_v2_completion_queues_message_for_direct_parent() {
     let harness = AgentControlHarness::new().await;
     let (_root_thread_id, root_thread) = harness.start_thread().await;
-    let (worker_thread_id, _worker_thread) = harness.start_thread().await;
+    let (worker_thread_id, worker_thread) = harness.start_thread().await;
     let mut tester_config = harness.config.clone();
     let _ = tester_config.features.enable(Feature::MultiAgentV2);
     let tester_thread_id = harness
@@ -1367,7 +1382,7 @@ async fn multi_agent_v2_completion_queues_message_for_direct_parent() {
                 worker_path.clone(),
                 Vec::new(),
                 expected_message.clone(),
-                /*trigger_turn*/ false,
+                /*trigger_turn*/ true,
             ),
         },
     );
@@ -1387,6 +1402,10 @@ async fn multi_agent_v2_completion_queues_message_for_direct_parent() {
     })
     .await
     .expect("completion watcher should queue a direct-parent message");
+    assert!(
+        wait_for_turn_started(&worker_thread).await,
+        "completion watcher should wake the idle direct parent turn"
+    );
 
     let root_history_items = root_thread
         .codex
@@ -1402,7 +1421,7 @@ async fn multi_agent_v2_completion_queues_message_for_direct_parent() {
             AgentPath::root(),
             Vec::new(),
             expected_message,
-            /*trigger_turn*/ false,
+            /*trigger_turn*/ true,
         )
     ));
 }
