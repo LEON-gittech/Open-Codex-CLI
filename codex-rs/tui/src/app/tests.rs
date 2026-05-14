@@ -4993,6 +4993,29 @@ async fn rewind_restore_options_show_code_warning_and_modes() {
 }
 
 #[tokio::test]
+async fn rewind_restore_options_work_before_thread_id_is_configured() {
+    let (mut app, _app_event_rx, _op_rx) = make_test_app_with_channels().await;
+    assert_eq!(app.chat_widget.thread_id(), None);
+    app.transcript_cells = vec![Arc::new(UserHistoryCell {
+        message: "write notes to dario_agi_notes.txt".to_string(),
+        text_elements: Vec::new(),
+        local_image_paths: Vec::new(),
+        remote_image_urls: Vec::new(),
+    }) as Arc<dyn HistoryCell>];
+
+    app.open_rewind_picker();
+    let picker = render_bottom_popup_for_app(&app, /*width*/ 96);
+    assert!(picker.contains("write notes to dario_agi_notes.txt"));
+
+    app.open_rewind_restore_options(0);
+
+    let popup = render_bottom_popup_for_app(&app, /*width*/ 96);
+    assert!(popup.contains("Confirm rewind"));
+    assert!(popup.contains("write notes to dario_agi_notes.txt"));
+    assert!(popup.contains("Restore code and conversation"));
+}
+
+#[tokio::test]
 async fn rewind_restore_options_show_tracked_code_change_stats() {
     let (mut app, _app_event_rx, _op_rx) = make_test_app_with_channels().await;
     let thread_id = ThreadId::new();

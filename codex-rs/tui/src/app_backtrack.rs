@@ -627,8 +627,7 @@ impl App {
     }
 
     fn backtrack_selection(&self, nth_user_message: usize) -> Option<BacktrackSelection> {
-        let base_id = self.backtrack.base_id?;
-        if self.chat_widget.thread_id() != Some(base_id) {
+        if self.chat_widget.thread_id() != self.backtrack.base_id {
             return None;
         }
 
