@@ -768,6 +768,12 @@ pub(crate) enum AppEvent {
     /// Clear all persisted local memory artifacts via the app-server.
     ResetMemories,
 
+    /// Show durable memories grouped by summary, index, and topics.
+    ShowMemoryBrowser,
+
+    /// Open memory settings.
+    OpenMemorySettings,
+
     /// Show global session-memory overlay and ad-hoc staging status.
     ShowMemoryOverlayStatus,
 

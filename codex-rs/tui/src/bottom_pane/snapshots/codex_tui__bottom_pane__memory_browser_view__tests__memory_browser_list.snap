@@ -1,0 +1,19 @@
+---
+source: tui/src/bottom_pane/memory_browser_view.rs
+expression: "render_lines(&view, 88)"
+---
+
+  Memory
+  Durable memory content grouped by summary, index, and topics.
+
+  Summary
+  › Summary
+      # Summary General memory summary.
+  Overall index
+    Memory Index
+      # Memory Index - Codex topic
+  Topics
+    Codex
+      # Codex Topic body
+
+  ↑/↓ select · Enter view · s settings · Esc close

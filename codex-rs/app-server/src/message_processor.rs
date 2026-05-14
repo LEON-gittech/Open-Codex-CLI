@@ -1017,6 +1017,7 @@ impl MessageProcessor {
                 self.thread_processor.thread_memory_mode_set(params).await
             }
             ClientRequest::MemoryReset { .. } => self.thread_processor.memory_reset().await,
+            ClientRequest::MemoryList { .. } => self.thread_processor.memory_list().await,
             ClientRequest::MemoryOverlayStatus { .. } => {
                 self.thread_processor.memory_overlay_status().await
             }

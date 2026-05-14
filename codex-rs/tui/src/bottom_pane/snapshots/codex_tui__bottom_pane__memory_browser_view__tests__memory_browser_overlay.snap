@@ -1,0 +1,16 @@
+---
+source: tui/src/bottom_pane/memory_browser_view.rs
+expression: "render_lines(&view, 96)"
+---
+
+  Memory overlay status
+  Exact matches are diagnostics; no exact match does not rule out semantic consolidation.
+
+  Session overlays
+  › remember this session detail · pending exact match
+      remember this session detail
+  Ad-hoc staged notes
+    durable note text · matched durable memory
+      durable note text
+
+  ↑/↓ select · Enter view · Esc close

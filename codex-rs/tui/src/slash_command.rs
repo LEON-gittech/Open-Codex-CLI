@@ -26,6 +26,7 @@ pub enum SlashCommand {
     Experimental,
     #[strum(to_string = "approve")]
     AutoReview,
+    #[strum(to_string = "memory", serialize = "memories")]
     Memories,
     #[strum(serialize = "memory-overlay")]
     MemoryOverlay,
@@ -137,7 +138,7 @@ impl SlashCommand {
             }
             SlashCommand::Experimental => "toggle experimental features",
             SlashCommand::AutoReview => "approve one retry of a recent auto-review denial",
-            SlashCommand::Memories => "configure memory use and generation",
+            SlashCommand::Memories => "view durable memory content",
             SlashCommand::Mcp => "list configured MCP tools; use /mcp verbose for details",
             SlashCommand::Apps => "manage apps",
             SlashCommand::Plugins => "browse plugins",

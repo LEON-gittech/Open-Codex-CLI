@@ -11222,6 +11222,41 @@
         ],
         "type": "object"
       },
+      "MemoryFileKind": {
+        "enum": [
+          "summary",
+          "index",
+          "topic"
+        ],
+        "type": "string"
+      },
+      "MemoryFileStatus": {
+        "properties": {
+          "content": {
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/definitions/v2/MemoryFileKind"
+          },
+          "path": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "truncated": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "content",
+          "kind",
+          "path",
+          "title",
+          "truncated"
+        ],
+        "type": "object"
+      },
       "MemoryOverlayEntryStatus": {
         "properties": {
           "content": {

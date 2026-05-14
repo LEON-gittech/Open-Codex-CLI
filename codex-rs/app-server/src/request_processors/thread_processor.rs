@@ -1,5 +1,12 @@
 use super::*;
 use crate::error_code::method_not_found;
+use codex_memories_mcp::LocalMemoriesBackend;
+use codex_memories_mcp::backend::DEFAULT_READ_MAX_TOKENS;
+use codex_memories_mcp::backend::ListMemoriesRequest;
+use codex_memories_mcp::backend::MemoriesBackend;
+use codex_memories_mcp::backend::MemoriesBackendError;
+use codex_memories_mcp::backend::MemoryEntryType;
+use codex_memories_mcp::backend::ReadMemoryRequest;
 
 const THREAD_LIST_DEFAULT_LIMIT: usize = 25;
 const THREAD_LIST_MAX_LIMIT: usize = 100;
@@ -715,6 +722,14 @@ impl ThreadRequestProcessor {
         self.memory_reset_response_inner()
             .await
             .map(|response: MemoryResetResponse| Some(response.into()))
+    }
+
+    pub(crate) async fn memory_list(
+        &self,
+    ) -> Result<Option<ClientResponsePayload>, JSONRPCErrorError> {
+        self.memory_list_response_inner()
+            .await
+            .map(|response: MemoryListResponse| Some(response.into()))
     }
 
     pub(crate) async fn memory_overlay_status(
@@ -1744,6 +1759,12 @@ impl ThreadRequestProcessor {
             })?;
 
         Ok(MemoryResetResponse {})
+    }
+
+    async fn memory_list_response_inner(&self) -> Result<MemoryListResponse, JSONRPCErrorError> {
+        read_memory_list(&self.config.codex_home)
+            .await
+            .map_err(|err| internal_error(format!("failed to read memories: {err}")))
     }
 
     async fn memory_overlay_status_response_inner(
@@ -4025,6 +4046,85 @@ fn conversation_summary_rollout_path_read_error(
 struct DurableMemoryFile {
     relative_path: String,
     content: String,
+}
+
+async fn read_memory_list(codex_home: &AbsolutePathBuf) -> std::io::Result<MemoryListResponse> {
+    let backend = LocalMemoriesBackend::from_codex_home(codex_home);
+    let mut files = Vec::new();
+    if let Some(file) =
+        read_memory_file(&backend, MemoryFileKind::Summary, "memory_summary.md").await?
+    {
+        files.push(file);
+    }
+    if let Some(file) = read_memory_file(&backend, MemoryFileKind::Index, "MEMORY.md").await? {
+        files.push(file);
+    }
+
+    let topics = match backend
+        .list(ListMemoriesRequest {
+            path: Some("topics".to_string()),
+            cursor: None,
+            max_results: 2_000,
+        })
+        .await
+    {
+        Ok(response) => response.entries,
+        Err(MemoriesBackendError::NotFound { .. }) => Vec::new(),
+        Err(err) => return Err(std::io::Error::other(err)),
+    };
+    for entry in topics {
+        if entry.entry_type != MemoryEntryType::File {
+            continue;
+        }
+        if let Some(file) = read_memory_file(&backend, MemoryFileKind::Topic, &entry.path).await? {
+            files.push(file);
+        }
+    }
+
+    Ok(MemoryListResponse { files })
+}
+
+async fn read_memory_file(
+    backend: &LocalMemoriesBackend,
+    kind: MemoryFileKind,
+    path: &str,
+) -> std::io::Result<Option<MemoryFileStatus>> {
+    let response = match backend
+        .read(ReadMemoryRequest {
+            path: path.to_string(),
+            line_offset: 1,
+            max_lines: None,
+            max_tokens: DEFAULT_READ_MAX_TOKENS,
+        })
+        .await
+    {
+        Ok(response) => response,
+        Err(MemoriesBackendError::NotFound { .. }) => return Ok(None),
+        Err(err) => return Err(std::io::Error::other(err)),
+    };
+    let title = memory_file_title(&response.content, path);
+    Ok(Some(MemoryFileStatus {
+        kind,
+        path: response.path,
+        title,
+        content: response.content,
+        truncated: response.truncated,
+    }))
+}
+
+fn memory_file_title(content: &str, path: &str) -> String {
+    content
+        .lines()
+        .find_map(|line| line.trim().strip_prefix("# ").map(str::trim))
+        .filter(|title| !title.is_empty())
+        .map(str::to_string)
+        .unwrap_or_else(|| {
+            Path::new(path)
+                .file_stem()
+                .and_then(std::ffi::OsStr::to_str)
+                .unwrap_or(path)
+                .replace(['_', '-'], " ")
+        })
 }
 
 async fn read_durable_memory_files(codex_home: &Path) -> std::io::Result<Vec<DurableMemoryFile>> {

@@ -30,6 +30,7 @@ use codex_app_server_protocol::GetAccountRateLimitsResponse;
 use codex_app_server_protocol::GetAccountResponse;
 use codex_app_server_protocol::JSONRPCErrorError;
 use codex_app_server_protocol::LogoutAccountResponse;
+use codex_app_server_protocol::MemoryListResponse;
 use codex_app_server_protocol::MemoryOverlayStatusResponse;
 use codex_app_server_protocol::MemoryResetResponse;
 use codex_app_server_protocol::Model as ApiModel;
@@ -695,6 +696,17 @@ impl AppServerSession {
         Ok(())
     }
 
+    pub(crate) async fn memory_list(&mut self) -> Result<MemoryListResponse> {
+        let request_id = self.next_request_id();
+        self.client
+            .request_typed(ClientRequest::MemoryList {
+                request_id,
+                params: None,
+            })
+            .await
+            .wrap_err("memory/list failed in TUI")
+    }
+
     pub(crate) async fn memory_overlay_status(&mut self) -> Result<MemoryOverlayStatusResponse> {
         let request_id = self.next_request_id();
         self.client
@@ -1190,6 +1202,14 @@ fn config_request_overrides_from_config(
     Some(overrides)
 }
 
+fn resume_config_request_overrides_from_config(
+    config: &Config,
+) -> Option<HashMap<String, serde_json::Value>> {
+    let mut overrides = config_request_overrides_from_config(config)?;
+    overrides.remove("model_reasoning_effort");
+    Some(overrides)
+}
+
 fn service_tier_override_from_config(config: &Config) -> Option<Option<String>> {
     config
         .service_tier
@@ -1343,7 +1363,7 @@ fn thread_resume_params_from_config(
         approvals_reviewer: approvals_reviewer_override_from_config(&config),
         sandbox,
         permissions,
-        config: config_request_overrides_from_config(&config),
+        config: resume_config_request_overrides_from_config(&config),
         persist_extended_history: false,
         ..ThreadResumeParams::default()
     }
@@ -1961,8 +1981,14 @@ mod tests {
             ("personality".to_string(), string("pragmatic")),
             ("web_search".to_string(), string("disabled")),
         ]);
+        let expected_resume_config = HashMap::from([
+            ("model_reasoning_summary".to_string(), string("detailed")),
+            ("model_verbosity".to_string(), string("low")),
+            ("personality".to_string(), string("pragmatic")),
+            ("web_search".to_string(), string("disabled")),
+        ]);
         assert_eq!(start.config, Some(expected_config.clone()));
-        assert_eq!(resume.config, Some(expected_config.clone()));
+        assert_eq!(resume.config, Some(expected_resume_config));
         assert_eq!(fork.config, Some(expected_config));
     }
 

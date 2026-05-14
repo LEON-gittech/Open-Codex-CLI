@@ -279,6 +279,7 @@ use crate::bottom_pane::InputResult;
 use crate::bottom_pane::LocalImageAttachment;
 use crate::bottom_pane::McpServerElicitationFormRequest;
 use crate::bottom_pane::MemoriesSettingsView;
+use crate::bottom_pane::MemoryBrowserView;
 use crate::bottom_pane::MentionBinding;
 use crate::bottom_pane::QUIT_SHORTCUT_TIMEOUT;
 use crate::bottom_pane::QueuedInputAction;
@@ -3008,6 +3009,22 @@ impl ChatWidget {
             self.config.memories.generate_memories,
             self.app_event_tx.clone(),
         );
+        self.bottom_pane.show_view(Box::new(view));
+    }
+
+    pub(crate) fn open_memory_browser(
+        &mut self,
+        response: codex_app_server_protocol::MemoryListResponse,
+    ) {
+        let view = MemoryBrowserView::from_memory_list(response, self.app_event_tx.clone());
+        self.bottom_pane.show_view(Box::new(view));
+    }
+
+    pub(crate) fn open_memory_overlay_status(
+        &mut self,
+        response: codex_app_server_protocol::MemoryOverlayStatusResponse,
+    ) {
+        let view = MemoryBrowserView::from_overlay_status(response, self.app_event_tx.clone());
         self.bottom_pane.show_view(Box::new(view));
     }
 

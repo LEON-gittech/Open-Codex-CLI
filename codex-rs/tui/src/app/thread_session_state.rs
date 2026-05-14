@@ -1,5 +1,5 @@
 use super::App;
-use crate::session_resume::read_session_model;
+use crate::session_resume::read_session_model_settings;
 use crate::session_state::ThreadSessionState;
 use codex_app_server_protocol::AskForApproval;
 use codex_app_server_protocol::Thread;
@@ -52,10 +52,7 @@ impl App {
         };
 
         let model = self.chat_widget.current_model().to_string();
-        let service_tier = self
-            .chat_widget
-            .configured_service_tier()
-            .map(|service_tier| service_tier.to_string());
+        let service_tier = self.chat_widget.configured_service_tier();
         let reasoning_effort = self.chat_widget.current_reasoning_effort();
         let update_session = |session: &mut ThreadSessionState| {
             session.model = model.clone();
@@ -119,12 +116,19 @@ impl App {
         session.active_permission_profile = active_permission_profile;
         session.instruction_source_paths = Vec::new();
         session.rollout_path = thread.path.clone();
-        if let Some(model) =
-            read_session_model(self.state_db.as_deref(), thread_id, thread.path.as_deref()).await
+        if let Some(settings) =
+            read_session_model_settings(self.state_db.as_deref(), thread_id, thread.path.as_deref())
+                .await
         {
-            session.model = model;
+            if let Some(model) = settings.model {
+                session.model = model;
+            } else if thread.path.is_some() {
+                session.model.clear();
+            }
+            session.reasoning_effort = settings.reasoning_effort;
         } else if thread.path.is_some() {
             session.model.clear();
+            session.reasoning_effort = None;
         }
         session.message_history = None;
         session
@@ -468,6 +472,70 @@ mod tests {
             app.config.permissions.permission_profile(),
             "thread/read fallback must use the active widget permissions rather than stale app \
              config defaults"
+        );
+    }
+
+    #[tokio::test]
+    async fn thread_read_uses_target_rollout_reasoning_effort() {
+        let mut app = make_test_app().await;
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let primary_thread_id =
+            ThreadId::from_string("00000000-0000-0000-0000-000000000408").expect("valid thread");
+        let read_thread_id =
+            ThreadId::from_string("00000000-0000-0000-0000-000000000409").expect("valid thread");
+        let rollout_path = temp_dir.path().join("rollout.jsonl");
+        std::fs::write(
+            &rollout_path,
+            format!(
+                "{}\n",
+                serde_json::json!({
+                    "type": "turn_context",
+                    "payload": {
+                        "cwd": temp_dir.path(),
+                        "model": "target-model",
+                        "reasoning_effort": "low"
+                    }
+                })
+            ),
+        )
+        .expect("write rollout");
+        let primary_session = ThreadSessionState {
+            reasoning_effort: Some(codex_protocol::openai_models::ReasoningEffort::High),
+            ..test_thread_session(primary_thread_id, test_path_buf("/tmp/primary"))
+        };
+        let read_thread = Thread {
+            id: read_thread_id.to_string(),
+            session_id: read_thread_id.to_string(),
+            forked_from_id: None,
+            preview: "read thread".to_string(),
+            ephemeral: false,
+            model_provider: "read-provider".to_string(),
+            created_at: 1,
+            updated_at: 2,
+            status: codex_app_server_protocol::ThreadStatus::Idle,
+            path: Some(rollout_path),
+            cwd: test_path_buf("/tmp/read").abs(),
+            cli_version: "0.0.0".to_string(),
+            source: codex_app_server_protocol::SessionSource::Unknown,
+            thread_source: None,
+            agent_nickname: None,
+            agent_role: None,
+            git_info: None,
+            name: Some("read thread".to_string()),
+            turns: Vec::new(),
+        };
+
+        app.primary_session_configured = Some(primary_session.clone());
+        app.chat_widget.handle_thread_session(primary_session);
+
+        let session = app
+            .session_state_for_thread_read(read_thread_id, &read_thread)
+            .await;
+
+        assert_eq!(session.model, "target-model");
+        assert_eq!(
+            session.reasoning_effort,
+            Some(codex_protocol::openai_models::ReasoningEffort::Low)
         );
     }
 }

@@ -1776,8 +1776,7 @@ async fn slash_memories_opens_memory_menu() {
 
     chat.dispatch_command(SlashCommand::Memories);
 
-    assert!(render_bottom_popup(&chat, /*width*/ 80).contains("Use memories"));
-    assert_matches!(rx.try_recv(), Err(TryRecvError::Empty));
+    assert_matches!(rx.try_recv(), Ok(AppEvent::ShowMemoryBrowser));
     assert!(op_rx.try_recv().is_err(), "expected no core op to be sent");
 }
 

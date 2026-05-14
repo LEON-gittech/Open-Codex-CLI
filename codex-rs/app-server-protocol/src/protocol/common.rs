@@ -535,6 +535,12 @@ client_request_definitions! {
         serialization: global("memory"),
         response: v2::MemoryResetResponse,
     },
+    #[experimental("memory/list")]
+    MemoryList => "memory/list" {
+        params: #[ts(type = "undefined")] #[serde(skip_serializing_if = "Option::is_none")] Option<()>,
+        serialization: global("memory"),
+        response: v2::MemoryListResponse,
+    },
     #[experimental("memory/overlay/status")]
     MemoryOverlayStatus => "memory/overlay/status" {
         params: #[ts(type = "undefined")] #[serde(skip_serializing_if = "Option::is_none")] Option<()>,

@@ -383,7 +383,11 @@ impl ChatWidget {
                 self.open_auto_review_denials_popup();
             }
             SlashCommand::Memories => {
-                self.open_memories_popup();
+                if !self.config.features.enabled(Feature::MemoryTool) {
+                    self.open_memories_enable_prompt();
+                } else {
+                    self.app_event_tx.send(AppEvent::ShowMemoryBrowser);
+                }
             }
             SlashCommand::Quit | SlashCommand::Exit => {
                 self.request_quit_without_confirmation();

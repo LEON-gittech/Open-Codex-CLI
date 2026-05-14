@@ -153,6 +153,33 @@ mod thread_processor_behavior_tests {
         Ok(())
     }
 
+    #[tokio::test]
+    async fn memory_list_returns_summary_index_and_topics() -> Result<()> {
+        let codex_home = TempDir::new()?;
+        let memories_dir = codex_home.path().join("memories");
+        tokio::fs::create_dir_all(memories_dir.join("topics")).await?;
+        tokio::fs::write(memories_dir.join("memory_summary.md"), "# Summary\n\nshort").await?;
+        tokio::fs::write(memories_dir.join("MEMORY.md"), "# Memory Index\n\nindex").await?;
+        tokio::fs::write(
+            memories_dir.join("topics/codex.md"),
+            "# Codex Topic\n\nbody",
+        )
+        .await?;
+
+        let response = read_memory_list(&codex_home.path().to_path_buf().try_into()?).await?;
+
+        assert_eq!(response.files.len(), 3);
+        assert_eq!(response.files[0].kind, MemoryFileKind::Summary);
+        assert_eq!(response.files[0].path, "memory_summary.md");
+        assert_eq!(response.files[0].title, "Summary");
+        assert_eq!(response.files[1].kind, MemoryFileKind::Index);
+        assert_eq!(response.files[1].title, "Memory Index");
+        assert_eq!(response.files[2].kind, MemoryFileKind::Topic);
+        assert_eq!(response.files[2].path, "topics/codex.md");
+        assert_eq!(response.files[2].title, "Codex Topic");
+        Ok(())
+    }
+
     #[test]
     fn validate_dynamic_tools_accepts_same_name_in_different_namespaces() {
         let tools = vec![

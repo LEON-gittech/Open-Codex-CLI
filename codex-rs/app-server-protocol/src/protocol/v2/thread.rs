@@ -745,6 +745,33 @@ pub struct ThreadMemoryModeSetResponse {}
 #[ts(export_to = "v2/")]
 pub struct MemoryResetResponse {}
 
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub enum MemoryFileKind {
+    Summary,
+    Index,
+    Topic,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct MemoryListResponse {
+    pub files: Vec<MemoryFileStatus>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct MemoryFileStatus {
+    pub kind: MemoryFileKind,
+    pub path: String,
+    pub title: String,
+    pub content: String,
+    pub truncated: bool,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export_to = "v2/")]

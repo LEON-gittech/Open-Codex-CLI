@@ -1907,6 +1907,7 @@ dependencies = [
  "codex-hooks",
  "codex-login",
  "codex-mcp",
+ "codex-memories-mcp",
  "codex-memories-write",
  "codex-model-provider",
  "codex-model-provider-info",
