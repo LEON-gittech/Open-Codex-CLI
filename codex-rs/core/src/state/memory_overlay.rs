@@ -21,6 +21,7 @@ pub(crate) struct SessionMemoryOverlayEntry {
 pub(crate) struct SessionMemoryOverlaySnapshot {
     pub(crate) revision: u64,
     pub(crate) rendered: Option<String>,
+    pub(crate) entries: Vec<SessionMemoryOverlayEntry>,
 }
 
 impl SessionMemoryOverlay {
@@ -47,6 +48,7 @@ impl SessionMemoryOverlay {
         SessionMemoryOverlaySnapshot {
             revision: self.revision,
             rendered: self.render(),
+            entries: self.entries.clone(),
         }
     }
 

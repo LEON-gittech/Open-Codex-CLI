@@ -39,6 +39,8 @@ struct MemoryStageUpdateArgs {
 struct MemoryStageUpdateResponse {
     revision: u64,
     ad_hoc_note_path: String,
+    staged_content: String,
+    reason: Option<String>,
 }
 
 pub struct MemoryStageUpdateHandler;
@@ -76,22 +78,28 @@ impl ToolHandler for MemoryStageUpdateHandler {
                 "memory_stage_update requires non-empty content".to_string(),
             ));
         }
+        let reason = args
+            .reason
+            .as_deref()
+            .map(str::trim)
+            .filter(|reason| !reason.is_empty())
+            .map(str::to_string);
 
-        let note_path = write_ad_hoc_note(
-            &turn.config.codex_home,
-            content,
-            args.reason.as_deref().map(str::trim),
-        )
-        .await
-        .map_err(|err| {
-            FunctionCallError::RespondToModel(format!("failed to stage ad-hoc memory note: {err}"))
-        })?;
+        let note_path = write_ad_hoc_note(&turn.config.codex_home, content, reason.as_deref())
+            .await
+            .map_err(|err| {
+                FunctionCallError::RespondToModel(format!(
+                    "failed to stage ad-hoc memory note: {err}"
+                ))
+            })?;
         let snapshot = session
-            .stage_memory_update(content.to_string(), args.reason.clone())
+            .stage_memory_update(content.to_string(), reason.clone())
             .await;
         let response = serde_json::to_string_pretty(&MemoryStageUpdateResponse {
             revision: snapshot.revision,
             ad_hoc_note_path: note_path.display().to_string(),
+            staged_content: content.to_string(),
+            reason,
         })
         .map_err(|err| FunctionCallError::Fatal(err.to_string()))?;
         Ok(FunctionToolOutput::from_text(response, Some(true)))

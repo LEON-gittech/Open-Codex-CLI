@@ -717,6 +717,14 @@ impl ThreadRequestProcessor {
             .map(|response: MemoryResetResponse| Some(response.into()))
     }
 
+    pub(crate) async fn memory_overlay_status(
+        &self,
+    ) -> Result<Option<ClientResponsePayload>, JSONRPCErrorError> {
+        self.memory_overlay_status_response_inner()
+            .await
+            .map(|response: MemoryOverlayStatusResponse| Some(response.into()))
+    }
+
     pub(crate) async fn thread_unarchive(
         &self,
         request_id: ConnectionRequestId,
@@ -1736,6 +1744,49 @@ impl ThreadRequestProcessor {
             })?;
 
         Ok(MemoryResetResponse {})
+    }
+
+    async fn memory_overlay_status_response_inner(
+        &self,
+    ) -> Result<MemoryOverlayStatusResponse, JSONRPCErrorError> {
+        let durable_files = read_durable_memory_files(&self.config.codex_home)
+            .await
+            .map_err(|err| internal_error(format!("failed to read durable memory files: {err}")))?;
+
+        let mut thread_ids = self.thread_manager.list_thread_ids().await;
+        thread_ids.sort_by_key(std::string::ToString::to_string);
+        let mut threads = Vec::new();
+        for thread_id in thread_ids {
+            let Ok(thread) = self.thread_manager.get_thread(thread_id).await else {
+                continue;
+            };
+            let entries = thread.memory_overlay_entries().await;
+            if entries.is_empty() {
+                continue;
+            }
+            threads.push(ThreadMemoryOverlayStatus {
+                thread_id: thread_id.to_string(),
+                session_id: thread.session_configured().session_id.to_string(),
+                entries: entries
+                    .into_iter()
+                    .map(|entry| MemoryOverlayEntryStatus {
+                        durable_matches: durable_matches_for(&entry.content, &durable_files),
+                        content: entry.content,
+                        reason: entry.reason,
+                        created_at_unix_ms: entry.created_at_unix_ms,
+                    })
+                    .collect(),
+            });
+        }
+
+        let ad_hoc_notes = read_ad_hoc_memory_notes(&self.config.codex_home, &durable_files)
+            .await
+            .map_err(|err| internal_error(format!("failed to read ad-hoc memory notes: {err}")))?;
+
+        Ok(MemoryOverlayStatusResponse {
+            threads,
+            ad_hoc_notes,
+        })
     }
 
     async fn thread_metadata_update_response_inner(
@@ -3969,6 +4020,122 @@ fn conversation_summary_rollout_path_read_error(
             err
         )),
     }
+}
+
+struct DurableMemoryFile {
+    relative_path: String,
+    content: String,
+}
+
+async fn read_durable_memory_files(codex_home: &Path) -> std::io::Result<Vec<DurableMemoryFile>> {
+    let memories_dir = codex_home.join("memories");
+    let mut files = Vec::new();
+    collect_memory_files(&memories_dir, &memories_dir, &mut files).await?;
+    Ok(files)
+}
+
+async fn read_ad_hoc_memory_notes(
+    codex_home: &Path,
+    durable_files: &[DurableMemoryFile],
+) -> std::io::Result<Vec<AdHocMemoryNoteStatus>> {
+    let memories_dir = codex_home.join("memories");
+    let notes_dir = memories_dir.join("extensions/ad_hoc/notes");
+    if tokio::fs::metadata(&notes_dir).await.is_err() {
+        return Ok(Vec::new());
+    }
+
+    let mut notes = Vec::new();
+    let mut entries = tokio::fs::read_dir(&notes_dir).await?;
+    while let Some(entry) = entries.next_entry().await? {
+        let path = entry.path();
+        if path.extension().and_then(std::ffi::OsStr::to_str) != Some("md") {
+            continue;
+        }
+        let content = tokio::fs::read_to_string(&path).await?;
+        let (reason, note_content) = parse_ad_hoc_note(&content);
+        let relative_path = path
+            .strip_prefix(&memories_dir)
+            .unwrap_or(path.as_path())
+            .display()
+            .to_string();
+        notes.push(AdHocMemoryNoteStatus {
+            durable_matches: durable_matches_for(&note_content, durable_files),
+            path: relative_path,
+            content: note_content,
+            reason,
+        });
+    }
+    notes.sort_by(|left, right| left.path.cmp(&right.path));
+    Ok(notes)
+}
+
+async fn collect_memory_files(
+    root: &Path,
+    dir: &Path,
+    files: &mut Vec<DurableMemoryFile>,
+) -> std::io::Result<()> {
+    if tokio::fs::metadata(dir).await.is_err() {
+        return Ok(());
+    }
+
+    let mut pending = vec![dir.to_path_buf()];
+    while let Some(current_dir) = pending.pop() {
+        let mut entries = tokio::fs::read_dir(&current_dir).await?;
+        while let Some(entry) = entries.next_entry().await? {
+            let path = entry.path();
+            let file_type = entry.file_type().await?;
+            if file_type.is_dir() {
+                if path.ends_with("extensions/ad_hoc") {
+                    continue;
+                }
+                pending.push(path);
+                continue;
+            }
+            if !file_type.is_file()
+                || path.extension().and_then(std::ffi::OsStr::to_str) != Some("md")
+            {
+                continue;
+            }
+            let content = tokio::fs::read_to_string(&path).await?;
+            let relative_path = path
+                .strip_prefix(root)
+                .unwrap_or(path.as_path())
+                .display()
+                .to_string();
+            files.push(DurableMemoryFile {
+                relative_path,
+                content,
+            });
+        }
+    }
+    files.sort_by(|left, right| left.relative_path.cmp(&right.relative_path));
+    Ok(())
+}
+
+fn parse_ad_hoc_note(content: &str) -> (Option<String>, String) {
+    let trimmed = content.trim();
+    let Some(rest) = trimmed.strip_prefix("reason:") else {
+        return (None, trimmed.to_string());
+    };
+    let Some((reason, note_content)) = rest.split_once("\n\n") else {
+        return (Some(rest.trim().to_string()), String::new());
+    };
+    (
+        Some(reason.trim().to_string()),
+        note_content.trim().to_string(),
+    )
+}
+
+fn durable_matches_for(content: &str, durable_files: &[DurableMemoryFile]) -> Vec<String> {
+    let needle = content.trim();
+    if needle.is_empty() {
+        return Vec::new();
+    }
+    durable_files
+        .iter()
+        .filter(|file| file.content.contains(needle))
+        .map(|file| file.relative_path.clone())
+        .collect()
 }
 
 fn thread_store_write_error(operation: &str, err: ThreadStoreError) -> JSONRPCErrorError {

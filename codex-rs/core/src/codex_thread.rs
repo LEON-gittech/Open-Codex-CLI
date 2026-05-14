@@ -66,6 +66,13 @@ pub struct ThreadConfigSnapshot {
     pub thread_source: Option<ThreadSource>,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ThreadMemoryOverlayEntry {
+    pub content: String,
+    pub reason: Option<String>,
+    pub created_at_unix_ms: i64,
+}
+
 impl ThreadConfigSnapshot {
     pub fn sandbox_policy(&self) -> SandboxPolicy {
         let file_system_sandbox_policy = self.permission_profile.file_system_sandbox_policy();
@@ -208,6 +215,21 @@ impl CodexThread {
     /// Persist whether this thread is eligible for future memory generation.
     pub async fn set_thread_memory_mode(&self, mode: ThreadMemoryMode) -> anyhow::Result<()> {
         self.codex.set_thread_memory_mode(mode).await
+    }
+
+    pub async fn memory_overlay_entries(&self) -> Vec<ThreadMemoryOverlayEntry> {
+        self.codex
+            .session
+            .memory_overlay_snapshot()
+            .await
+            .entries
+            .into_iter()
+            .map(|entry| ThreadMemoryOverlayEntry {
+                content: entry.content,
+                reason: entry.reason,
+                created_at_unix_ms: entry.created_at_unix_ms,
+            })
+            .collect()
     }
 
     pub async fn steer_input(

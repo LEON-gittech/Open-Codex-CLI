@@ -1802,6 +1802,16 @@ async fn slash_memory_update_reports_stubbed_feature() {
 }
 
 #[tokio::test]
+async fn slash_memory_overlay_requests_global_status() {
+    let (mut chat, mut rx, mut op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+
+    chat.dispatch_command(SlashCommand::MemoryOverlay);
+
+    assert_matches!(rx.try_recv(), Ok(AppEvent::ShowMemoryOverlayStatus));
+    assert!(op_rx.try_recv().is_err(), "expected no core op to be sent");
+}
+
+#[tokio::test]
 async fn slash_resume_opens_picker() {
     let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
 

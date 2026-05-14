@@ -484,6 +484,23 @@ async fn memory_overlay_update_keeps_prompt_cache_key_and_injects_once() -> anyh
     let body2 = req2.single_request().body_json();
     let body3 = req3.single_request().body_json();
     let body4 = req4.single_request().body_json();
+    let stage_output = req2.single_request().function_call_output(call_id);
+    let stage_output_text = stage_output
+        .get("output")
+        .and_then(serde_json::Value::as_str)
+        .expect("memory_stage_update output should be a string");
+    let stage_output_json: serde_json::Value = serde_json::from_str(stage_output_text)?;
+    assert_eq!(
+        stage_output_json["stagedContent"],
+        "Remember that cache-sensitive overlays must stay incremental."
+    );
+    assert_eq!(stage_output_json["reason"], "cache regression test");
+    assert!(
+        stage_output_json["adHocNotePath"]
+            .as_str()
+            .is_some_and(|path| path.ends_with("-session-memory-update.md")),
+        "expected staged note path, got {stage_output_json:?}"
+    );
 
     assert_eq!(
         body1["prompt_cache_key"], body2["prompt_cache_key"],

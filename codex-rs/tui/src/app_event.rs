@@ -768,6 +768,9 @@ pub(crate) enum AppEvent {
     /// Clear all persisted local memory artifacts via the app-server.
     ResetMemories,
 
+    /// Show global session-memory overlay and ad-hoc staging status.
+    ShowMemoryOverlayStatus,
+
     /// Update whether the full access warning prompt has been acknowledged.
     UpdateFullAccessWarningAcknowledged(bool),
 

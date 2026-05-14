@@ -748,6 +748,43 @@ pub struct MemoryResetResponse {}
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export_to = "v2/")]
+pub struct MemoryOverlayStatusResponse {
+    pub threads: Vec<ThreadMemoryOverlayStatus>,
+    pub ad_hoc_notes: Vec<AdHocMemoryNoteStatus>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct ThreadMemoryOverlayStatus {
+    pub thread_id: String,
+    pub session_id: String,
+    pub entries: Vec<MemoryOverlayEntryStatus>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct MemoryOverlayEntryStatus {
+    pub content: String,
+    pub reason: Option<String>,
+    pub created_at_unix_ms: i64,
+    pub durable_matches: Vec<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct AdHocMemoryNoteStatus {
+    pub path: String,
+    pub content: String,
+    pub reason: Option<String>,
+    pub durable_matches: Vec<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
 pub struct ThreadUnarchiveResponse {
     pub thread: Thread,
 }

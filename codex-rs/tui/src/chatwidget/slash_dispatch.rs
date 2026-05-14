@@ -478,6 +478,9 @@ impl ChatWidget {
             SlashCommand::MemoryUpdate => {
                 self.add_app_server_stub_message("Memory maintenance");
             }
+            SlashCommand::MemoryOverlay => {
+                self.app_event_tx.send(AppEvent::ShowMemoryOverlayStatus);
+            }
             SlashCommand::Mcp => {
                 self.add_mcp_output(McpServerStatusDetail::ToolsAndAuthOnly);
             }
@@ -1010,6 +1013,7 @@ impl ChatWidget {
             | SlashCommand::Export
             | SlashCommand::MemoryDrop
             | SlashCommand::MemoryUpdate
+            | SlashCommand::MemoryOverlay
             | SlashCommand::Mcp
             | SlashCommand::Apps
             | SlashCommand::Plugins

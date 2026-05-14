@@ -5687,6 +5687,34 @@
           }
         ]
       },
+      "AdHocMemoryNoteStatus": {
+        "properties": {
+          "content": {
+            "type": "string"
+          },
+          "durableMatches": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "path": {
+            "type": "string"
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "content",
+          "durableMatches",
+          "path"
+        ],
+        "type": "object"
+      },
       "AddCreditsNudgeCreditType": {
         "enum": [
           "credits",
@@ -11194,6 +11222,35 @@
         ],
         "type": "object"
       },
+      "MemoryOverlayEntryStatus": {
+        "properties": {
+          "content": {
+            "type": "string"
+          },
+          "createdAtUnixMs": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "durableMatches": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "content",
+          "createdAtUnixMs",
+          "durableMatches"
+        ],
+        "type": "object"
+      },
       "MergeStrategy": {
         "enum": [
           "replace",
@@ -16677,6 +16734,28 @@
           "disabled"
         ],
         "type": "string"
+      },
+      "ThreadMemoryOverlayStatus": {
+        "properties": {
+          "entries": {
+            "items": {
+              "$ref": "#/definitions/v2/MemoryOverlayEntryStatus"
+            },
+            "type": "array"
+          },
+          "sessionId": {
+            "type": "string"
+          },
+          "threadId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "entries",
+          "sessionId",
+          "threadId"
+        ],
+        "type": "object"
       },
       "ThreadMetadataGitInfoUpdateParams": {
         "properties": {

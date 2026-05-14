@@ -2812,6 +2812,13 @@ impl Session {
         state.stage_memory_overlay_entry(content, reason, now_unix_timestamp_ms())
     }
 
+    pub(crate) async fn memory_overlay_snapshot(
+        &self,
+    ) -> crate::state::SessionMemoryOverlaySnapshot {
+        let state = self.state.lock().await;
+        state.memory_overlay_snapshot()
+    }
+
     async fn memory_overlay_update_item(&self) -> Option<ResponseItem> {
         let snapshot = {
             let state = self.state.lock().await;

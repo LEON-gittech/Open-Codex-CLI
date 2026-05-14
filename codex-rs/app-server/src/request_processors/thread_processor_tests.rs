@@ -127,6 +127,32 @@ mod thread_processor_behavior_tests {
         validate_dynamic_tools(&tools).expect("valid schema");
     }
 
+    #[tokio::test]
+    async fn ad_hoc_memory_notes_report_exact_durable_matches() -> Result<()> {
+        let codex_home = TempDir::new()?;
+        let memories_dir = codex_home.path().join("memories");
+        tokio::fs::create_dir_all(memories_dir.join("extensions/ad_hoc/notes")).await?;
+        tokio::fs::write(
+            memories_dir.join("MEMORY.md"),
+            "Durable fact: exact staged memory content.",
+        )
+        .await?;
+        tokio::fs::write(
+            memories_dir.join("extensions/ad_hoc/notes/one.md"),
+            "reason: test reason\n\nexact staged memory content",
+        )
+        .await?;
+
+        let durable_files = read_durable_memory_files(codex_home.path()).await?;
+        let notes = read_ad_hoc_memory_notes(codex_home.path(), &durable_files).await?;
+
+        assert_eq!(notes.len(), 1);
+        assert_eq!(notes[0].reason.as_deref(), Some("test reason"));
+        assert_eq!(notes[0].content, "exact staged memory content");
+        assert_eq!(notes[0].durable_matches, vec!["MEMORY.md".to_string()]);
+        Ok(())
+    }
+
     #[test]
     fn validate_dynamic_tools_accepts_same_name_in_different_namespaces() {
         let tools = vec![

@@ -27,6 +27,8 @@ pub enum SlashCommand {
     #[strum(to_string = "approve")]
     AutoReview,
     Memories,
+    #[strum(serialize = "memory-overlay")]
+    MemoryOverlay,
     Skills,
     Hooks,
     Review,
@@ -107,6 +109,7 @@ impl SlashCommand {
             SlashCommand::Stop => "stop all background terminals",
             SlashCommand::MemoryDrop => "DO NOT USE",
             SlashCommand::MemoryUpdate => "DO NOT USE",
+            SlashCommand::MemoryOverlay => "show global memory overlay status",
             SlashCommand::Model => "choose what model and reasoning effort to use",
             SlashCommand::Effort => "set reasoning effort for future turns",
             SlashCommand::Fast => {
@@ -227,6 +230,7 @@ impl SlashCommand {
             | SlashCommand::Mcp
             | SlashCommand::Apps
             | SlashCommand::Plugins
+            | SlashCommand::MemoryOverlay
             | SlashCommand::Title
             | SlashCommand::Statusline
             | SlashCommand::AutoReview

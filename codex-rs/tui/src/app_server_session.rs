@@ -30,6 +30,7 @@ use codex_app_server_protocol::GetAccountRateLimitsResponse;
 use codex_app_server_protocol::GetAccountResponse;
 use codex_app_server_protocol::JSONRPCErrorError;
 use codex_app_server_protocol::LogoutAccountResponse;
+use codex_app_server_protocol::MemoryOverlayStatusResponse;
 use codex_app_server_protocol::MemoryResetResponse;
 use codex_app_server_protocol::Model as ApiModel;
 use codex_app_server_protocol::ModelListParams;
@@ -692,6 +693,17 @@ impl AppServerSession {
             .await
             .wrap_err("memory/reset failed in TUI")?;
         Ok(())
+    }
+
+    pub(crate) async fn memory_overlay_status(&mut self) -> Result<MemoryOverlayStatusResponse> {
+        let request_id = self.next_request_id();
+        self.client
+            .request_typed(ClientRequest::MemoryOverlayStatus {
+                request_id,
+                params: None,
+            })
+            .await
+            .wrap_err("memory/overlay/status failed in TUI")
     }
 
     pub(crate) async fn thread_goal_get(

@@ -90,6 +90,10 @@ The earlier fork-only memory subsystem has been removed so the fork stays aligne
 
 - **Session Memory Overlay** — Staged entries are injected as a bounded developer-context overlay for the current session, so newly saved information can affect the next turn without waiting for a new session or background consolidation. The overlay is emitted only when its revision changes.
 
+- **Explicit staging feedback** — `memory_stage_update` now returns the staged content, optional reason, overlay revision, and ad-hoc note path, so the model can tell the user exactly what was staged and where the durable consolidation input was written.
+
+- **Global overlay diagnostics** — `/memory-overlay` shows all loaded session overlay entries plus global ad-hoc staged notes, and reports exact matches already present in durable memory files. It is a diagnostic view, not a semantic-proof system: unmatched entries may still be pending consolidation or may have been paraphrased by the consolidation agent.
+
 - **Removed conflicting fork behavior** — The old direct durable write tools, notepad file, topic frontmatter priority system, merge-write path, and custom AGENTS.md hierarchy are no longer part of the memory implementation.
 
 This addresses the active-update gap while keeping durable memory storage and consolidation compatible with upstream.
@@ -380,6 +384,10 @@ Codex CLI 是开源的，但上游仓库当前对外部代码贡献采用 invita
 - **主动 staging tool** — 启用 memory feature 后，Codex 暴露 `memory_stage_update`。它会把小型 ad-hoc note 写到 `~/.codex/memories/extensions/ad_hoc/notes/`，供 upstream consolidation 后续吸收，同时把同一内容 staged 到当前 session。
 
 - **Session Memory Overlay** — staged entries 会作为有预算上限的 developer-context overlay 注入当前 session，让新保存的信息不用等新 session 或后台 consolidation 就能影响下一轮。overlay 只在 revision 变化时发出。
+
+- **明确的 staging 反馈** — `memory_stage_update` 现在会返回 staged content、可选 reason、overlay revision 和 ad-hoc note path，因此模型可以明确告诉用户本次写入了什么、为什么写入、以及 durable consolidation input 写到了哪里。
+
+- **全局 overlay 诊断** — `/memory-overlay` 会展示所有 loaded session overlay entries 和全局 ad-hoc staged notes，并标出哪些内容已经在 durable memory 文件中出现 exact match。这是诊断视图，不是语义证明系统：未匹配的条目可能仍在等待 consolidation，也可能已经被 consolidation agent 改写表达。
 
 - **已移除冲突 fork 行为** — 旧的直接 durable write tools、notepad 文件、topic frontmatter priority、merge-write 路径、自定义 AGENTS.md hierarchy 都不再属于当前 memory 实现。
 

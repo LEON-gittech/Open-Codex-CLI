@@ -8,6 +8,93 @@ use super::*;
 
 const SHUTDOWN_FIRST_EXIT_TIMEOUT: Duration = Duration::from_secs(/*secs*/ 2);
 
+fn format_memory_overlay_status(
+    status: codex_app_server_protocol::MemoryOverlayStatusResponse,
+) -> String {
+    if status.threads.is_empty() && status.ad_hoc_notes.is_empty() {
+        return "Memory overlay status: no active session overlay entries or ad-hoc staged memory notes found.".to_string();
+    }
+
+    let mut lines = vec!["Memory overlay status".to_string()];
+    if status.threads.is_empty() {
+        lines.push("- Loaded session overlays: none".to_string());
+    } else {
+        lines.push(format!(
+            "- Loaded session overlays: {} thread(s)",
+            status.threads.len()
+        ));
+        for thread in status.threads {
+            lines.push(format!(
+                "  - thread {} session {}",
+                thread.thread_id, thread.session_id
+            ));
+            for entry in thread.entries {
+                let state = if entry.durable_matches.is_empty() {
+                    "pending exact durable match"
+                } else {
+                    "matched durable memory"
+                };
+                lines.push(format!(
+                    "    - {state}: {}",
+                    compact_memory_status_text(&entry.content)
+                ));
+                if let Some(reason) = entry.reason {
+                    lines.push(format!("      reason: {reason}"));
+                }
+                if !entry.durable_matches.is_empty() {
+                    lines.push(format!(
+                        "      durable matches: {}",
+                        entry.durable_matches.join(", ")
+                    ));
+                }
+            }
+        }
+    }
+
+    if status.ad_hoc_notes.is_empty() {
+        lines.push("- Ad-hoc staged notes: none".to_string());
+    } else {
+        lines.push(format!(
+            "- Ad-hoc staged notes: {} note(s)",
+            status.ad_hoc_notes.len()
+        ));
+        for note in status.ad_hoc_notes {
+            let state = if note.durable_matches.is_empty() {
+                "pending exact durable match"
+            } else {
+                "matched durable memory"
+            };
+            lines.push(format!("  - {state}: {}", note.path));
+            if let Some(reason) = note.reason {
+                lines.push(format!("    reason: {reason}"));
+            }
+            lines.push(format!(
+                "    content: {}",
+                compact_memory_status_text(&note.content)
+            ));
+            if !note.durable_matches.is_empty() {
+                lines.push(format!(
+                    "    durable matches: {}",
+                    note.durable_matches.join(", ")
+                ));
+            }
+        }
+    }
+
+    lines.join("\n")
+}
+
+fn compact_memory_status_text(text: &str) -> String {
+    const MAX_CHARS: usize = 160;
+    let flattened = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    if flattened.chars().count() <= MAX_CHARS {
+        return flattened;
+    }
+    let mut truncated = flattened.chars().take(MAX_CHARS).collect::<String>();
+    truncated.push_str("...");
+    truncated
+}
+
 impl App {
     pub(super) async fn handle_event(
         &mut self,
@@ -1534,6 +1621,14 @@ impl App {
             AppEvent::ResetMemories => {
                 self.reset_memories_with_app_server(app_server).await;
             }
+            AppEvent::ShowMemoryOverlayStatus => match app_server.memory_overlay_status().await {
+                Ok(status) => self
+                    .chat_widget
+                    .add_info_message(format_memory_overlay_status(status), /*hint*/ None),
+                Err(err) => self
+                    .chat_widget
+                    .add_error_message(format!("Failed to load memory overlay status: {err}")),
+            },
             AppEvent::SkipNextWorldWritableScan => {
                 self.windows_sandbox.skip_world_writable_scan_once = true;
             }

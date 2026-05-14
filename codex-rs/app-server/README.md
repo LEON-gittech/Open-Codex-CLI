@@ -133,6 +133,7 @@ Example with notification opt-out:
 - `thread/metadata/update` — patch stored thread metadata in sqlite; currently supports updating persisted `gitInfo` fields and returns the refreshed `thread`.
 - `thread/memoryMode/set` — experimental; set a thread’s persisted memory eligibility to `"enabled"` or `"disabled"` for either a loaded thread or a stored rollout; returns `{}` on success.
 - `memory/reset` — experimental; clear the current `CODEX_HOME/memories` directory and reset persisted memory stage data in sqlite while preserving existing thread memory modes; returns `{}` on success.
+- `memory/overlay/status` — experimental; list active session overlay entries for loaded threads, global ad-hoc staged memory notes, and exact durable-memory file matches for staged content.
 - `thread/goal/set` — create or update the single persisted goal for a materialized thread; returns the current goal and emits `thread/goal/updated`.
 - `thread/goal/get` — fetch the current persisted goal for a materialized thread; returns `goal: null` when no goal exists.
 - `thread/goal/clear` — clear the current persisted goal for a materialized thread; returns whether a goal was removed and emits `thread/goal/cleared` when state changes.
@@ -477,6 +478,30 @@ Experimental: use `memory/reset` to clear local memory artifacts and sqlite-back
 ```json
 { "method": "memory/reset", "id": 27 }
 { "id": 27, "result": {} }
+```
+
+Experimental: use `memory/overlay/status` to inspect staged memory visibility. The response includes loaded session overlay entries and ad-hoc staged notes under `CODEX_HOME/memories/extensions/ad_hoc/notes`, with `durableMatches` listing exact matches found in durable memory files. Exact matches are diagnostic evidence only; absence of a match does not prove the consolidation agent has not paraphrased the entry.
+
+```json
+{ "method": "memory/overlay/status", "id": 28 }
+{ "id": 28, "result": {
+    "threads": [{
+        "threadId": "thr_123",
+        "sessionId": "sess_123",
+        "entries": [{
+            "content": "Prefer release-fast for local Open Codex publish builds.",
+            "reason": "release workflow",
+            "createdAtUnixMs": 1770000000000,
+            "durableMatches": ["MEMORY.md"]
+        }]
+    }],
+    "adHocNotes": [{
+        "path": "extensions/ad_hoc/notes/2026-05-14T10-00-00-session-memory-update.md",
+        "content": "Prefer release-fast for local Open Codex publish builds.",
+        "reason": "release workflow",
+        "durableMatches": ["MEMORY.md"]
+    }]
+} }
 ```
 
 ### Example: Set and update a thread goal
