@@ -584,6 +584,11 @@ client_request_definitions! {
         serialization: thread_id(params.thread_id),
         response: v2::ThreadRollbackResponse,
     },
+    ThreadFileHistoryRestore => "thread/fileHistory/restore" {
+        params: v2::ThreadFileHistoryRestoreParams,
+        serialization: thread_id(params.thread_id),
+        response: v2::ThreadFileHistoryRestoreResponse,
+    },
     ThreadList => "thread/list" {
         params: v2::ThreadListParams,
         serialization: None,

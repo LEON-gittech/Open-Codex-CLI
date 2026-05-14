@@ -3374,6 +3374,24 @@
       ],
       "type": "object"
     },
+    "ThreadFileHistoryRestoreParams": {
+      "properties": {
+        "numTurns": {
+          "description": "Restore tracked file changes made by the last N user turns. Must be >= 1.",
+          "format": "uint32",
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "threadId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "numTurns",
+        "threadId"
+      ],
+      "type": "object"
+    },
     "ThreadForkParams": {
       "description": "There are two ways to fork a thread: 1. By thread_id: load the thread from disk by thread_id and fork it into a new thread. 2. By path: load the thread from disk by path and fork it into a new thread.\n\nIf using path, the thread_id param will be ignored.\n\nPrefer using thread_id whenever possible.",
       "properties": {
@@ -4753,6 +4771,30 @@
         "params"
       ],
       "title": "Thread/rollbackRequest",
+      "type": "object"
+    },
+    {
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/RequestId"
+        },
+        "method": {
+          "enum": [
+            "thread/fileHistory/restore"
+          ],
+          "title": "Thread/fileHistory/restoreRequestMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/ThreadFileHistoryRestoreParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "title": "Thread/fileHistory/restoreRequest",
       "type": "object"
     },
     {

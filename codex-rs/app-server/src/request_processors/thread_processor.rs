@@ -808,6 +808,16 @@ impl ThreadRequestProcessor {
             .map(|()| None)
     }
 
+    pub(crate) async fn thread_file_history_restore(
+        &self,
+        request_id: &ConnectionRequestId,
+        params: ThreadFileHistoryRestoreParams,
+    ) -> Result<Option<ClientResponsePayload>, JSONRPCErrorError> {
+        self.thread_file_history_restore_inner(request_id, params)
+            .await
+            .map(|response| Some(response.into()))
+    }
+
     pub(crate) async fn thread_list(
         &self,
         params: ThreadListParams,
@@ -2002,6 +2012,31 @@ impl ThreadRequestProcessor {
             return Err(internal_error(format!("failed to start rollback: {err}")));
         }
         Ok(())
+    }
+
+    async fn thread_file_history_restore_inner(
+        &self,
+        request_id: &ConnectionRequestId,
+        params: ThreadFileHistoryRestoreParams,
+    ) -> Result<ThreadFileHistoryRestoreResponse, JSONRPCErrorError> {
+        let ThreadFileHistoryRestoreParams {
+            thread_id,
+            num_turns,
+        } = params;
+
+        if num_turns == 0 {
+            return Err(invalid_request("numTurns must be >= 1"));
+        }
+
+        let (_, thread) = self.load_thread(&thread_id).await?;
+        self.submit_core_op(
+            request_id,
+            thread.as_ref(),
+            Op::FileHistoryRestore { num_turns },
+        )
+        .await
+        .map_err(|err| internal_error(format!("failed to restore code checkpoint: {err}")))?;
+        Ok(ThreadFileHistoryRestoreResponse {})
     }
 
     async fn thread_compact_start_inner(

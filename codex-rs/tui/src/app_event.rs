@@ -32,6 +32,7 @@ use codex_protocol::openai_models::ModelPreset;
 use codex_utils_absolute_path::AbsolutePathBuf;
 use codex_utils_approval_presets::ApprovalPreset;
 
+use crate::app_backtrack::BacktrackRestoreMode;
 use crate::app_command::AppCommand;
 use crate::bottom_pane::ApprovalRequest;
 use crate::bottom_pane::StatusLineItem;
@@ -330,6 +331,20 @@ pub(crate) enum AppEvent {
 
     /// Result of computing a `/diff` command.
     DiffResult(String),
+
+    /// Open the rewind picker for restoring code and/or conversation.
+    OpenRewindPicker,
+
+    /// Open restore-mode choices for the selected rewind target.
+    OpenRewindRestoreOptions {
+        nth_user_message: usize,
+    },
+
+    /// Apply the selected rewind mode to the selected user message.
+    ApplyBacktrackRestore {
+        nth_user_message: usize,
+        mode: BacktrackRestoreMode,
+    },
 
     /// Write the visible transcript to a markdown file.
     #[allow(dead_code)]

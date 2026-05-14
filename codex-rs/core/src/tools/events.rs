@@ -231,6 +231,18 @@ impl ToolEmitter {
                 let tracker_update = applied_patch_delta
                     .map(tracker_update_for_known_delta)
                     .unwrap_or(TurnDiffTrackerUpdate::Invalidate);
+                if status == PatchApplyStatus::Completed
+                    && let Some(delta) = applied_patch_delta
+                    && let Err(err) = ctx
+                        .session
+                        .services
+                        .file_history
+                        .lock()
+                        .await
+                        .track_delta(delta)
+                {
+                    tracing::warn!("failed to track file history delta: {err}");
+                }
                 emit_patch_end(
                     ctx,
                     changes.clone(),

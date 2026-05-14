@@ -3867,6 +3867,12 @@ pub(crate) async fn make_session_and_context() -> (Session, TurnContext) {
         session_telemetry: session_telemetry.clone(),
         models_manager: Arc::clone(&models_manager),
         tool_approvals: Mutex::new(ApprovalStore::default()),
+        file_history: Mutex::new(crate::file_history::FileHistory::new(
+            config
+                .codex_home
+                .join("file-history-test.json")
+                .to_path_buf(),
+        )),
         guardian_rejections: Mutex::new(std::collections::HashMap::new()),
         guardian_rejection_circuit_breaker: Mutex::new(Default::default()),
         runtime_handle: tokio::runtime::Handle::current(),
@@ -5587,6 +5593,12 @@ where
         session_telemetry: session_telemetry.clone(),
         models_manager: Arc::clone(&models_manager),
         tool_approvals: Mutex::new(ApprovalStore::default()),
+        file_history: Mutex::new(crate::file_history::FileHistory::new(
+            config
+                .codex_home
+                .join("file-history-test.json")
+                .to_path_buf(),
+        )),
         guardian_rejections: Mutex::new(std::collections::HashMap::new()),
         guardian_rejection_circuit_breaker: Mutex::new(Default::default()),
         runtime_handle: tokio::runtime::Handle::current(),

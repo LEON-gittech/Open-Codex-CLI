@@ -103,6 +103,9 @@ pub(crate) enum AppCommand {
     ThreadRollback {
         num_turns: u32,
     },
+    FileHistoryRestore {
+        num_turns: u32,
+    },
     Review {
         target: ReviewTarget,
     },
@@ -269,6 +272,10 @@ impl AppCommand {
 
     pub(crate) fn thread_rollback(num_turns: u32) -> Self {
         Self::ThreadRollback { num_turns }
+    }
+
+    pub(crate) fn file_history_restore(num_turns: u32) -> Self {
+        Self::FileHistoryRestore { num_turns }
     }
 
     pub(crate) fn review(target: ReviewTarget) -> Self {

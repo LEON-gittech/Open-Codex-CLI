@@ -328,6 +328,12 @@ pub(crate) async fn run_turn(
         }
         sess.record_user_prompt_and_emit_turn_item(turn_context.as_ref(), &input, response_item)
             .await;
+        if let Err(err) = sess.services.file_history.lock().await.begin_turn(
+            turn_context.sub_id.clone(),
+            turn_context.cwd.clone().into_path_buf(),
+        ) {
+            warn!("failed to create file history checkpoint: {err}");
+        }
         user_prompt_submit_outcome.additional_contexts
     };
     sess.services

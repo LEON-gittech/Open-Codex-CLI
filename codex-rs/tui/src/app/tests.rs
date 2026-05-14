@@ -3,6 +3,7 @@
 mod model_catalog;
 
 use super::*;
+use crate::app_backtrack::BacktrackRestoreMode;
 use crate::app_backtrack::BacktrackSelection;
 use crate::app_backtrack::BacktrackState;
 use crate::app_backtrack::user_count;
@@ -17,6 +18,7 @@ use crate::history_cell::AgentMessageCell;
 use crate::history_cell::HistoryCell;
 use crate::history_cell::PlainHistoryCell;
 use crate::history_cell::UserHistoryCell;
+use crate::history_cell::new_patch_event;
 use crate::history_cell::new_session_info;
 use crate::multi_agents::AgentPickerThreadEntry;
 use assert_matches::assert_matches;
@@ -84,7 +86,10 @@ use codex_utils_absolute_path::AbsolutePathBuf;
 use crossterm::event::KeyModifiers;
 use insta::assert_snapshot;
 use pretty_assertions::assert_eq;
+use ratatui::buffer::Buffer;
+use ratatui::layout::Rect;
 use ratatui::prelude::Line;
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
@@ -101,6 +106,29 @@ macro_rules! assert_app_snapshot {
 
 fn test_absolute_path(path: &str) -> AbsolutePathBuf {
     AbsolutePathBuf::try_from(PathBuf::from(path)).expect("absolute test path")
+}
+
+fn render_bottom_popup_for_app(app: &App, width: u16) -> String {
+    let height = app.chat_widget.desired_height(width);
+    let area = Rect::new(0, 0, width, height);
+    let mut buf = Buffer::empty(area);
+    app.chat_widget.render(area, &mut buf);
+
+    (0..area.height)
+        .map(|row| {
+            let mut line = String::new();
+            for col in 0..area.width {
+                let symbol = buf[(area.x + col, area.y + row)].symbol();
+                if symbol.is_empty() {
+                    line.push(' ');
+                } else {
+                    line.push_str(symbol);
+                }
+            }
+            line.trim_end().to_string()
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 #[tokio::test]
@@ -4743,6 +4771,203 @@ async fn backtrack_remote_image_only_selection_clears_existing_composer_draft() 
         }
     }
     assert_eq!(rollback_turns, Some(1));
+}
+
+#[tokio::test]
+async fn rewind_code_and_conversation_restores_files_before_thread_rollback() {
+    let (mut app, _app_event_rx, mut op_rx) = make_test_app_with_channels().await;
+
+    app.transcript_cells = vec![
+        Arc::new(UserHistoryCell {
+            message: "first".to_string(),
+            text_elements: Vec::new(),
+            local_image_paths: Vec::new(),
+            remote_image_urls: Vec::new(),
+        }) as Arc<dyn HistoryCell>,
+        Arc::new(AgentMessageCell::new(
+            vec![Line::from("answer")],
+            /*is_first_line*/ true,
+        )) as Arc<dyn HistoryCell>,
+        Arc::new(UserHistoryCell {
+            message: "second".to_string(),
+            text_elements: Vec::new(),
+            local_image_paths: Vec::new(),
+            remote_image_urls: Vec::new(),
+        }) as Arc<dyn HistoryCell>,
+    ];
+
+    app.apply_backtrack_restore(
+        BacktrackSelection {
+            nth_user_message: 1,
+            prefill: "second".to_string(),
+            text_elements: Vec::new(),
+            local_image_paths: Vec::new(),
+            remote_image_urls: Vec::new(),
+        },
+        BacktrackRestoreMode::CodeAndConversation,
+    );
+
+    let mut ops = Vec::new();
+    while let Ok(op) = op_rx.try_recv() {
+        let name = match op {
+            AppCommand::FileHistoryRestore { .. } => "file_history_restore",
+            AppCommand::ThreadRollback { .. } => "thread_rollback",
+            _ => "other",
+        };
+        ops.push(name);
+    }
+
+    assert_eq!(ops, vec!["file_history_restore", "thread_rollback"]);
+}
+
+#[tokio::test]
+async fn rewind_picker_uses_bottom_selector_instead_of_transcript_overlay() {
+    let (mut app, _app_event_rx, _op_rx) = make_test_app_with_channels().await;
+    let thread_id = ThreadId::new();
+    app.chat_widget.handle_thread_session(test_thread_session(
+        thread_id,
+        test_path_buf("/home/user/project"),
+    ));
+    app.transcript_cells = vec![
+        Arc::new(UserHistoryCell {
+            message: "first user request".to_string(),
+            text_elements: Vec::new(),
+            local_image_paths: Vec::new(),
+            remote_image_urls: Vec::new(),
+        }) as Arc<dyn HistoryCell>,
+        Arc::new(AgentMessageCell::new(
+            vec![Line::from("answer")],
+            /*is_first_line*/ true,
+        )) as Arc<dyn HistoryCell>,
+        Arc::new(UserHistoryCell {
+            message: "second user request".to_string(),
+            text_elements: Vec::new(),
+            local_image_paths: Vec::new(),
+            remote_image_urls: Vec::new(),
+        }) as Arc<dyn HistoryCell>,
+    ];
+
+    app.open_rewind_picker();
+
+    assert!(app.overlay.is_none());
+    let popup = render_bottom_popup_for_app(&app, /*width*/ 88);
+    assert!(popup.contains("Rewind"));
+    assert!(popup.contains("Restore the code and/or conversation to the point before"));
+    assert!(popup.contains("first user request"));
+    assert!(popup.contains("second user request"));
+}
+
+#[tokio::test]
+async fn rewind_picker_shows_tracked_code_change_stats_per_target() {
+    let (mut app, _app_event_rx, _op_rx) = make_test_app_with_channels().await;
+    let thread_id = ThreadId::new();
+    app.chat_widget.handle_thread_session(test_thread_session(
+        thread_id,
+        test_path_buf("/home/user/project"),
+    ));
+    let mut changes = HashMap::new();
+    changes.insert(
+        PathBuf::from("/home/user/project/src/parser.rs"),
+        FileChange::Update {
+            unified_diff: "@@ -1 +1,2 @@\n-old\n+new\n+next\n".to_string(),
+            move_path: None,
+        },
+    );
+    changes.insert(
+        PathBuf::from("/home/user/project/README.md"),
+        FileChange::Add {
+            content: "one\ntwo\n".to_string(),
+        },
+    );
+    app.transcript_cells = vec![
+        Arc::new(UserHistoryCell {
+            message: "first user request".to_string(),
+            text_elements: Vec::new(),
+            local_image_paths: Vec::new(),
+            remote_image_urls: Vec::new(),
+        }) as Arc<dyn HistoryCell>,
+        Arc::new(new_patch_event(
+            changes,
+            PathBuf::from("/home/user/project").as_path(),
+        )) as Arc<dyn HistoryCell>,
+        Arc::new(UserHistoryCell {
+            message: "second user request".to_string(),
+            text_elements: Vec::new(),
+            local_image_paths: Vec::new(),
+            remote_image_urls: Vec::new(),
+        }) as Arc<dyn HistoryCell>,
+    ];
+
+    app.open_rewind_picker();
+
+    let popup = render_bottom_popup_for_app(&app, /*width*/ 96);
+    assert!(popup.contains("first user request"));
+    assert!(popup.contains("2 files changed"));
+    assert!(popup.contains("+4 -1"));
+    assert!(popup.contains("second user request"));
+    assert!(popup.contains("No code changes"));
+}
+
+#[tokio::test]
+async fn rewind_restore_options_show_code_warning_and_modes() {
+    let (mut app, _app_event_rx, _op_rx) = make_test_app_with_channels().await;
+    let thread_id = ThreadId::new();
+    app.chat_widget.handle_thread_session(test_thread_session(
+        thread_id,
+        test_path_buf("/home/user/project"),
+    ));
+    app.transcript_cells = vec![Arc::new(UserHistoryCell {
+        message: "change the parser behavior".to_string(),
+        text_elements: Vec::new(),
+        local_image_paths: Vec::new(),
+        remote_image_urls: Vec::new(),
+    }) as Arc<dyn HistoryCell>];
+
+    app.open_rewind_restore_options(0);
+
+    let popup = render_bottom_popup_for_app(&app, /*width*/ 96);
+    assert!(popup.contains("Confirm rewind"));
+    assert!(popup.contains("change the parser behavior"));
+    assert!(popup.contains("Restore code and conversation"));
+    assert!(popup.contains("Restore conversation"));
+    assert!(popup.contains("Restore tracked code"));
+    assert!(popup.contains("Rewinding does not affect files edited manually or via bash."));
+}
+
+#[tokio::test]
+async fn rewind_restore_options_show_tracked_code_change_stats() {
+    let (mut app, _app_event_rx, _op_rx) = make_test_app_with_channels().await;
+    let thread_id = ThreadId::new();
+    app.chat_widget.handle_thread_session(test_thread_session(
+        thread_id,
+        test_path_buf("/home/user/project"),
+    ));
+    let mut changes = HashMap::new();
+    changes.insert(
+        PathBuf::from("/home/user/project/src/lib.rs"),
+        FileChange::Delete {
+            content: "old\nlines\n".to_string(),
+        },
+    );
+    app.transcript_cells = vec![
+        Arc::new(UserHistoryCell {
+            message: "remove legacy code".to_string(),
+            text_elements: Vec::new(),
+            local_image_paths: Vec::new(),
+            remote_image_urls: Vec::new(),
+        }) as Arc<dyn HistoryCell>,
+        Arc::new(new_patch_event(
+            changes,
+            PathBuf::from("/home/user/project").as_path(),
+        )) as Arc<dyn HistoryCell>,
+    ];
+
+    app.open_rewind_restore_options(0);
+
+    let popup = render_bottom_popup_for_app(&app, /*width*/ 96);
+    assert!(popup.contains("Confirm rewind"));
+    assert!(popup.contains("src/lib.rs"));
+    assert!(popup.contains("+0 -2"));
 }
 
 #[tokio::test]

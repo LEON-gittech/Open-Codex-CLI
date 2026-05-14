@@ -236,6 +236,9 @@ impl ChatWidget {
             SlashCommand::Review => {
                 self.open_review_popup();
             }
+            SlashCommand::Rewind => {
+                self.app_event_tx.send(AppEvent::OpenRewindPicker);
+            }
             SlashCommand::Rename => {
                 self.session_telemetry
                     .counter("codex.thread.rename", /*inc*/ 1, &[]);
@@ -1018,6 +1021,7 @@ impl ChatWidget {
             | SlashCommand::MemoryDrop
             | SlashCommand::MemoryUpdate
             | SlashCommand::MemoryOverlay
+            | SlashCommand::Rewind
             | SlashCommand::Mcp
             | SlashCommand::Apps
             | SlashCommand::Plugins

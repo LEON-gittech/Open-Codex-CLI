@@ -31,11 +31,22 @@ use std::sync::Arc;
 use crate::app::App;
 use crate::app_command::AppCommand;
 use crate::app_event::AppEvent;
+use crate::app_event_sender::AppEventSender;
+use crate::bottom_pane::SelectionAction;
+use crate::bottom_pane::SelectionItem;
+use crate::bottom_pane::SelectionRowDisplay;
+use crate::bottom_pane::SelectionViewParams;
+use crate::bottom_pane::popup_consts::standard_popup_hint_line;
+use crate::diff_model::FileChange;
+use crate::diff_render::calculate_add_remove_from_diff;
+use crate::diff_render::display_path_for;
 #[cfg(test)]
 use crate::history_cell::AgentMessageCell;
+use crate::history_cell::PatchHistoryCell;
 use crate::history_cell::SessionInfoCell;
 use crate::history_cell::UserHistoryCell;
 use crate::pager_overlay::Overlay;
+use crate::text_formatting::truncate_text;
 use crate::tui;
 use crate::tui::TuiEvent;
 use codex_protocol::ThreadId;
@@ -44,6 +55,8 @@ use color_eyre::eyre::Result;
 use crossterm::event::KeyCode;
 use crossterm::event::KeyEvent;
 use crossterm::event::KeyEventKind;
+use ratatui::prelude::Line;
+use ratatui::prelude::Stylize;
 
 const NO_PREVIOUS_MESSAGE_TO_EDIT: &str = "No previous message to edit.";
 
@@ -89,6 +102,13 @@ pub(crate) struct BacktrackSelection {
     pub(crate) local_image_paths: Vec<PathBuf>,
     /// Remote image URLs associated with the selected user message.
     pub(crate) remote_image_urls: Vec<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum BacktrackRestoreMode {
+    CodeAndConversation,
+    ConversationOnly,
+    CodeOnly,
 }
 
 /// An in-flight rollback requested from core.
@@ -143,7 +163,23 @@ impl App {
                     kind: KeyEventKind::Press,
                     ..
                 }) => {
-                    self.overlay_confirm_backtrack(tui);
+                    self.overlay_confirm_backtrack(tui, BacktrackRestoreMode::CodeAndConversation);
+                    Ok(true)
+                }
+                TuiEvent::Key(KeyEvent {
+                    code: KeyCode::Char('c') | KeyCode::Char('C'),
+                    kind: KeyEventKind::Press,
+                    ..
+                }) => {
+                    self.overlay_confirm_backtrack(tui, BacktrackRestoreMode::CodeOnly);
+                    Ok(true)
+                }
+                TuiEvent::Key(KeyEvent {
+                    code: KeyCode::Char('v') | KeyCode::Char('V'),
+                    kind: KeyEventKind::Press,
+                    ..
+                }) => {
+                    self.overlay_confirm_backtrack(tui, BacktrackRestoreMode::ConversationOnly);
                     Ok(true)
                 }
                 _ => {
@@ -176,7 +212,7 @@ impl App {
         if !self.backtrack.primed {
             self.prime_backtrack();
         } else if self.overlay.is_none() {
-            self.open_backtrack_preview(tui);
+            self.open_rewind_picker();
         } else if self.backtrack.overlay_preview_active {
             self.step_backtrack_and_highlight(tui);
         }
@@ -189,13 +225,31 @@ impl App {
     ///
     /// The composer prefill is applied immediately as a UX convenience; it does not imply that
     /// core has accepted the rollback.
+    #[cfg(test)]
     pub(crate) fn apply_backtrack_rollback(&mut self, selection: BacktrackSelection) {
+        self.apply_backtrack_restore(selection, BacktrackRestoreMode::ConversationOnly);
+    }
+
+    pub(crate) fn apply_backtrack_restore(
+        &mut self,
+        selection: BacktrackSelection,
+        mode: BacktrackRestoreMode,
+    ) {
         let user_total = user_count(&self.transcript_cells);
         if user_total == 0 {
             return;
         }
 
-        if self.backtrack.pending_rollback.is_some() {
+        let restore_conversation = matches!(
+            mode,
+            BacktrackRestoreMode::CodeAndConversation | BacktrackRestoreMode::ConversationOnly
+        );
+        let restore_code = matches!(
+            mode,
+            BacktrackRestoreMode::CodeAndConversation | BacktrackRestoreMode::CodeOnly
+        );
+
+        if restore_conversation && self.backtrack.pending_rollback.is_some() {
             self.chat_widget
                 .add_error_message("Backtrack rollback already in progress.".to_string());
             return;
@@ -204,6 +258,14 @@ impl App {
         let num_turns = user_total.saturating_sub(selection.nth_user_message);
         let num_turns = u32::try_from(num_turns).unwrap_or(u32::MAX);
         if num_turns == 0 {
+            return;
+        }
+
+        if restore_code {
+            self.chat_widget
+                .submit_op(AppCommand::file_history_restore(num_turns));
+        }
+        if !restore_conversation {
             return;
         }
 
@@ -229,13 +291,69 @@ impl App {
         }
     }
 
-    /// Open transcript overlay (enters alternate screen and shows full transcript).
-    pub(crate) fn open_transcript_overlay(&mut self, tui: &mut tui::Tui) {
-        let _ = tui.enter_alt_screen();
-        self.overlay = Some(Overlay::new_transcript(
-            self.transcript_cells.clone(),
-            self.keymap.pager.clone(),
-        ));
+    pub(crate) fn open_rewind_picker(&mut self) {
+        if !has_backtrack_target(&self.transcript_cells) {
+            self.chat_widget
+                .add_info_message(NO_PREVIOUS_MESSAGE_TO_EDIT.to_string(), /*hint*/ None);
+            return;
+        }
+        self.backtrack.primed = true;
+        self.backtrack.base_id = self.chat_widget.thread_id();
+        self.chat_widget.show_selection_view(SelectionViewParams {
+            title: Some("Rewind".to_string()),
+            subtitle: Some(
+                "Restore the code and/or conversation to the point before...".to_string(),
+            ),
+            footer_hint: Some(standard_popup_hint_line()),
+            items: rewind_target_items(&self.transcript_cells),
+            row_display: SelectionRowDisplay::Wrapped,
+            ..Default::default()
+        });
+    }
+
+    pub(crate) fn open_rewind_restore_options(&mut self, nth_user_message: usize) {
+        self.backtrack.primed = true;
+        self.backtrack.base_id = self.chat_widget.thread_id();
+        let Some(selection) = self.backtrack_selection(nth_user_message) else {
+            self.chat_widget
+                .add_info_message(NO_PREVIOUS_MESSAGE_TO_EDIT.to_string(), /*hint*/ None);
+            return;
+        };
+        let preview = rewind_message_preview(&selection.prefill);
+        let code_summary =
+            code_change_summary_for_user_turn(&self.transcript_cells, nth_user_message)
+                .unwrap_or_else(|| "No code changes".to_string());
+        self.chat_widget.show_selection_view(SelectionViewParams {
+            title: Some("Confirm rewind".to_string()),
+            subtitle: Some(format!(
+                "Restore to the point before: {preview}\nCode: {code_summary}"
+            )),
+            footer_note: Some(Line::from(vec![
+                "Warning: ".red(),
+                "Rewinding does not affect files edited manually or via bash.".dim(),
+            ])),
+            footer_hint: Some(standard_popup_hint_line()),
+            items: rewind_restore_option_items(nth_user_message),
+            row_display: SelectionRowDisplay::Wrapped,
+            on_cancel: Some(Box::new(|tx: &AppEventSender| {
+                tx.send(AppEvent::OpenRewindPicker);
+            })),
+            ..Default::default()
+        });
+    }
+
+    pub(crate) fn apply_backtrack_restore_by_index(
+        &mut self,
+        nth_user_message: usize,
+        mode: BacktrackRestoreMode,
+        tui: &mut tui::Tui,
+    ) {
+        let Some(selection) = self.backtrack_selection(nth_user_message) else {
+            self.chat_widget
+                .add_info_message(NO_PREVIOUS_MESSAGE_TO_EDIT.to_string(), /*hint*/ None);
+            return;
+        };
+        self.apply_backtrack_restore(selection, mode);
         tui.frame_requester().schedule_frame();
     }
 
@@ -263,23 +381,6 @@ impl App {
         if has_backtrack_target(&self.transcript_cells) {
             self.chat_widget.show_esc_backtrack_hint();
         }
-    }
-
-    /// Open overlay and begin backtrack preview flow (first step + highlight).
-    fn open_backtrack_preview(&mut self, tui: &mut tui::Tui) {
-        if !has_backtrack_target(&self.transcript_cells) {
-            self.reset_backtrack_state();
-            self.chat_widget
-                .add_info_message(NO_PREVIOUS_MESSAGE_TO_EDIT.to_string(), /*hint*/ None);
-            tui.frame_requester().schedule_frame();
-            return;
-        }
-
-        self.open_transcript_overlay(tui);
-        self.backtrack.overlay_preview_active = true;
-        // Composer is hidden by overlay; clear its hint.
-        self.chat_widget.clear_esc_backtrack_hint();
-        self.step_backtrack_and_highlight(tui);
     }
 
     /// When overlay is already open, begin preview mode and select latest user message.
@@ -413,12 +514,12 @@ impl App {
     }
 
     /// Handle Enter in overlay backtrack preview: confirm selection and reset state.
-    fn overlay_confirm_backtrack(&mut self, tui: &mut tui::Tui) {
+    fn overlay_confirm_backtrack(&mut self, tui: &mut tui::Tui, mode: BacktrackRestoreMode) {
         let nth_user_message = self.backtrack.nth_user_message;
         let selection = self.backtrack_selection(nth_user_message);
         self.close_transcript_overlay(tui);
         if let Some(selection) = selection {
-            self.apply_backtrack_rollback(selection);
+            self.apply_backtrack_restore(selection, mode);
             tui.frame_requester().schedule_frame();
         }
     }
@@ -469,7 +570,7 @@ impl App {
         tui: &mut tui::Tui,
         selection: BacktrackSelection,
     ) {
-        self.apply_backtrack_rollback(selection);
+        self.apply_backtrack_restore(selection, BacktrackRestoreMode::CodeAndConversation);
         tui.frame_requester().schedule_frame();
     }
 
@@ -627,6 +728,153 @@ pub(crate) fn user_count(cells: &[Arc<dyn crate::history_cell::HistoryCell>]) ->
 
 fn has_backtrack_target(cells: &[Arc<dyn crate::history_cell::HistoryCell>]) -> bool {
     user_count(cells) > 0
+}
+
+fn rewind_target_items(cells: &[Arc<dyn crate::history_cell::HistoryCell>]) -> Vec<SelectionItem> {
+    user_positions_iter(cells)
+        .enumerate()
+        .filter_map(|(nth_user_message, idx)| {
+            cells
+                .get(idx)
+                .and_then(|cell| cell.as_any().downcast_ref::<UserHistoryCell>())
+                .map(|cell| {
+                    let preview = rewind_message_preview(&cell.message);
+                    let code_summary = code_change_summary_for_user_turn(cells, nth_user_message)
+                        .unwrap_or_else(|| "No code changes".to_string());
+                    SelectionItem {
+                        name: preview,
+                        description: Some(code_summary),
+                        search_value: Some(cell.message.clone()),
+                        actions: vec![Box::new(move |tx: &AppEventSender| {
+                            tx.send(AppEvent::OpenRewindRestoreOptions { nth_user_message });
+                        }) as SelectionAction],
+                        dismiss_on_select: true,
+                        ..Default::default()
+                    }
+                })
+        })
+        .collect()
+}
+
+#[derive(Default)]
+struct RewindCodeChangeStats {
+    file_count: usize,
+    added: usize,
+    removed: usize,
+    single_file: Option<String>,
+}
+
+fn code_change_summary_for_user_turn(
+    cells: &[Arc<dyn crate::history_cell::HistoryCell>],
+    nth_user_message: usize,
+) -> Option<String> {
+    let user_positions: Vec<usize> = user_positions_iter(cells).collect();
+    let start = *user_positions.get(nth_user_message)?;
+    let end = user_positions
+        .get(nth_user_message.saturating_add(1))
+        .copied()
+        .unwrap_or(cells.len());
+    let stats = code_change_stats_for_range(cells, start.saturating_add(1), end);
+    (stats.file_count > 0).then(|| stats.render())
+}
+
+fn code_change_stats_for_range(
+    cells: &[Arc<dyn crate::history_cell::HistoryCell>],
+    start: usize,
+    end: usize,
+) -> RewindCodeChangeStats {
+    let mut stats = RewindCodeChangeStats::default();
+    for cell in cells
+        .iter()
+        .skip(start)
+        .take(end.saturating_sub(start))
+        .filter_map(|cell| cell.as_any().downcast_ref::<PatchHistoryCell>())
+    {
+        for (path, change) in cell.changes() {
+            let (added, removed) = file_change_line_counts(change);
+            stats.file_count = stats.file_count.saturating_add(1);
+            stats.added = stats.added.saturating_add(added);
+            stats.removed = stats.removed.saturating_add(removed);
+            stats.single_file = Some(display_path_for(path, cell.cwd()));
+        }
+    }
+    if stats.file_count != 1 {
+        stats.single_file = None;
+    }
+    stats
+}
+
+fn file_change_line_counts(change: &FileChange) -> (usize, usize) {
+    match change {
+        FileChange::Add { content } => (content.lines().count(), 0),
+        FileChange::Delete { content } => (0, content.lines().count()),
+        FileChange::Update { unified_diff, .. } => calculate_add_remove_from_diff(unified_diff),
+    }
+}
+
+impl RewindCodeChangeStats {
+    fn render(&self) -> String {
+        let target = if let Some(path) = &self.single_file {
+            path.clone()
+        } else {
+            let noun = if self.file_count == 1 {
+                "file"
+            } else {
+                "files"
+            };
+            format!("{} {noun} changed", self.file_count)
+        };
+        format!("{target} · +{} -{}", self.added, self.removed)
+    }
+}
+
+fn rewind_restore_option_items(nth_user_message: usize) -> Vec<SelectionItem> {
+    let item = |name: &str, description: &str, mode: BacktrackRestoreMode| SelectionItem {
+        name: name.to_string(),
+        description: Some(description.to_string()),
+        actions: vec![Box::new(move |tx: &AppEventSender| {
+            tx.send(AppEvent::ApplyBacktrackRestore {
+                nth_user_message,
+                mode,
+            });
+        }) as SelectionAction],
+        dismiss_on_select: true,
+        ..Default::default()
+    };
+
+    vec![
+        item(
+            "Restore code and conversation",
+            "Restore tracked file changes, then fork the conversation before this message.",
+            BacktrackRestoreMode::CodeAndConversation,
+        ),
+        item(
+            "Restore conversation",
+            "Fork the conversation before this message without touching files.",
+            BacktrackRestoreMode::ConversationOnly,
+        ),
+        item(
+            "Restore tracked code",
+            "Restore tracked file changes without changing the conversation.",
+            BacktrackRestoreMode::CodeOnly,
+        ),
+        SelectionItem {
+            name: "Never mind".to_string(),
+            description: Some("Close this rewind menu.".to_string()),
+            dismiss_on_select: true,
+            ..Default::default()
+        },
+    ]
+}
+
+fn rewind_message_preview(message: &str) -> String {
+    let single_line = message.split_whitespace().collect::<Vec<_>>().join(" ");
+    let preview = if single_line.is_empty() {
+        "(empty message)".to_string()
+    } else {
+        single_line
+    };
+    truncate_text(&preview, 72)
 }
 
 fn nth_user_position(

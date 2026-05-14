@@ -1389,6 +1389,30 @@
             },
             "method": {
               "enum": [
+                "thread/fileHistory/restore"
+              ],
+              "title": "Thread/fileHistory/restoreRequestMethod",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/definitions/ThreadFileHistoryRestoreParams"
+            }
+          },
+          "required": [
+            "id",
+            "method",
+            "params"
+          ],
+          "title": "Thread/fileHistory/restoreRequest",
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "$ref": "#/definitions/RequestId"
+            },
+            "method": {
+              "enum": [
                 "thread/list"
               ],
               "title": "Thread/listRequestMethod",
@@ -13449,6 +13473,31 @@
     "ThreadCompactStartResponse": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "title": "ThreadCompactStartResponse",
+      "type": "object"
+    },
+    "ThreadFileHistoryRestoreParams": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "numTurns": {
+          "description": "Restore tracked file changes made by the last N user turns. Must be >= 1.",
+          "format": "uint32",
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "threadId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "numTurns",
+        "threadId"
+      ],
+      "title": "ThreadFileHistoryRestoreParams",
+      "type": "object"
+    },
+    "ThreadFileHistoryRestoreResponse": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "ThreadFileHistoryRestoreResponse",
       "type": "object"
     },
     "ThreadForkParams": {

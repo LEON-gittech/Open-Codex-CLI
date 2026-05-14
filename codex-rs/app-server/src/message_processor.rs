@@ -1049,6 +1049,11 @@ impl MessageProcessor {
                     .thread_rollback(&request_id, params)
                     .await
             }
+            ClientRequest::ThreadFileHistoryRestore { params, .. } => {
+                self.thread_processor
+                    .thread_file_history_restore(&request_id, params)
+                    .await
+            }
             ClientRequest::ThreadList { params, .. } => {
                 self.thread_processor.thread_list(params).await
             }

@@ -366,6 +366,18 @@ impl App {
                 ));
                 tui.frame_requester().schedule_frame();
             }
+            AppEvent::OpenRewindPicker => {
+                self.open_rewind_picker();
+            }
+            AppEvent::OpenRewindRestoreOptions { nth_user_message } => {
+                self.open_rewind_restore_options(nth_user_message);
+            }
+            AppEvent::ApplyBacktrackRestore {
+                nth_user_message,
+                mode,
+            } => {
+                self.apply_backtrack_restore_by_index(nth_user_message, mode, tui);
+            }
             AppEvent::ExportTranscript { path } => {
                 let transcript = self.export_transcript_markdown();
                 let tx = self.app_event_tx.clone();

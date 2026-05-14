@@ -57,6 +57,8 @@ use codex_app_server_protocol::ThreadBackgroundTerminalsCleanParams;
 use codex_app_server_protocol::ThreadBackgroundTerminalsCleanResponse;
 use codex_app_server_protocol::ThreadCompactStartParams;
 use codex_app_server_protocol::ThreadCompactStartResponse;
+use codex_app_server_protocol::ThreadFileHistoryRestoreParams;
+use codex_app_server_protocol::ThreadFileHistoryRestoreResponse;
 use codex_app_server_protocol::ThreadForkParams;
 use codex_app_server_protocol::ThreadForkResponse;
 use codex_app_server_protocol::ThreadGoalClearParams;
@@ -925,6 +927,24 @@ impl AppServerSession {
             })
             .await
             .wrap_err("thread/rollback failed in TUI")
+    }
+
+    pub(crate) async fn thread_file_history_restore(
+        &mut self,
+        thread_id: ThreadId,
+        num_turns: u32,
+    ) -> Result<ThreadFileHistoryRestoreResponse> {
+        let request_id = self.next_request_id();
+        self.client
+            .request_typed(ClientRequest::ThreadFileHistoryRestore {
+                request_id,
+                params: ThreadFileHistoryRestoreParams {
+                    thread_id: thread_id.to_string(),
+                    num_turns,
+                },
+            })
+            .await
+            .wrap_err("thread/fileHistory/restore failed in TUI")
     }
 
     pub(crate) async fn review_start(

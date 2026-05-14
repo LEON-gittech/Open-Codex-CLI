@@ -25,7 +25,9 @@ use crate::tasks::UserShellCommandMode;
 use crate::tasks::UserShellCommandTask;
 use crate::tasks::execute_user_shell_command;
 use codex_protocol::models::ContentItem;
+use codex_protocol::models::MessagePhase;
 use codex_protocol::models::ResponseInputItem;
+use codex_protocol::protocol::AgentMessageEvent;
 use codex_protocol::protocol::CodexErrorInfo;
 use codex_protocol::protocol::ErrorEvent;
 use codex_protocol::protocol::Event;
@@ -589,6 +591,56 @@ pub async fn thread_rollback(sess: &Arc<Session>, sub_id: String, num_turns: u32
     .await;
 }
 
+pub async fn file_history_restore(sess: &Arc<Session>, sub_id: String, num_turns: u32) {
+    if num_turns == 0 {
+        sess.send_event_raw(Event {
+            id: sub_id,
+            msg: EventMsg::Error(ErrorEvent {
+                message: "num_turns must be >= 1".to_string(),
+                codex_error_info: Some(CodexErrorInfo::Other),
+            }),
+        })
+        .await;
+        return;
+    }
+
+    let result = sess
+        .services
+        .file_history
+        .lock()
+        .await
+        .restore_before_last_n_turns(num_turns);
+    match result {
+        Ok(summary) => {
+            let changed = summary.restored_files + summary.removed_files;
+            let message = format!(
+                "Restored code checkpoint: {changed} files ({restored} restored, {removed} removed).",
+                restored = summary.restored_files,
+                removed = summary.removed_files
+            );
+            sess.send_event_raw(Event {
+                id: sub_id,
+                msg: EventMsg::AgentMessage(AgentMessageEvent {
+                    message,
+                    phase: Some(MessagePhase::Commentary),
+                    memory_citation: None,
+                }),
+            })
+            .await;
+        }
+        Err(err) => {
+            sess.send_event_raw(Event {
+                id: sub_id,
+                msg: EventMsg::Error(ErrorEvent {
+                    message: format!("failed to restore code checkpoint: {err}"),
+                    codex_error_info: Some(CodexErrorInfo::Other),
+                }),
+            })
+            .await;
+        }
+    }
+}
+
 pub(super) async fn persist_thread_memory_mode_update(
     sess: &Arc<Session>,
     mode: ThreadMemoryMode,
@@ -858,6 +910,10 @@ pub(super) async fn submission_loop(
                 }
                 Op::ThreadRollback { num_turns } => {
                     thread_rollback(&sess, sub.id.clone(), num_turns).await;
+                    false
+                }
+                Op::FileHistoryRestore { num_turns } => {
+                    file_history_restore(&sess, sub.id.clone(), num_turns).await;
                     false
                 }
                 Op::SetThreadMemoryMode { mode } => {

@@ -367,6 +367,8 @@ export type { ThreadArchivedNotification } from "./ThreadArchivedNotification";
 export type { ThreadClosedNotification } from "./ThreadClosedNotification";
 export type { ThreadCompactStartParams } from "./ThreadCompactStartParams";
 export type { ThreadCompactStartResponse } from "./ThreadCompactStartResponse";
+export type { ThreadFileHistoryRestoreParams } from "./ThreadFileHistoryRestoreParams";
+export type { ThreadFileHistoryRestoreResponse } from "./ThreadFileHistoryRestoreResponse";
 export type { ThreadForkParams } from "./ThreadForkParams";
 export type { ThreadForkResponse } from "./ThreadForkResponse";
 export type { ThreadGoal } from "./ThreadGoal";

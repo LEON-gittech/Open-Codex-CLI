@@ -649,6 +649,12 @@ impl App {
                     .await;
                 Ok(true)
             }
+            AppCommand::FileHistoryRestore { num_turns } => {
+                app_server
+                    .thread_file_history_restore(thread_id, *num_turns)
+                    .await?;
+                Ok(true)
+            }
             AppCommand::Review { target } => {
                 app_server.review_start(thread_id, target.clone()).await?;
                 Ok(true)

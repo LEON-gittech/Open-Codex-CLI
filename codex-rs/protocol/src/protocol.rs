@@ -748,6 +748,11 @@ pub enum Op {
     /// responsible for undoing any edits on disk.
     ThreadRollback { num_turns: u32 },
 
+    /// Request Codex to restore tracked file changes made by the last N user turns.
+    ///
+    /// Only tool edits captured by the file-history layer are restored.
+    FileHistoryRestore { num_turns: u32 },
+
     /// Request a code review from the agent.
     Review { review_request: ReviewRequest },
 
@@ -864,6 +869,7 @@ impl Op {
             Self::Compact => "compact",
             Self::SetThreadMemoryMode { .. } => "set_thread_memory_mode",
             Self::ThreadRollback { .. } => "thread_rollback",
+            Self::FileHistoryRestore { .. } => "file_history_restore",
             Self::Review { .. } => "review",
             Self::ApproveGuardianDeniedAction { .. } => "approve_guardian_denied_action",
             Self::Shutdown => "shutdown",

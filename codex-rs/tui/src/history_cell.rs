@@ -1463,6 +1463,16 @@ pub(crate) struct PatchHistoryCell {
     cwd: PathBuf,
 }
 
+impl PatchHistoryCell {
+    pub(crate) fn changes(&self) -> &HashMap<PathBuf, FileChange> {
+        &self.changes
+    }
+
+    pub(crate) fn cwd(&self) -> &Path {
+        &self.cwd
+    }
+}
+
 impl HistoryCell for PatchHistoryCell {
     fn display_lines(&self, width: u16) -> Vec<Line<'static>> {
         create_diff_summary(&self.changes, &self.cwd, width as usize)

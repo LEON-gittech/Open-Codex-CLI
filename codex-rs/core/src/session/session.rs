@@ -1,4 +1,5 @@
 use super::*;
+use crate::file_history::FileHistory;
 use crate::goals::GoalRuntimeState;
 use codex_protocol::SessionId;
 use codex_protocol::config_types::ServiceTier;
@@ -850,6 +851,17 @@ impl Session {
                 session_telemetry,
                 models_manager: Arc::clone(&models_manager),
                 tool_approvals: Mutex::new(ApprovalStore::default()),
+                file_history: Mutex::new({
+                    let file_history_path = session_configuration
+                        .codex_home
+                        .join("file-history")
+                        .join(format!("{thread_id}.json"))
+                        .to_path_buf();
+                    FileHistory::load_or_new(file_history_path.clone()).unwrap_or_else(|err| {
+                        warn!("failed to load file history checkpoint: {err}");
+                        FileHistory::new(file_history_path)
+                    })
+                }),
                 guardian_rejections: Mutex::new(HashMap::new()),
                 guardian_rejection_circuit_breaker: Mutex::new(Default::default()),
                 runtime_handle: tokio::runtime::Handle::current(),

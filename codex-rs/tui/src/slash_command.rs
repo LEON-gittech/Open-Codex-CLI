@@ -33,6 +33,8 @@ pub enum SlashCommand {
     Skills,
     Hooks,
     Review,
+    #[strum(to_string = "rewind", serialize = "checkpoint")]
+    Rewind,
     Rename,
     New,
     Resume,
@@ -89,6 +91,7 @@ impl SlashCommand {
             SlashCommand::Init => "create an AGENTS.md file with instructions for Codex",
             SlashCommand::Compact => "summarize conversation to prevent hitting the context limit",
             SlashCommand::Review => "review my current changes and find issues",
+            SlashCommand::Rewind => "restore code and/or conversation to an earlier message",
             SlashCommand::Rename => "rename the current thread",
             SlashCommand::Resume => "resume a saved chat",
             SlashCommand::Clear => "clear the terminal and start a new chat",
@@ -210,6 +213,7 @@ impl SlashCommand {
             | SlashCommand::Experimental
             | SlashCommand::Memories
             | SlashCommand::Review
+            | SlashCommand::Rewind
             | SlashCommand::Plan
             | SlashCommand::Clear
             | SlashCommand::Logout
