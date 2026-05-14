@@ -94,6 +94,10 @@ The earlier fork-only memory subsystem has been removed so the fork stays aligne
 
 - **Global overlay diagnostics** — `/memory-overlay` shows all loaded session overlay entries plus global ad-hoc staged notes, and reports exact matches already present in durable memory files. It is a diagnostic view, not a semantic-proof system: unmatched entries may still be pending consolidation or may have been paraphrased by the consolidation agent.
 
+- **Overlay status metrics** — Each `/memory-overlay` row is grouped by source (`Session overlays` or `Ad-hoc staged notes`) and carries a status metric: `matched` means the staged content has an exact text match in a durable memory file, while `pending` means no exact durable match was found. Matched rows include the durable file paths, such as `MEMORY.md` or `topics/*.md`. This makes durable visibility auditable today, while leaving explicit Phase 2 provenance (`selected/consumed but paraphrased`) as a future metric rather than pretending exact-match checks can prove semantic consolidation.
+
+- **Durable memory browser** — `/memory` opens the current durable memory content grouped by `Summary`, `Overall index`, and `Topics`, so users can inspect what the next session will actually read from the upstream memory files instead of inferring durable state from overlay diagnostics alone.
+
 - **Removed conflicting fork behavior** — The old direct durable write tools, notepad file, topic frontmatter priority system, merge-write path, and custom AGENTS.md hierarchy are no longer part of the memory implementation.
 
 This addresses the active-update gap while keeping durable memory storage and consolidation compatible with upstream.
@@ -170,6 +174,7 @@ The shared interaction model is:
 - terminal details show runtime and recent output; subagent details show role, task, status, runtime, progress, and task-boundary context.
 - `/agent` shows available agent profiles, while `/subagents` keeps the subagent thread picker/switching workflow.
 - completed subagent work wakes the parent turn through a core completion event, so results can be integrated without manually calling `wait_agent` or closing the agent.
+- completed subagents are reclaimed from spawn quota when they reach a final state, and the spawn path performs opportunistic cleanup before reporting that no quota is available. Interrupted subagents remain visible as active quota holders because they may still be resumed; `/subagents` is therefore the active/resumable subagent view, not a stale-handle inventory.
 - completed background command output is preserved in history without pulling the task back into the foreground.
 
 This is the essential interaction change behind the Claude Code-style behavior: background work stays visible and controllable, but it no longer blocks normal chat flow.
@@ -209,7 +214,7 @@ Implemented as a Claude Code-style `/export` flow for the current session, with 
 
 #### 3. Better memory mechanics
 
-Active memory staging is implemented on top of upstream memories (see Current Delta section 3 above). Broader durable-memory behavior should continue to follow upstream so fork changes stay additive.
+Active memory staging is implemented on top of upstream memories (see Current Delta section 3 above). Broader durable-memory behavior should continue to follow upstream so fork changes stay additive. The main remaining observability gap is a native Phase 2 provenance metric that can distinguish `not selected yet`, `selected/consumed but paraphrased`, and `exact durable match`.
 
 #### 4. Better Zellij ergonomics
 
@@ -389,6 +394,10 @@ Codex CLI 是开源的，但上游仓库当前对外部代码贡献采用 invita
 
 - **全局 overlay 诊断** — `/memory-overlay` 会展示所有 loaded session overlay entries 和全局 ad-hoc staged notes，并标出哪些内容已经在 durable memory 文件中出现 exact match。这是诊断视图，不是语义证明系统：未匹配的条目可能仍在等待 consolidation，也可能已经被 consolidation agent 改写表达。
 
+- **Overlay status metrics** — `/memory-overlay` 的每一行会按来源分组（`Session overlays` 或 `Ad-hoc staged notes`），并带一个状态指标：`matched` 表示 staged content 已经在 durable memory 文件里出现 exact text match，`pending` 表示没有找到 exact durable match。匹配成功的行会展示 durable 文件路径，例如 `MEMORY.md` 或 `topics/*.md`。这让当前 durable visibility 可以被审计，但不会把 exact-match check 伪装成语义 consolidation 证明；显式 Phase 2 provenance（例如 `selected/consumed but paraphrased`）仍是后续需要补的 metric。
+
+- **Durable memory browser** — `/memory` 会按 `Summary`、`Overall index`、`Topics` 展示当前 durable memory 内容，让用户可以直接检查下一次 session 真正会从 upstream memory 文件读到什么，而不是只靠 overlay diagnostics 推断 durable 状态。
+
 - **已移除冲突 fork 行为** — 旧的直接 durable write tools、notepad 文件、topic frontmatter priority、merge-write 路径、自定义 AGENTS.md hierarchy 都不再属于当前 memory 实现。
 
 这补上了主动更新缺口，同时保持 durable memory 存储和 consolidation 与 upstream 兼容。
@@ -465,6 +474,7 @@ Codex CLI 是开源的，但上游仓库当前对外部代码贡献采用 invita
 - terminal detail 展示运行时间和最近输出；subagent detail 展示 role、task、status、运行时间、progress 和任务边界信息。
 - `/agent` 用于查看可用 agent profiles，`/subagents` 保留 subagent thread picker / 切换工作流。
 - subagent 完成后会通过 core completion event 唤醒 parent turn，因此不需要手动调用 `wait_agent` 或关闭 agent 才能继续整合结果。
+- completed subagent 到达 final state 后会从 spawn quota 中回收；当 spawn 没有可用 quota 时，主线程会先做 opportunistic cleanup 再返回 quota 不足。Interrupted subagent 仍会作为 active quota holder 保留，因为它们可能被 resume；因此 `/subagents` 的语义是 active/resumable subagent view，而不是僵尸 handle 列表。
 - background command 完成后会保留输出到 history，但不会把任务重新拉回前台。
 
 这是 Claude Code 风格体验背后的本质交互变化：后台工作仍然可见、可管理，但不会阻塞正常聊天流。
@@ -504,7 +514,7 @@ status line 现在可以通过可配置的 `workspace-changes` item 显示当前
 
 #### 3. 更好的 memory 机制
 
-当前已在 upstream memories 之上实现主动 memory staging（见上方当前差异第 3 项）。更广义的 durable-memory 行为应继续跟随 upstream，fork 侧只保留增量补充。
+当前已在 upstream memories 之上实现主动 memory staging（见上方当前差异第 3 项）。更广义的 durable-memory 行为应继续跟随 upstream，fork 侧只保留增量补充。主要剩余 observability gap 是原生 Phase 2 provenance metric：需要能区分 `not selected yet`、`selected/consumed but paraphrased` 和 `exact durable match`。
 
 #### 4. 更好的 Zellij 使用体验
 
