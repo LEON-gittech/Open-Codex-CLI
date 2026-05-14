@@ -39,6 +39,7 @@ pub(crate) struct AgentMetadata {
     pub(crate) agent_nickname: Option<String>,
     pub(crate) agent_role: Option<String>,
     pub(crate) last_task_message: Option<String>,
+    pub(crate) slot_occupied: bool,
 }
 
 fn format_agent_nickname(name: &str, nickname_reset_count: usize) -> String {
@@ -110,12 +111,122 @@ impl AgentRegistry {
             removed_key
                 .and_then(|key| active_agents.agent_tree.remove(key.as_str()))
                 .is_some_and(|metadata| {
-                    !metadata.agent_path.as_ref().is_some_and(AgentPath::is_root)
+                    metadata.slot_occupied
+                        && !metadata.agent_path.as_ref().is_some_and(AgentPath::is_root)
                 })
         };
         if removed_counted_agent {
             self.total_count.fetch_sub(1, Ordering::AcqRel);
         }
+    }
+
+    pub(crate) fn reclaim_spawned_thread_slot(&self, thread_id: ThreadId) -> bool {
+        let reclaimed = {
+            let mut active_agents = self
+                .active_agents
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            active_agents
+                .agent_tree
+                .values_mut()
+                .find(|metadata| metadata.agent_id == Some(thread_id))
+                .is_some_and(|metadata| {
+                    if !metadata.slot_occupied
+                        || metadata.agent_path.as_ref().is_some_and(AgentPath::is_root)
+                    {
+                        return false;
+                    }
+                    metadata.slot_occupied = false;
+                    true
+                })
+        };
+        if reclaimed {
+            self.total_count.fetch_sub(1, Ordering::AcqRel);
+        }
+        reclaimed
+    }
+
+    pub(crate) fn occupy_reclaimed_thread_slot(
+        &self,
+        thread_id: ThreadId,
+        max_threads: Option<usize>,
+    ) -> Result<bool> {
+        let should_occupy = {
+            let active_agents = self
+                .active_agents
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            active_agents
+                .agent_tree
+                .values()
+                .find(|metadata| metadata.agent_id == Some(thread_id))
+                .is_some_and(|metadata| {
+                    !metadata.slot_occupied
+                        && !metadata.agent_path.as_ref().is_some_and(AgentPath::is_root)
+                })
+        };
+        if !should_occupy {
+            return Ok(false);
+        }
+
+        if let Some(max_threads) = max_threads {
+            if !self.try_increment_spawned(max_threads) {
+                return Err(CodexErr::AgentLimitReached { max_threads });
+            }
+        } else {
+            self.total_count.fetch_add(1, Ordering::AcqRel);
+        }
+
+        let occupied = {
+            let mut active_agents = self
+                .active_agents
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            active_agents
+                .agent_tree
+                .values_mut()
+                .find(|metadata| metadata.agent_id == Some(thread_id))
+                .is_some_and(|metadata| {
+                    if metadata.slot_occupied
+                        || metadata.agent_path.as_ref().is_some_and(AgentPath::is_root)
+                    {
+                        return false;
+                    }
+                    metadata.slot_occupied = true;
+                    true
+                })
+        };
+        if !occupied {
+            self.total_count.fetch_sub(1, Ordering::AcqRel);
+        }
+        Ok(occupied)
+    }
+
+    pub(crate) fn agent_slot_is_reclaimed(&self, thread_id: ThreadId) -> bool {
+        self.active_agents
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .agent_tree
+            .values()
+            .find(|metadata| metadata.agent_id == Some(thread_id))
+            .is_some_and(|metadata| {
+                !metadata.slot_occupied
+                    && !metadata.agent_path.as_ref().is_some_and(AgentPath::is_root)
+            })
+    }
+
+    pub(crate) fn occupied_agent_ids(&self) -> Vec<ThreadId> {
+        self.active_agents
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .agent_tree
+            .values()
+            .filter(|metadata| {
+                metadata.slot_occupied
+                    && !metadata.agent_path.as_ref().is_some_and(AgentPath::is_root)
+            })
+            .filter_map(|metadata| metadata.agent_id)
+            .collect()
     }
 
     pub(crate) fn register_root_thread(&self, thread_id: ThreadId) {
@@ -139,6 +250,10 @@ impl AgentRegistry {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .agent_tree
             .get(agent_path.as_str())
+            .filter(|metadata| {
+                metadata.slot_occupied
+                    || metadata.agent_path.as_ref().is_some_and(AgentPath::is_root)
+            })
             .and_then(|metadata| metadata.agent_id)
     }
 
@@ -160,6 +275,7 @@ impl AgentRegistry {
             .values()
             .filter(|metadata| {
                 metadata.agent_id.is_some()
+                    && metadata.slot_occupied
                     && !metadata.agent_path.as_ref().is_some_and(AgentPath::is_root)
             })
             .cloned()
@@ -180,10 +296,11 @@ impl AgentRegistry {
         }
     }
 
-    fn register_spawned_thread(&self, agent_metadata: AgentMetadata) {
+    fn register_spawned_thread(&self, mut agent_metadata: AgentMetadata) {
         let Some(thread_id) = agent_metadata.agent_id else {
             return;
         };
+        agent_metadata.slot_occupied = true;
         let mut active_agents = self
             .active_agents
             .lock()

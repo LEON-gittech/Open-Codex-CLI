@@ -67,7 +67,9 @@ fn sync_collab_agent_activity_state(
 ) -> bool {
     let is_live = matches!(
         state.status,
-        CollabAgentStatus::PendingInit | CollabAgentStatus::Running
+        CollabAgentStatus::PendingInit
+            | CollabAgentStatus::Running
+            | CollabAgentStatus::Interrupted
     );
     let active_matches = chat
         .active_cell

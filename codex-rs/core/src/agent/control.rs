@@ -200,7 +200,9 @@ impl AgentControl {
         options: SpawnAgentOptions,
     ) -> CodexResult<LiveAgent> {
         let state = self.upgrade()?;
-        let mut reservation = self.state.reserve_spawn_slot(config.agent_max_threads)?;
+        let mut reservation = self
+            .reserve_spawn_slot_with_final_reclaim(&state, &config)
+            .await?;
         let inherited_shell_snapshot = self
             .inherited_shell_snapshot_for_source(&state, session_source.as_ref())
             .await;
@@ -538,7 +540,9 @@ impl AgentControl {
         }
         let state = self.upgrade()?;
         let state_db_ctx = state.state_db();
-        let mut reservation = self.state.reserve_spawn_slot(config.agent_max_threads)?;
+        let mut reservation = self
+            .reserve_spawn_slot_with_final_reclaim(&state, &config)
+            .await?;
         let (session_source, agent_metadata) = match session_source {
             SessionSource::SubAgent(SubAgentSource::ThreadSpawn {
                 parent_thread_id,
@@ -638,6 +642,7 @@ impl AgentControl {
     ) -> CodexResult<String> {
         let last_task_message = render_input_preview(&initial_operation);
         let state = self.upgrade()?;
+        self.ensure_agent_slot_for_input(agent_id, &state).await?;
         let result = self
             .handle_thread_request_result(
                 agent_id,
@@ -675,6 +680,7 @@ impl AgentControl {
     ) -> CodexResult<String> {
         let last_task_message = communication.content.clone();
         let state = self.upgrade()?;
+        self.ensure_agent_slot_for_input(agent_id, &state).await?;
         let result = self
             .handle_thread_request_result(
                 agent_id,
@@ -708,6 +714,66 @@ impl AgentControl {
             self.state.release_spawned_thread(agent_id);
         }
         result
+    }
+
+    async fn reserve_spawn_slot_with_final_reclaim(
+        &self,
+        state: &Arc<ThreadManagerState>,
+        config: &crate::config::Config,
+    ) -> CodexResult<crate::agent::registry::SpawnReservation> {
+        match self.state.reserve_spawn_slot(config.agent_max_threads) {
+            Ok(reservation) => Ok(reservation),
+            Err(CodexErr::AgentLimitReached { .. }) => {
+                self.reclaim_final_agent_slots(state).await;
+                self.state.reserve_spawn_slot(config.agent_max_threads)
+            }
+            Err(err) => Err(err),
+        }
+    }
+
+    async fn ensure_agent_slot_for_input(
+        &self,
+        agent_id: ThreadId,
+        state: &Arc<ThreadManagerState>,
+    ) -> CodexResult<()> {
+        if !self.state.agent_slot_is_reclaimed(agent_id) {
+            return Ok(());
+        }
+        self.reclaim_final_agent_slots(state).await;
+        let thread = state.get_thread(agent_id).await?;
+        let config = thread.codex.session.get_config().await;
+        self.state
+            .occupy_reclaimed_thread_slot(agent_id, config.agent_max_threads)?;
+        Ok(())
+    }
+
+    async fn reclaim_final_agent_slots(&self, state: &Arc<ThreadManagerState>) {
+        for agent_id in self.state.occupied_agent_ids() {
+            let status = match state.get_thread(agent_id).await {
+                Ok(thread) => thread.agent_status().await,
+                Err(_) => AgentStatus::NotFound,
+            };
+            self.reclaim_final_agent_slot(agent_id, state, &status)
+                .await;
+        }
+    }
+
+    async fn reclaim_final_agent_slot(
+        &self,
+        agent_id: ThreadId,
+        state: &Arc<ThreadManagerState>,
+        status: &AgentStatus,
+    ) {
+        if !is_final(status) {
+            return;
+        }
+        if let Ok(thread) = state.get_thread(agent_id).await {
+            thread.codex.session.ensure_rollout_materialized().await;
+            if let Err(err) = thread.codex.session.flush_rollout().await {
+                warn!("failed to flush final subagent rollout before reclaiming slot: {err}");
+            }
+        }
+        self.state.reclaim_spawned_thread_slot(agent_id);
     }
 
     /// Submit a shutdown request for a live agent without marking it explicitly closed in
@@ -978,6 +1044,9 @@ impl AgentControl {
             };
             let child_thread = state.get_thread(child_thread_id).await.ok();
             let message = format_subagent_notification_message(child_reference.as_str(), &status);
+            control
+                .reclaim_final_agent_slot(child_thread_id, &state, &status)
+                .await;
             if child_agent_path.is_some()
                 && child_thread
                     .as_ref()
@@ -1051,6 +1120,7 @@ impl AgentControl {
             agent_nickname,
             agent_role,
             last_task_message: None,
+            slot_occupied: false,
         };
         Ok((session_source, agent_metadata))
     }

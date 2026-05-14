@@ -1053,6 +1053,134 @@ async fn spawn_agent_releases_slot_after_shutdown() {
 }
 
 #[tokio::test]
+async fn spawn_agent_reclaims_completed_slot_before_limit_error() {
+    let max_threads = 1usize;
+    let (_home, config) = test_config_with_cli_overrides(vec![(
+        "agents.max_threads".to_string(),
+        TomlValue::Integer(max_threads as i64),
+    )])
+    .await;
+    let manager = ThreadManager::with_models_provider_and_home_for_tests(
+        CodexAuth::from_api_key("dummy"),
+        config.model_provider.clone(),
+        config.codex_home.to_path_buf(),
+        std::sync::Arc::new(codex_exec_server::EnvironmentManager::default_for_tests()),
+    );
+    let control = manager.agent_control();
+
+    let completed_agent_id = control
+        .spawn_agent(
+            config.clone(),
+            text_input("complete then release"),
+            /*session_source*/ None,
+        )
+        .await
+        .expect("spawn_agent should succeed");
+    let completed_agent = manager
+        .get_thread(completed_agent_id)
+        .await
+        .expect("completed agent should be registered");
+    let turn = completed_agent.codex.session.new_default_turn().await;
+    completed_agent
+        .codex
+        .session
+        .send_event(
+            turn.as_ref(),
+            EventMsg::TurnComplete(TurnCompleteEvent {
+                turn_id: turn.sub_id.clone(),
+                last_agent_message: Some("done".to_string()),
+                completed_at: None,
+                duration_ms: None,
+                time_to_first_token_ms: None,
+            }),
+        )
+        .await;
+
+    let next_agent_id = control
+        .spawn_agent(
+            config.clone(),
+            text_input("new work after completed agent"),
+            /*session_source*/ None,
+        )
+        .await
+        .expect("completed agent should not block the spawn quota");
+
+    let _ = control
+        .shutdown_live_agent(completed_agent_id)
+        .await
+        .expect("shutdown completed agent");
+    let _ = control
+        .shutdown_live_agent(next_agent_id)
+        .await
+        .expect("shutdown next agent");
+}
+
+#[tokio::test]
+async fn spawn_agent_does_not_reclaim_interrupted_slot() {
+    let max_threads = 1usize;
+    let (_home, config) = test_config_with_cli_overrides(vec![(
+        "agents.max_threads".to_string(),
+        TomlValue::Integer(max_threads as i64),
+    )])
+    .await;
+    let manager = ThreadManager::with_models_provider_and_home_for_tests(
+        CodexAuth::from_api_key("dummy"),
+        config.model_provider.clone(),
+        config.codex_home.to_path_buf(),
+        std::sync::Arc::new(codex_exec_server::EnvironmentManager::default_for_tests()),
+    );
+    let control = manager.agent_control();
+
+    let interrupted_agent_id = control
+        .spawn_agent(
+            config.clone(),
+            text_input("interrupt and keep slot"),
+            /*session_source*/ None,
+        )
+        .await
+        .expect("spawn_agent should succeed");
+    let interrupted_agent = manager
+        .get_thread(interrupted_agent_id)
+        .await
+        .expect("interrupted agent should be registered");
+    let turn = interrupted_agent.codex.session.new_default_turn().await;
+    interrupted_agent
+        .codex
+        .session
+        .send_event(
+            turn.as_ref(),
+            EventMsg::TurnAborted(TurnAbortedEvent {
+                turn_id: Some("turn-1".to_string()),
+                reason: TurnAbortReason::Interrupted,
+                completed_at: None,
+                duration_ms: None,
+            }),
+        )
+        .await;
+
+    let err = control
+        .spawn_agent(
+            config,
+            text_input("should still be blocked"),
+            /*session_source*/ None,
+        )
+        .await
+        .expect_err("interrupted agent should still occupy the spawn quota");
+    let CodexErr::AgentLimitReached {
+        max_threads: seen_max_threads,
+    } = err
+    else {
+        panic!("expected CodexErr::AgentLimitReached");
+    };
+    assert_eq!(seen_max_threads, max_threads);
+
+    let _ = control
+        .shutdown_live_agent(interrupted_agent_id)
+        .await
+        .expect("shutdown interrupted agent");
+}
+
+#[tokio::test]
 async fn spawn_agent_limit_shared_across_clones() {
     let max_threads = 1usize;
     let (_home, config) = test_config_with_cli_overrides(vec![(
