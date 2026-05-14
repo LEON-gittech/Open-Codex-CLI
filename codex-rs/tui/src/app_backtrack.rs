@@ -44,6 +44,7 @@ use crate::diff_render::display_path_for;
 use crate::history_cell::AgentMessageCell;
 use crate::history_cell::PatchHistoryCell;
 use crate::history_cell::SessionInfoCell;
+use crate::history_cell::SessionRewindBoundaryCell;
 use crate::history_cell::UserHistoryCell;
 use crate::pager_overlay::Overlay;
 use crate::text_formatting::truncate_text;
@@ -731,8 +732,11 @@ fn has_backtrack_target(cells: &[Arc<dyn crate::history_cell::HistoryCell>]) -> 
 }
 
 fn rewind_target_items(cells: &[Arc<dyn crate::history_cell::HistoryCell>]) -> Vec<SelectionItem> {
-    user_positions_iter(cells)
-        .enumerate()
+    let mut user_positions: Vec<(usize, usize)> = user_positions_iter(cells).enumerate().collect();
+    user_positions.reverse();
+
+    user_positions
+        .into_iter()
         .filter_map(|(nth_user_message, idx)| {
             cells
                 .get(idx)
@@ -890,12 +894,16 @@ fn user_positions_iter(
     cells: &[Arc<dyn crate::history_cell::HistoryCell>],
 ) -> impl Iterator<Item = usize> + '_ {
     let session_start_type = TypeId::of::<SessionInfoCell>();
+    let session_rewind_boundary_type = TypeId::of::<SessionRewindBoundaryCell>();
     let user_type = TypeId::of::<UserHistoryCell>();
     let type_of = |cell: &Arc<dyn crate::history_cell::HistoryCell>| cell.as_any().type_id();
 
     let start = cells
         .iter()
-        .rposition(|cell| type_of(cell) == session_start_type)
+        .rposition(|cell| {
+            let cell_type = type_of(cell);
+            cell_type == session_rewind_boundary_type || cell_type == session_start_type
+        })
         .map_or(0, |idx| idx + 1);
 
     cells

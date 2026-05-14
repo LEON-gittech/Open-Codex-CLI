@@ -4858,6 +4858,64 @@ async fn rewind_picker_uses_bottom_selector_instead_of_transcript_overlay() {
 }
 
 #[tokio::test]
+async fn rewind_picker_starts_after_resume_replay_and_lists_newest_first() {
+    let (mut app, mut app_event_rx, _op_rx) = make_test_app_with_channels().await;
+    let thread_id = ThreadId::new();
+
+    app.enqueue_primary_thread_session(
+        test_thread_session(thread_id, test_path_buf("/home/user/project")),
+        vec![test_turn(
+            "turn-replayed",
+            TurnStatus::Completed,
+            vec![ThreadItem::UserMessage {
+                id: "user-replayed".to_string(),
+                content: vec![AppServerUserInput::Text {
+                    text: "replayed old prompt".to_string(),
+                    text_elements: Vec::new(),
+                }],
+            }],
+        )],
+    )
+    .await
+    .unwrap();
+
+    while let Ok(event) = app_event_rx.try_recv() {
+        if let AppEvent::InsertHistoryCell(cell) = event {
+            app.transcript_cells.push(cell.into());
+        }
+    }
+
+    app.transcript_cells.push(Arc::new(UserHistoryCell {
+        message: "older live prompt".to_string(),
+        text_elements: Vec::new(),
+        local_image_paths: Vec::new(),
+        remote_image_urls: Vec::new(),
+    }) as Arc<dyn HistoryCell>);
+    app.transcript_cells.push(Arc::new(AgentMessageCell::new(
+        vec![Line::from("live answer")],
+        /*is_first_line*/ true,
+    )) as Arc<dyn HistoryCell>);
+    app.transcript_cells.push(Arc::new(UserHistoryCell {
+        message: "newest live prompt".to_string(),
+        text_elements: Vec::new(),
+        local_image_paths: Vec::new(),
+        remote_image_urls: Vec::new(),
+    }) as Arc<dyn HistoryCell>);
+
+    app.open_rewind_picker();
+    let popup = render_bottom_popup_for_app(&app, /*width*/ 88);
+
+    assert!(!popup.contains("replayed old prompt"));
+    let newest_idx = popup
+        .find("newest live prompt")
+        .expect("newest live prompt should be visible");
+    let older_idx = popup
+        .find("older live prompt")
+        .expect("older live prompt should be visible");
+    assert!(newest_idx < older_idx, "{popup}");
+}
+
+#[tokio::test]
 async fn rewind_picker_shows_tracked_code_change_stats_per_target() {
     let (mut app, _app_event_rx, _op_rx) = make_test_app_with_channels().await;
     let thread_id = ThreadId::new();

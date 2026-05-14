@@ -275,6 +275,35 @@ impl dyn HistoryCell {
 }
 
 #[derive(Debug)]
+pub(crate) struct SessionRewindBoundaryCell;
+
+impl HistoryCell for SessionRewindBoundaryCell {
+    fn display_lines(&self, _width: u16) -> Vec<Line<'static>> {
+        Vec::new()
+    }
+
+    fn raw_lines(&self) -> Vec<Line<'static>> {
+        Vec::new()
+    }
+
+    fn transcript_lines(&self, _width: u16) -> Vec<Line<'static>> {
+        Vec::new()
+    }
+
+    fn desired_height(&self, _width: u16) -> u16 {
+        0
+    }
+
+    fn desired_transcript_height(&self, _width: u16) -> u16 {
+        0
+    }
+}
+
+pub(crate) fn new_session_rewind_boundary() -> SessionRewindBoundaryCell {
+    SessionRewindBoundaryCell
+}
+
+#[derive(Debug)]
 pub(crate) struct UserHistoryCell {
     pub message: String,
     pub text_elements: Vec<TextElement>,
