@@ -127,12 +127,14 @@ This brings a Claude Code-style export flow into the TUI without requiring exter
 From recent fork-specific changes:
 
 - adds `/effort` for changing the active reasoning effort directly from the TUI
+- adds a persistent `Shift+Tab` speed toggle for fast-capable models: it switches between `high` reasoning on Fast mode and `xhigh` reasoning on the standard tier
+- persists both the reasoning effort and service tier defaults when using that `Shift+Tab` toggle, unlike one-turn markers
 - supports one-turn high-effort markers in the user query: standalone `ulw`, `ultra`, or `xhigh` submit that turn with `xhigh` reasoning
 - keeps marker-based `xhigh` current-turn-only, so it does not mutate the session's default effort
 - shows the submitted per-turn effort in the `model-with-reasoning` status-line item while that foreground turn is pending or running
 - restores the status line to the session/default effort when the turn completes, fails, or is interrupted
 
-This closes the UX gap between "the request was submitted with xhigh" and "the footer still looks like high": the status line now describes the active foreground turn without making a temporary marker look like a persistent configuration change.
+This keeps two intent levels separate: `Shift+Tab` is a persistent speed/default switch, while `ulw`/`ultra`/`xhigh` markers stay current-turn-only. The status line describes the active foreground turn without making a temporary marker look like a persistent configuration change.
 
 ### 7. Lightweight `/btw` side questions
 
@@ -427,12 +429,14 @@ Codex CLI 是开源的，但上游仓库当前对外部代码贡献采用 invita
 来自最近几条 fork 自有改动：
 
 - 增加 `/effort`，可以直接在 TUI 中切换当前 reasoning effort
+- 增加持久化 `Shift+Tab` speed toggle：对支持 Fast mode 的模型，在 `high` reasoning + Fast mode 和 `xhigh` reasoning + standard tier 之间快速切换
+- `Shift+Tab` toggle 会同时持久化 reasoning effort 和 service tier 默认值，不同于单 turn marker
 - 支持在用户 query 中用 standalone `ulw`、`ultra` 或 `xhigh` 触发单 turn `xhigh` reasoning
 - marker 触发的 `xhigh` 保持 current-turn-only，不会修改 session 默认 effort
 - 当前 foreground turn 处于 pending/running 时，`model-with-reasoning` status-line item 会显示这次提交实际使用的 per-turn effort
 - turn 完成、失败或被打断后，status line 会恢复为 session/default effort
 
-这补上了“请求实际按 xhigh 提交，但底部仍显示 high”的 UX 缺口：status line 会描述当前前台 turn，但不会把一次性的 marker 伪装成持久配置变更。
+这里把两层意图区分开：`Shift+Tab` 是持久化 speed/default switch，而 `ulw`、`ultra`、`xhigh` marker 仍然只影响当前 turn。status line 会描述当前前台 turn，但不会把一次性的 marker 伪装成持久配置变更。
 
 ### 7. 轻量 `/btw` side questions
 
