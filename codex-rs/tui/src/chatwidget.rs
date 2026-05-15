@@ -5605,6 +5605,14 @@ impl ChatWidget {
                 code: KeyCode::BackTab,
                 kind: KeyEventKind::Press,
                 ..
+            } if self.can_toggle_reasoning_speed_mode_from_keybinding() => {
+                self.toggle_reasoning_speed_mode_from_ui();
+                self.refresh_plan_mode_nudge();
+            }
+            KeyEvent {
+                code: KeyCode::BackTab,
+                kind: KeyEventKind::Press,
+                ..
             } if self.collaboration_modes_enabled()
                 && !self.bottom_pane.is_task_running()
                 && self.bottom_pane.no_modal_or_popup_active() =>
@@ -9917,6 +9925,11 @@ impl ChatWidget {
             && self.bottom_pane.no_modal_or_popup_active()
     }
 
+    fn can_toggle_reasoning_speed_mode_from_keybinding(&self) -> bool {
+        self.can_toggle_fast_mode_from_keybinding()
+            && self.model_supports_fast_mode(self.current_model())
+    }
+
     pub(crate) fn set_realtime_audio_device(
         &mut self,
         kind: RealtimeAudioDeviceKind,
@@ -9989,6 +10002,49 @@ impl ChatWidget {
         self.set_service_tier_selection(next_tier);
     }
 
+    fn toggle_reasoning_speed_mode_from_ui(&mut self) {
+        let current_model = self.current_model().to_string();
+        let is_high_fast = self.current_collaboration_mode.reasoning_effort()
+            == Some(ReasoningEffortConfig::High)
+            && matches!(self.current_service_tier(), Some(ServiceTier::Fast));
+        let (next_effort, next_tier) = if is_high_fast {
+            (ReasoningEffortConfig::XHigh, None)
+        } else {
+            (ReasoningEffortConfig::High, Some(ServiceTier::Fast))
+        };
+
+        if next_tier.is_none() {
+            self.config.notices.fast_default_opt_out = Some(true);
+        }
+        self.set_reasoning_effort(Some(next_effort));
+        self.set_service_tier(next_tier);
+        self.app_event_tx
+            .send(AppEvent::CodexOp(AppCommand::override_turn_context(
+                /*cwd*/ None,
+                /*approval_policy*/ None,
+                /*approvals_reviewer*/ None,
+                /*permission_profile*/ None,
+                /*windows_sandbox_level*/ None,
+                /*model*/ None,
+                Some(Some(next_effort)),
+                /*summary*/ None,
+                Some(next_tier.map(|service_tier| service_tier.request_value().to_string())),
+                /*collaboration_mode*/ None,
+                /*personality*/ None,
+            )));
+        self.app_event_tx
+            .send(AppEvent::UpdateReasoningEffort(Some(next_effort)));
+        self.app_event_tx.send(AppEvent::PersistModelSelection {
+            model: current_model,
+            effort: Some(next_effort),
+        });
+        self.app_event_tx
+            .send(AppEvent::PersistServiceTierSelection {
+                service_tier: next_tier
+                    .map(|service_tier| service_tier.request_value().to_string()),
+            });
+    }
+
     pub(crate) fn current_model(&self) -> &str {
         if !self.collaboration_modes_enabled() {
             return self.current_collaboration_mode.model();
@@ -10039,6 +10095,14 @@ impl ChatWidget {
     fn sync_fast_command_enabled(&mut self) {
         self.bottom_pane
             .set_service_tier_commands_enabled(self.fast_mode_enabled());
+        self.sync_shift_tab_reasoning_speed_toggle_enabled();
+    }
+
+    fn sync_shift_tab_reasoning_speed_toggle_enabled(&mut self) {
+        let enabled =
+            self.fast_mode_enabled() && self.model_supports_fast_mode(self.current_model());
+        self.bottom_pane
+            .set_shift_tab_reasoning_speed_toggle_enabled(enabled);
     }
 
     fn sync_personality_command_enabled(&mut self) {
@@ -10156,6 +10220,7 @@ impl ChatWidget {
             && self.bottom_pane.composer_input_enabled()
             && !self.bottom_pane.is_task_running()
             && self.bottom_pane.no_modal_or_popup_active()
+            && !self.can_toggle_reasoning_speed_mode_from_keybinding()
             && !trimmed.starts_with('/')
             && !trimmed.starts_with('!')
             && contains_plan_keyword(&text)
@@ -10236,6 +10301,7 @@ impl ChatWidget {
     fn refresh_model_dependent_surfaces(&mut self) {
         self.refresh_model_display();
         self.refresh_status_line();
+        self.sync_shift_tab_reasoning_speed_toggle_enabled();
     }
 
     fn model_display_name(&self) -> &str {

@@ -379,6 +379,12 @@ impl BottomPane {
         self.request_redraw();
     }
 
+    pub fn set_shift_tab_reasoning_speed_toggle_enabled(&mut self, enabled: bool) {
+        self.composer
+            .set_shift_tab_reasoning_speed_toggle_enabled(enabled);
+        self.request_redraw();
+    }
+
     pub fn set_connectors_enabled(&mut self, enabled: bool) {
         self.composer.set_connectors_enabled(enabled);
     }

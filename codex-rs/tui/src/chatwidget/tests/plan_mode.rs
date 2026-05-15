@@ -1291,6 +1291,7 @@ async fn enter_submits_when_plan_stream_is_not_active() {
 #[tokio::test]
 async fn collab_mode_shift_tab_cycles_only_when_idle() {
     let (mut chat, _rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.set_feature_enabled(Feature::FastMode, /*enabled*/ false);
 
     let initial = chat.current_collaboration_mode().clone();
     chat.handle_key_event(KeyEvent::from(KeyCode::BackTab));

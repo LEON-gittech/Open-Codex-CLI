@@ -1296,10 +1296,7 @@ const MAIN_RESERVED_BINDINGS: &[(&str, KeyBinding)] = &[
     ("fixed.quit", key_hint::ctrl(KeyCode::Char('d'))),
     ("fixed.paste_image", key_hint::ctrl(KeyCode::Char('v'))),
     ("fixed.paste_image", key_hint::ctrl_alt(KeyCode::Char('v'))),
-    (
-        "fixed.cycle_collaboration_mode",
-        key_hint::shift(KeyCode::Tab),
-    ),
+    ("fixed.shift_tab_mode_toggle", key_hint::shift(KeyCode::Tab)),
     (
         "fixed.return_from_side_or_backtrack",
         key_hint::plain(KeyCode::Esc),

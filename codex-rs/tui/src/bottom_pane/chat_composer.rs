@@ -401,6 +401,7 @@ pub(crate) struct ChatComposer {
     mention_bindings: HashMap<u64, ComposerMentionBinding>,
     recent_submission_mention_bindings: Vec<MentionBinding>,
     collaboration_modes_enabled: bool,
+    shift_tab_reasoning_speed_toggle_enabled: bool,
     config: ChatComposerConfig,
     collaboration_mode_indicator: Option<CollaborationModeIndicator>,
     goal_status_indicator: Option<GoalStatusIndicator>,
@@ -585,6 +586,7 @@ impl ChatComposer {
             mention_bindings: HashMap::new(),
             recent_submission_mention_bindings: Vec::new(),
             collaboration_modes_enabled: false,
+            shift_tab_reasoning_speed_toggle_enabled: false,
             config,
             collaboration_mode_indicator: None,
             goal_status_indicator: None,
@@ -705,6 +707,10 @@ impl ChatComposer {
 
     pub fn set_collaboration_modes_enabled(&mut self, enabled: bool) {
         self.collaboration_modes_enabled = enabled;
+    }
+
+    pub fn set_shift_tab_reasoning_speed_toggle_enabled(&mut self, enabled: bool) {
+        self.shift_tab_reasoning_speed_toggle_enabled = enabled;
     }
 
     pub fn set_connectors_enabled(&mut self, enabled: bool) {
@@ -3731,7 +3737,8 @@ impl ChatComposer {
             use_shift_enter_hint: self.use_shift_enter_hint,
             is_task_running: self.is_task_running,
             quit_shortcut_key: self.quit_shortcut_key,
-            collaboration_modes_enabled: self.collaboration_modes_enabled,
+            collaboration_modes_enabled: self.collaboration_modes_enabled
+                && !self.shift_tab_reasoning_speed_toggle_enabled,
             is_wsl,
             status_line_value: self.status_line_value.clone(),
             status_line_enabled: self.status_line_enabled,
@@ -4529,8 +4536,9 @@ impl ChatComposer {
             }
             ActivePopup::None => {
                 let footer_props = self.footer_props();
-                let show_cycle_hint =
-                    !footer_props.is_task_running && self.collaboration_mode_indicator.is_some();
+                let show_cycle_hint = !footer_props.is_task_running
+                    && self.collaboration_mode_indicator.is_some()
+                    && !self.shift_tab_reasoning_speed_toggle_enabled;
                 let show_shortcuts_hint = match footer_props.mode {
                     FooterMode::ComposerEmpty => !self.is_in_paste_burst(),
                     FooterMode::ComposerHasDraft => false,
@@ -5486,6 +5494,19 @@ mod tests {
                     /*context_percent*/ 100,
                     Some(CollaborationModeIndicator::Plan),
                 );
+            },
+        );
+        snapshot_composer_state_with_width(
+            "footer_collapse_plan_empty_speed_toggle",
+            /*width*/ 120,
+            /*enhanced_keys_supported*/ true,
+            |composer| {
+                setup_collab_footer(
+                    composer,
+                    /*context_percent*/ 100,
+                    Some(CollaborationModeIndicator::Plan),
+                );
+                composer.set_shift_tab_reasoning_speed_toggle_enabled(/*enabled*/ true);
             },
         );
         snapshot_composer_state_with_width(
