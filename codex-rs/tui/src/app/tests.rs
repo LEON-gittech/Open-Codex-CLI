@@ -4993,6 +4993,40 @@ async fn rewind_restore_options_show_code_warning_and_modes() {
 }
 
 #[tokio::test]
+async fn rewind_restore_options_enter_keeps_backtrack_selection_live() {
+    let (mut app, _app_event_rx, _op_rx) = make_test_app_with_channels().await;
+    let thread_id = ThreadId::new();
+    app.chat_widget.handle_thread_session(test_thread_session(
+        thread_id,
+        test_path_buf("/home/user/project"),
+    ));
+    app.transcript_cells = vec![Arc::new(UserHistoryCell {
+        message: "restore this request".to_string(),
+        text_elements: Vec::new(),
+        local_image_paths: Vec::new(),
+        remote_image_urls: Vec::new(),
+    }) as Arc<dyn HistoryCell>];
+
+    app.open_rewind_restore_options(0);
+
+    let enter = KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE);
+    if app.should_reset_backtrack_before_forwarding_key(enter) {
+        app.reset_backtrack_state();
+    }
+    app.chat_widget.handle_key_event(enter);
+    app.backtrack.nth_user_message = 0;
+
+    let selection = app
+        .confirm_backtrack_from_main()
+        .expect("restore option selection should remain valid after Enter");
+    assert_eq!(selection.nth_user_message, 0);
+    assert_eq!(selection.prefill, "restore this request");
+    assert_eq!(selection.text_elements, Vec::<TextElement>::new());
+    assert_eq!(selection.local_image_paths, Vec::<PathBuf>::new());
+    assert_eq!(selection.remote_image_urls, Vec::<String>::new());
+}
+
+#[tokio::test]
 async fn rewind_restore_options_work_before_thread_id_is_configured() {
     let (mut app, _app_event_rx, _op_rx) = make_test_app_with_channels().await;
     assert_eq!(app.chat_widget.thread_id(), None);
@@ -5013,6 +5047,42 @@ async fn rewind_restore_options_work_before_thread_id_is_configured() {
     assert!(popup.contains("Confirm rewind"));
     assert!(popup.contains("write notes to dario_agi_notes.txt"));
     assert!(popup.contains("Restore code and conversation"));
+}
+
+#[tokio::test]
+async fn backtrack_esc_does_not_steal_pending_user_turn_interrupt() {
+    let (mut app, _app_event_rx, mut op_rx) = make_test_app_with_channels().await;
+    let thread_id = ThreadId::new();
+    app.chat_widget.handle_thread_session(test_thread_session(
+        thread_id,
+        test_path_buf("/home/user/project"),
+    ));
+    while op_rx.try_recv().is_ok() {}
+
+    app.chat_widget.submit_user_message_with_mode(
+        "start a long task".to_string(),
+        CollaborationModeMask {
+            name: "Default".to_string(),
+            mode: None,
+            model: None,
+            reasoning_effort: None,
+            developer_instructions: None,
+        },
+    );
+    assert!(matches!(op_rx.try_recv(), Ok(Op::UserTurn { .. })));
+    assert!(app.chat_widget.composer_is_empty());
+
+    let esc = KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE);
+    assert!(
+        !app.should_handle_backtrack_esc(esc),
+        "Esc should interrupt a submitted turn before turn_started, not prime rewind"
+    );
+
+    app.chat_widget.handle_key_event(esc);
+    assert!(
+        matches!(op_rx.try_recv(), Ok(Op::Interrupt)),
+        "Esc should submit interrupt while the user turn is pending start"
+    );
 }
 
 #[tokio::test]

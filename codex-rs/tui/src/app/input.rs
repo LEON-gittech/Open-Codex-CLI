@@ -240,7 +240,7 @@ impl App {
                 // Any non-Esc key press should cancel a primed backtrack.
                 // This avoids stale "Esc-primed" state after the user starts typing
                 // (even if they later backspace to empty).
-                if key_event.code != KeyCode::Esc && self.backtrack.primed {
+                if self.should_reset_backtrack_before_forwarding_key(key_event) {
                     self.reset_backtrack_state();
                 }
                 self.chat_widget.handle_key_event(key_event);
@@ -255,7 +255,14 @@ impl App {
         self.chat_widget.is_normal_backtrack_mode()
             && self.chat_widget.composer_is_empty()
             && !self.chat_widget.has_pending_or_queued_input()
+            && !self.chat_widget.is_user_turn_pending_or_running()
             && !self.chat_widget.should_handle_vim_insert_escape(key_event)
+    }
+
+    pub(super) fn should_reset_backtrack_before_forwarding_key(&self, key_event: KeyEvent) -> bool {
+        key_event.code != KeyCode::Esc
+            && self.backtrack.primed
+            && self.chat_widget.no_modal_or_popup_active()
     }
 
     fn app_keymap_shortcuts_available(&self) -> bool {

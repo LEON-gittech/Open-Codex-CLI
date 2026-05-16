@@ -5575,6 +5575,20 @@ impl ChatWidget {
             return;
         }
 
+        if matches!(key_event.code, KeyCode::Esc)
+            && matches!(key_event.kind, KeyEventKind::Press | KeyEventKind::Repeat)
+            && self.user_turn_pending_start
+            && self.bottom_pane.composer_is_empty()
+            && self.bottom_pane.no_modal_or_popup_active()
+            && !self
+                .bottom_pane
+                .composer_should_handle_vim_insert_escape(key_event)
+        {
+            self.clear_esc_backtrack_hint();
+            self.submit_op(AppCommand::interrupt());
+            return;
+        }
+
         if key_event.kind == KeyEventKind::Press
             && self.chat_keymap.edit_queued_message.is_pressed(key_event)
             && self.has_queued_follow_up_messages()
@@ -7327,7 +7341,7 @@ impl ChatWidget {
         submitted_follow_up
     }
 
-    pub(super) fn is_user_turn_pending_or_running(&self) -> bool {
+    pub(crate) fn is_user_turn_pending_or_running(&self) -> bool {
         self.user_turn_pending_start || self.foreground_turn_running() || self.is_review_mode
     }
 
