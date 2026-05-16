@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="960" height="300" viewBox="0 0 960 300" role="img" aria-labelledby="title desc">
   <title id="title">@leonw24/open-codex weekly npm downloads</title>
-  <desc id="desc">Weekly npm downloads over the last 12 complete 7-day periods. Latest period: 4486 downloads.</desc>
+  <desc id="desc">Weekly npm downloads over the last 12 complete 7-day periods. Latest period: 5669 downloads.</desc>
   <defs>
     <linearGradient id="line" x1="0" x2="1" y1="0" y2="0">
       <stop offset="0%" stop-color="#22d3ee" />
@@ -15,21 +15,21 @@
   <rect width="960" height="300" rx="16" fill="#0b1020" />
   <rect x="1" y="1" width="958" height="298" rx="15" fill="none" stroke="#26324a" />
   <text x="70" y="30" font-family="Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="18" font-weight="700" fill="#f8fafc">npm weekly downloads</text>
-  <text x="70" y="50" font-family="Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="12" fill="#8b9ab8">@leonw24/open-codex · latest 7-day period 4.5k · 5.4k over 12 periods · through 2026-05-14</text>
+  <text x="70" y="50" font-family="Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="12" fill="#8b9ab8">@leonw24/open-codex · latest 7-day period 5.7k · 6.8k over 12 periods · through 2026-05-15</text>
   <g font-family="Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif">
     <line x1="70" y1="244.0" x2="928" y2="244.0" stroke="#243047" stroke-width="1" />
     <text x="18" y="248.0" font-size="12" fill="#8b9ab8">0</text>
     <line x1="70" y1="197.5" x2="928" y2="197.5" stroke="#243047" stroke-width="1" />
-    <text x="18" y="201.5" font-size="12" fill="#8b9ab8">1.2k</text>
+    <text x="18" y="201.5" font-size="12" fill="#8b9ab8">2.5k</text>
     <line x1="70" y1="151.0" x2="928" y2="151.0" stroke="#243047" stroke-width="1" />
-    <text x="18" y="155.0" font-size="12" fill="#8b9ab8">2.5k</text>
+    <text x="18" y="155.0" font-size="12" fill="#8b9ab8">5.0k</text>
     <line x1="70" y1="104.5" x2="928" y2="104.5" stroke="#243047" stroke-width="1" />
-    <text x="18" y="108.5" font-size="12" fill="#8b9ab8">3.8k</text>
+    <text x="18" y="108.5" font-size="12" fill="#8b9ab8">7.5k</text>
     <line x1="70" y1="58.0" x2="928" y2="58.0" stroke="#243047" stroke-width="1" />
-    <text x="18" y="62.0" font-size="12" fill="#8b9ab8">5.0k</text>
+    <text x="18" y="62.0" font-size="12" fill="#8b9ab8">10.0k</text>
     <line x1="70" y1="244.0" x2="928" y2="244.0" stroke="#3a4867" stroke-width="1.2" />
-    <path d="M 70.0 244.0 L 148.0 244.0 L 226.0 244.0 L 304.0 244.0 L 382.0 244.0 L 460.0 244.0 L 538.0 244.0 L 616.0 244.0 L 694.0 244.0 L 772.0 211.7 L 850.0 241.4 L 928.0 77.1 L 928.0 244.0 L 70.0 244.0 Z" fill="url(#fill)" />
-    <path d="M 70.0 244.0 L 148.0 244.0 L 226.0 244.0 L 304.0 244.0 L 382.0 244.0 L 460.0 244.0 L 538.0 244.0 L 616.0 244.0 L 694.0 244.0 L 772.0 211.7 L 850.0 241.4 L 928.0 77.1" fill="none" stroke="url(#line)" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" />
+    <path d="M 70.0 244.0 L 148.0 244.0 L 226.0 244.0 L 304.0 244.0 L 382.0 244.0 L 460.0 244.0 L 538.0 244.0 L 616.0 244.0 L 694.0 244.0 L 772.0 227.3 L 850.0 240.1 L 928.0 138.6 L 928.0 244.0 L 70.0 244.0 Z" fill="url(#fill)" />
+    <path d="M 70.0 244.0 L 148.0 244.0 L 226.0 244.0 L 304.0 244.0 L 382.0 244.0 L 460.0 244.0 L 538.0 244.0 L 616.0 244.0 L 694.0 244.0 L 772.0 227.3 L 850.0 240.1 L 928.0 138.6" fill="none" stroke="url(#line)" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" />
     <circle cx="70.0" cy="244.0" r="4" fill="#8b5cf6" stroke="#dbe7ff" stroke-width="2"><title>0 downloads</title></circle>
     <circle cx="148.0" cy="244.0" r="4" fill="#8b5cf6" stroke="#dbe7ff" stroke-width="2"><title>0 downloads</title></circle>
     <circle cx="226.0" cy="244.0" r="4" fill="#8b5cf6" stroke="#dbe7ff" stroke-width="2"><title>0 downloads</title></circle>
@@ -39,11 +39,11 @@
     <circle cx="538.0" cy="244.0" r="4" fill="#8b5cf6" stroke="#dbe7ff" stroke-width="2"><title>0 downloads</title></circle>
     <circle cx="616.0" cy="244.0" r="4" fill="#8b5cf6" stroke="#dbe7ff" stroke-width="2"><title>0 downloads</title></circle>
     <circle cx="694.0" cy="244.0" r="4" fill="#8b5cf6" stroke="#dbe7ff" stroke-width="2"><title>0 downloads</title></circle>
-    <circle cx="772.0" cy="211.7" r="4" fill="#8b5cf6" stroke="#dbe7ff" stroke-width="2"><title>869 downloads</title></circle>
-    <circle cx="850.0" cy="241.4" r="4" fill="#8b5cf6" stroke="#dbe7ff" stroke-width="2"><title>70 downloads</title></circle>
-    <circle cx="928.0" cy="77.1" r="4" fill="#8b5cf6" stroke="#dbe7ff" stroke-width="2"><title>4486 downloads</title></circle>
-    <text x="70.0" y="278" font-size="12" fill="#8b9ab8" text-anchor="middle">Feb 20</text>
-    <text x="538.0" y="278" font-size="12" fill="#8b9ab8" text-anchor="middle">Apr 3</text>
-    <text x="928.0" y="278" font-size="12" fill="#8b9ab8" text-anchor="middle">May 8</text>
+    <circle cx="772.0" cy="227.3" r="4" fill="#8b5cf6" stroke="#dbe7ff" stroke-width="2"><title>899 downloads</title></circle>
+    <circle cx="850.0" cy="240.1" r="4" fill="#8b5cf6" stroke="#dbe7ff" stroke-width="2"><title>208 downloads</title></circle>
+    <circle cx="928.0" cy="138.6" r="4" fill="#8b5cf6" stroke="#dbe7ff" stroke-width="2"><title>5669 downloads</title></circle>
+    <text x="70.0" y="278" font-size="12" fill="#8b9ab8" text-anchor="middle">Feb 21</text>
+    <text x="538.0" y="278" font-size="12" fill="#8b9ab8" text-anchor="middle">Apr 4</text>
+    <text x="928.0" y="278" font-size="12" fill="#8b9ab8" text-anchor="middle">May 9</text>
   </g>
 </svg>
