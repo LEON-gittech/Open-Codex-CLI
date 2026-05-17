@@ -931,7 +931,7 @@ impl HistoryCell for UpdateAvailableHistoryCell {
         let release_notes_url = self
             .update_action
             .map(UpdateAction::release_notes_url)
-            .unwrap_or("https://github.com/LEON-gittech/codex");
+            .unwrap_or("https://github.com/LEON-gittech/Open-Codex-CLI/releases/latest");
         let update_instruction = if let Some(update_action) = self.update_action {
             line!["Run ", update_action.command_str().cyan(), " to update."]
         } else {
@@ -974,7 +974,7 @@ impl HistoryCell for UpdateAvailableHistoryCell {
             Line::from(update_instruction),
             Line::from(""),
             Line::from("See full release notes:"),
-            Line::from("https://github.com/openai/codex/releases/latest"),
+            Line::from("https://github.com/LEON-gittech/Open-Codex-CLI/releases/latest"),
         ]
     }
 }

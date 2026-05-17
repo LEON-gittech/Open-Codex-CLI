@@ -3,7 +3,8 @@ use codex_install_context::InstallContext;
 #[cfg(any(not(debug_assertions), test))]
 use codex_install_context::StandalonePlatform;
 
-const OPEN_CODEX_RELEASE_NOTES_URL: &str = "https://github.com/LEON-gittech/codex";
+const OPEN_CODEX_RELEASE_NOTES_URL: &str =
+    "https://github.com/LEON-gittech/Open-Codex-CLI/releases/latest";
 
 /// Update action the CLI should perform after the TUI exits.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -1719,9 +1719,18 @@ fn update_memory_settings_updates_current_thread_memory_mode() -> Result<()> {
     })
 }
 
-#[tokio::test]
-async fn reset_memories_clears_local_memory_directories() -> Result<()> {
-    Box::pin(async {
+#[test]
+fn reset_memories_clears_local_memory_directories() -> Result<()> {
+    const WORKER_THREADS: usize = 1;
+    const TEST_STACK_SIZE_BYTES: usize = 8 * 1024 * 1024;
+
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(WORKER_THREADS)
+        .thread_stack_size(TEST_STACK_SIZE_BYTES)
+        .enable_all()
+        .build()?;
+
+    runtime.block_on(async {
         let (mut app, _app_event_rx, _op_rx) = Box::pin(make_test_app_with_channels()).await;
         let codex_home = tempdir()?;
         app.config.codex_home = codex_home.path().to_path_buf().abs();
@@ -1748,7 +1757,6 @@ async fn reset_memories_clears_local_memory_directories() -> Result<()> {
         app_server.shutdown().await?;
         Ok(())
     })
-    .await
 }
 
 #[tokio::test]
@@ -4821,6 +4829,76 @@ async fn rewind_code_and_conversation_restores_files_before_thread_rollback() {
 }
 
 #[tokio::test]
+async fn rewind_conversation_only_does_not_restore_files() {
+    let (mut app, _app_event_rx, mut op_rx) = make_test_app_with_channels().await;
+
+    app.transcript_cells = vec![
+        Arc::new(UserHistoryCell {
+            message: "first".to_string(),
+            text_elements: Vec::new(),
+            local_image_paths: Vec::new(),
+            remote_image_urls: Vec::new(),
+        }) as Arc<dyn HistoryCell>,
+        Arc::new(AgentMessageCell::new(
+            vec![Line::from("answer")],
+            /*is_first_line*/ true,
+        )) as Arc<dyn HistoryCell>,
+        Arc::new(UserHistoryCell {
+            message: "second".to_string(),
+            text_elements: Vec::new(),
+            local_image_paths: Vec::new(),
+            remote_image_urls: Vec::new(),
+        }) as Arc<dyn HistoryCell>,
+    ];
+
+    app.apply_backtrack_restore(
+        BacktrackSelection {
+            nth_user_message: 1,
+            prefill: "second".to_string(),
+            text_elements: Vec::new(),
+            local_image_paths: Vec::new(),
+            remote_image_urls: Vec::new(),
+        },
+        BacktrackRestoreMode::ConversationOnly,
+    );
+
+    let mut ops = Vec::new();
+    while let Ok(op) = op_rx.try_recv() {
+        let name = match op {
+            AppCommand::FileHistoryRestore { .. } => "file_history_restore",
+            AppCommand::ThreadRollback { .. } => "thread_rollback",
+            _ => "other",
+        };
+        ops.push(name);
+    }
+
+    assert_eq!(ops, vec!["thread_rollback"]);
+}
+
+#[tokio::test]
+async fn rewind_restore_options_default_enter_restores_code_and_conversation() {
+    let (mut app, mut app_event_rx, _op_rx) = make_test_app_with_channels().await;
+    app.transcript_cells = vec![Arc::new(UserHistoryCell {
+        message: "restore this request".to_string(),
+        text_elements: Vec::new(),
+        local_image_paths: Vec::new(),
+        remote_image_urls: Vec::new(),
+    }) as Arc<dyn HistoryCell>];
+
+    app.open_rewind_restore_options(0);
+    app.chat_widget
+        .handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+    assert_matches!(
+        app_event_rx.try_recv(),
+        Ok(AppEvent::ApplyBacktrackRestore {
+            nth_user_message: 0,
+            mode: BacktrackRestoreMode::CodeAndConversation,
+        })
+    );
+}
+
+#[tokio::test]
 async fn rewind_picker_uses_bottom_selector_instead_of_transcript_overlay() {
     let (mut app, _app_event_rx, _op_rx) = make_test_app_with_channels().await;
     let thread_id = ThreadId::new();
@@ -4905,14 +4983,18 @@ async fn rewind_picker_starts_after_resume_replay_and_lists_newest_first() {
     app.open_rewind_picker();
     let popup = render_bottom_popup_for_app(&app, /*width*/ 88);
 
-    assert!(!popup.contains("replayed old prompt"));
+    assert!(popup.contains("replayed old prompt"));
     let newest_idx = popup
         .find("newest live prompt")
         .expect("newest live prompt should be visible");
     let older_idx = popup
         .find("older live prompt")
         .expect("older live prompt should be visible");
+    let replayed_idx = popup
+        .find("replayed old prompt")
+        .expect("replayed old prompt should be visible");
     assert!(newest_idx < older_idx, "{popup}");
+    assert!(older_idx < replayed_idx, "{popup}");
 }
 
 #[tokio::test]
