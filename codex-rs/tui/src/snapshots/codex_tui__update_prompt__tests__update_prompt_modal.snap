@@ -1,14 +1,17 @@
 ---
 source: tui/src/update_prompt.rs
-assertion_line: 268
+assertion_line: 293
 expression: terminal.backend()
 ---
 
   ✨ Update available! CURRENT_VERSION -> NEXT_VERSION
 
-  Release notes: https://github.com/LEON-gittech/codex
+  What's new:
+    - Fix revoke conversation-only restore scope.
+    - Show concrete release notes in update prompts.
+  Full release notes: https://github.com/LEON-gittech/Open-Codex-CLI/releases/tag/rust-vNEXT_VERSION
 
-› 1. Update now (runs `npm install -g @leonw24/open-codex@latest`)              
+› 1. Update now (runs `npm install -g @leonw24/open-codex@latest`)                                            
   2. Skip
   3. Skip until next version
 

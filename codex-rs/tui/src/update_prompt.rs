@@ -36,15 +36,14 @@ pub(crate) async fn run_update_prompt_if_needed(
     tui: &mut Tui,
     config: &Config,
 ) -> Result<UpdatePromptOutcome> {
-    let Some(latest_version) = updates::get_upgrade_version_for_popup(config).await else {
+    let Some(upgrade_info) = updates::get_upgrade_info_for_popup(config).await else {
         return Ok(UpdatePromptOutcome::Continue);
     };
     let Some(update_action) = crate::update_action::get_update_action() else {
         return Ok(UpdatePromptOutcome::Continue);
     };
 
-    let mut screen =
-        UpdatePromptScreen::new(tui.frame_requester(), latest_version.clone(), update_action);
+    let mut screen = UpdatePromptScreen::new(tui.frame_requester(), upgrade_info, update_action);
     tui.draw(u16::MAX, |frame| {
         frame.render_widget_ref(&screen, frame.area());
     })?;
@@ -92,7 +91,7 @@ enum UpdateSelection {
 
 struct UpdatePromptScreen {
     request_frame: FrameRequester,
-    latest_version: String,
+    upgrade_info: updates::UpgradeInfo,
     current_version: String,
     update_action: UpdateAction,
     highlighted: UpdateSelection,
@@ -102,12 +101,12 @@ struct UpdatePromptScreen {
 impl UpdatePromptScreen {
     fn new(
         request_frame: FrameRequester,
-        latest_version: String,
+        upgrade_info: updates::UpgradeInfo,
         update_action: UpdateAction,
     ) -> Self {
         Self {
             request_frame,
-            latest_version,
+            upgrade_info,
             current_version: env!("CARGO_PKG_VERSION").to_string(),
             update_action,
             highlighted: UpdateSelection::UpdateNow,
@@ -159,7 +158,7 @@ impl UpdatePromptScreen {
     }
 
     fn latest_version(&self) -> &str {
-        self.latest_version.as_str()
+        self.upgrade_info.latest_version.as_str()
     }
 }
 
@@ -187,7 +186,7 @@ impl WidgetRef for &UpdatePromptScreen {
         let mut column = ColumnRenderable::new();
 
         let update_command = self.update_action.command_str();
-        let release_notes_url = self.update_action.release_notes_url();
+        let release_notes_url = self.upgrade_info.release_notes_url.as_str();
 
         column.push("");
         column.push(Line::from(vec![
@@ -197,18 +196,35 @@ impl WidgetRef for &UpdatePromptScreen {
             format!(
                 "{current} -> {latest}",
                 current = self.current_version,
-                latest = self.latest_version
+                latest = self.upgrade_info.latest_version.as_str()
             )
             .dim(),
         ]));
         column.push("");
-        column.push(
-            Line::from(vec![
-                "Release notes: ".dim(),
-                release_notes_url.dim().underlined(),
-            ])
-            .inset(Insets::tlbr(0, 2, 0, 0)),
-        );
+        if self.upgrade_info.release_notes.is_empty() {
+            column.push(
+                Line::from(vec![
+                    "Release notes: ".dim(),
+                    release_notes_url.dim().underlined(),
+                ])
+                .inset(Insets::tlbr(0, 2, 0, 0)),
+            );
+        } else {
+            column.push(Line::from("What's new:".bold()).inset(Insets::tlbr(0, 2, 0, 0)));
+            for note in &self.upgrade_info.release_notes {
+                column.push(
+                    Line::from(vec!["- ".dim(), note.as_str().into()])
+                        .inset(Insets::tlbr(0, 4, 0, 0)),
+                );
+            }
+            column.push(
+                Line::from(vec![
+                    "Full release notes: ".dim(),
+                    release_notes_url.dim().underlined(),
+                ])
+                .inset(Insets::tlbr(0, 2, 0, 0)),
+            );
+        }
         column.push("");
         column.push(selection_option_row(
             0,
@@ -251,7 +267,16 @@ mod tests {
     fn new_prompt() -> UpdatePromptScreen {
         let mut screen = UpdatePromptScreen::new(
             FrameRequester::test_dummy(),
-            "NEXT_VERSION".into(),
+            updates::UpgradeInfo {
+                latest_version: "NEXT_VERSION".into(),
+                release_notes: vec![
+                    "Fix revoke conversation-only restore scope.".into(),
+                    "Show concrete release notes in update prompts.".into(),
+                ],
+                release_notes_url:
+                    "https://github.com/LEON-gittech/Open-Codex-CLI/releases/tag/rust-vNEXT_VERSION"
+                        .into(),
+            },
             UpdateAction::NpmGlobalLatest,
         );
         screen.current_version = "CURRENT_VERSION".into();
@@ -261,7 +286,7 @@ mod tests {
     #[test]
     fn update_prompt_snapshot() {
         let screen = new_prompt();
-        let mut terminal = Terminal::new(VT100Backend::new(80, 12)).expect("terminal");
+        let mut terminal = Terminal::new(VT100Backend::new(110, 14)).expect("terminal");
         terminal
             .draw(|frame| frame.render_widget_ref(&screen, frame.area()))
             .expect("render update prompt");
