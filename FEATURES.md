@@ -17,6 +17,15 @@ Fast-moving prompt packs, hooks, setup flows, and project policies are better ha
 
 ## Implemented Features
 
+## Release Notes
+
+### 0.131.1 - 2026-05-19
+
+- Merge upstream Codex 0.131.0 into Open Codex.
+- Preserve fork runtime features across the merge: memory overlay/browser, persistent `Shift+Tab` speed toggle, Claude-style rewind/revoke, `/btw`, `/effort`, subagent quota reclamation, background subagent tracking, git attribution, and inline update release notes.
+- Restore fork-correct npm packaging and update diagnostics so install/update guidance targets `@leonw24/open-codex`.
+- Keep the release publishable through the local `release-fast` path with concrete GitHub release notes for the startup update prompt.
+
 ### TUI readability and turn correctness
 
 | Feature | User-facing behavior | Main entry points | Notes |

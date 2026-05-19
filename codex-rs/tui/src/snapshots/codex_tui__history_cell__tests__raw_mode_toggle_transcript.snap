@@ -3,10 +3,10 @@ source: tui/src/history_cell.rs
 expression: rendered
 ---
 rich before:
-
-› Please format this
-  for copying
-
+────────────────────────────────────────
+User › Please format this
+       for copying
+────────────────────────────────────────
 • - first item
   - second item
   
@@ -41,10 +41,10 @@ structured output
 second line
 
 rich after:
-
-› Please format this
-  for copying
-
+────────────────────────────────────────
+User › Please format this
+       for copying
+────────────────────────────────────────
 • - first item
   - second item
   

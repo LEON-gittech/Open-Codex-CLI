@@ -663,6 +663,61 @@ fn permissions_request_approval_response_accepts_strict_auto_review() {
 }
 
 #[test]
+fn permission_profile_selection_accepts_legacy_object_shape() {
+    let additional_root = absolute_path("additional-root");
+    let params = json!({
+        "permissions": {
+            "type": "profile",
+            "id": ":workspace",
+            "modifications": [
+                {
+                    "type": "additionalWritableRoot",
+                    "path": additional_root,
+                }
+            ],
+        },
+    });
+
+    let start: ThreadStartParams =
+        serde_json::from_value(params.clone()).expect("thread/start params deserialize");
+    assert_legacy_permission_profile_selection(start.permissions, &additional_root);
+
+    let resume: ThreadResumeParams = serde_json::from_value(json!({
+        "threadId": "thread-1",
+        "permissions": params["permissions"].clone(),
+    }))
+    .expect("thread/resume params deserialize");
+    assert_legacy_permission_profile_selection(resume.permissions, &additional_root);
+
+    let fork: ThreadForkParams = serde_json::from_value(json!({
+        "threadId": "thread-1",
+        "permissions": params["permissions"].clone(),
+    }))
+    .expect("thread/fork params deserialize");
+    assert_legacy_permission_profile_selection(fork.permissions, &additional_root);
+
+    let turn: TurnStartParams = serde_json::from_value(json!({
+        "threadId": "thread-1",
+        "input": [],
+        "permissions": params["permissions"].clone(),
+    }))
+    .expect("turn/start params deserialize");
+    assert_legacy_permission_profile_selection(turn.permissions, &additional_root);
+}
+
+fn assert_legacy_permission_profile_selection(
+    selection: Option<PermissionProfileSelectionParams>,
+    additional_root: &AbsolutePathBuf,
+) {
+    let selection = selection.expect("permissions should be present");
+    assert_eq!(selection.id(), ":workspace");
+    assert_eq!(
+        selection.legacy_additional_writable_roots(),
+        std::slice::from_ref(additional_root)
+    );
+}
+
+#[test]
 fn fs_get_metadata_response_round_trips_minimal_fields() {
     let response = FsGetMetadataResponse {
         is_directory: false,
@@ -1538,6 +1593,7 @@ fn config_granular_approval_policy_is_marked_experimental() {
         service_tier: None,
         analytics: None,
         apps: None,
+        desktop: None,
         additional: HashMap::new(),
     });
 
@@ -1571,6 +1627,7 @@ fn config_approvals_reviewer_is_marked_experimental() {
         service_tier: None,
         analytics: None,
         apps: None,
+        desktop: None,
         additional: HashMap::new(),
     });
 
@@ -1626,6 +1683,7 @@ fn config_nested_profile_granular_approval_policy_is_marked_experimental() {
         service_tier: None,
         analytics: None,
         apps: None,
+        desktop: None,
         additional: HashMap::new(),
     });
 
@@ -1675,6 +1733,7 @@ fn config_nested_profile_approvals_reviewer_is_marked_experimental() {
         service_tier: None,
         analytics: None,
         apps: None,
+        desktop: None,
         additional: HashMap::new(),
     });
 
@@ -1695,6 +1754,7 @@ fn config_requirements_granular_allowed_approval_policy_is_marked_experimental()
             allowed_approvals_reviewers: None,
             allowed_sandbox_modes: None,
             allowed_web_search_modes: None,
+            allow_managed_hooks_only: None,
             feature_requirements: None,
             hooks: None,
             enforce_residency: None,
@@ -2994,6 +3054,52 @@ fn plugin_share_params_and_response_serialization_use_camel_case_fields() {
     );
 
     assert_eq!(
+        serde_json::to_value(PluginShareCheckoutParams {
+            remote_plugin_id: "plugins~Plugin_00000000000000000000000000000000".to_string(),
+        })
+        .unwrap(),
+        json!({
+            "remotePluginId": "plugins~Plugin_00000000000000000000000000000000",
+        }),
+    );
+
+    let plugin_path = if cfg!(windows) {
+        r"C:\Users\me\plugins\gmail"
+    } else {
+        "/Users/me/plugins/gmail"
+    };
+    let plugin_path = AbsolutePathBuf::try_from(PathBuf::from(plugin_path)).unwrap();
+    let plugin_path_json = plugin_path.as_path().display().to_string();
+    let marketplace_path = if cfg!(windows) {
+        r"C:\Users\me\.agents\plugins\marketplace.json"
+    } else {
+        "/Users/me/.agents/plugins/marketplace.json"
+    };
+    let marketplace_path = AbsolutePathBuf::try_from(PathBuf::from(marketplace_path)).unwrap();
+    let marketplace_path_json = marketplace_path.as_path().display().to_string();
+    assert_eq!(
+        serde_json::to_value(PluginShareCheckoutResponse {
+            remote_plugin_id: "plugins~Plugin_00000000000000000000000000000000".to_string(),
+            plugin_id: "gmail@codex-curated".to_string(),
+            plugin_name: "gmail".to_string(),
+            plugin_path,
+            marketplace_name: "codex-curated".to_string(),
+            marketplace_path,
+            remote_version: Some("1.2.3".to_string()),
+        })
+        .unwrap(),
+        json!({
+            "remotePluginId": "plugins~Plugin_00000000000000000000000000000000",
+            "pluginId": "gmail@codex-curated",
+            "pluginName": "gmail",
+            "pluginPath": plugin_path_json,
+            "marketplaceName": "codex-curated",
+            "marketplacePath": marketplace_path_json,
+            "remoteVersion": "1.2.3",
+        }),
+    );
+
+    assert_eq!(
         serde_json::to_value(PluginShareDeleteParams {
             remote_plugin_id: "plugins~Plugin_00000000000000000000000000000000".to_string(),
         })
@@ -3014,6 +3120,7 @@ fn plugin_share_list_response_serializes_share_items() {
                     remote_plugin_id: Some(
                         "plugins~Plugin_00000000000000000000000000000000".to_string(),
                     ),
+                    local_version: None,
                     name: "gmail".to_string(),
                     share_context: None,
                     source: PluginSource::Remote,
@@ -3034,6 +3141,7 @@ fn plugin_share_list_response_serializes_share_items() {
                 "plugin": {
                     "id": "gmail@chatgpt-global",
                     "remotePluginId": "plugins~Plugin_00000000000000000000000000000000",
+                    "localVersion": null,
                     "name": "gmail",
                     "shareContext": null,
                     "source": { "type": "remote" },
@@ -3066,6 +3174,7 @@ fn plugin_summary_defaults_missing_availability_to_available() {
     .unwrap();
 
     assert_eq!(summary.availability, PluginAvailability::Available);
+    assert_eq!(summary.local_version, None);
     assert_eq!(summary.share_context, None);
 }
 
@@ -3396,9 +3505,6 @@ fn thread_lifecycle_responses_default_missing_optional_fields() {
     assert_eq!(start.instruction_sources, Vec::<AbsolutePathBuf>::new());
     assert_eq!(resume.instruction_sources, Vec::<AbsolutePathBuf>::new());
     assert_eq!(fork.instruction_sources, Vec::<AbsolutePathBuf>::new());
-    assert_eq!(start.permission_profile, None);
-    assert_eq!(resume.permission_profile, None);
-    assert_eq!(fork.permission_profile, None);
     assert_eq!(start.active_permission_profile, None);
     assert_eq!(resume.active_permission_profile, None);
     assert_eq!(fork.active_permission_profile, None);
@@ -3426,6 +3532,7 @@ fn turn_start_params_preserve_explicit_null_service_tier() {
         responsesapi_client_metadata: None,
         environments: None,
         cwd: None,
+        runtime_workspace_roots: None,
         approval_policy: None,
         approvals_reviewer: None,
         sandbox_policy: None,

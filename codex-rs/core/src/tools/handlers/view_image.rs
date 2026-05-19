@@ -16,11 +16,13 @@ use crate::original_image_detail::can_request_original_image_detail;
 use crate::tools::context::ToolInvocation;
 use crate::tools::context::ToolOutput;
 use crate::tools::context::ToolPayload;
+use crate::tools::context::boxed_tool_output;
 use crate::tools::handlers::parse_arguments;
 use crate::tools::handlers::resolve_tool_environment;
 use crate::tools::handlers::view_image_spec::ViewImageToolOptions;
 use crate::tools::handlers::view_image_spec::create_view_image_tool;
-use crate::tools::registry::ToolHandler;
+use crate::tools::registry::CoreToolRuntime;
+use crate::tools::registry::ToolExecutor;
 use codex_tools::ToolName;
 use codex_tools::ToolSpec;
 
@@ -61,9 +63,8 @@ enum ViewImageDetail {
     Original,
 }
 
-impl ToolHandler for ViewImageHandler {
-    type Output = ViewImageOutput;
-
+#[async_trait::async_trait]
+impl ToolExecutor<ToolInvocation> for ViewImageHandler {
     fn tool_name(&self) -> ToolName {
         ToolName::plain("view_image")
     }
@@ -76,7 +77,10 @@ impl ToolHandler for ViewImageHandler {
         true
     }
 
-    async fn handle(&self, invocation: ToolInvocation) -> Result<Self::Output, FunctionCallError> {
+    async fn handle(
+        &self,
+        invocation: ToolInvocation,
+    ) -> Result<Box<dyn crate::tools::context::ToolOutput>, FunctionCallError> {
         if !invocation
             .turn
             .model_info
@@ -133,8 +137,7 @@ impl ToolHandler for ViewImageHandler {
         };
         let cwd = turn_environment.cwd.clone();
         let abs_path = cwd.join(path);
-        let mut sandbox = turn.file_system_sandbox_context(/*additional_permissions*/ None);
-        sandbox.cwd = Some(cwd.clone());
+        let sandbox = turn.file_system_sandbox_context(/*additional_permissions*/ None, &cwd);
         let fs = turn_environment.environment.get_filesystem();
 
         let metadata = fs
@@ -194,12 +197,14 @@ impl ToolHandler for ViewImageHandler {
         session.emit_turn_item_started(turn.as_ref(), &item).await;
         session.emit_turn_item_completed(turn.as_ref(), item).await;
 
-        Ok(ViewImageOutput {
+        Ok(boxed_tool_output(ViewImageOutput {
             image_url,
             image_detail,
-        })
+        }))
     }
 }
+
+impl CoreToolRuntime for ViewImageHandler {}
 
 pub struct ViewImageOutput {
     image_url: String,
@@ -248,6 +253,7 @@ mod tests {
     use crate::tools::context::ToolInvocation;
     use crate::turn_diff_tracker::TurnDiffTracker;
     use codex_protocol::models::PermissionProfile;
+    use core_test_support::TempDirExt;
     use pretty_assertions::assert_eq;
     use serde_json::json;
     use std::sync::Arc;
@@ -276,7 +282,15 @@ mod tests {
     #[tokio::test]
     async fn handle_passes_sandbox_context_for_local_filesystem_reads() {
         let (session, mut turn) = make_session_and_context().await;
-        let image_path = turn.cwd.join("image.png");
+        let image_dir = tempfile::tempdir().expect("create image temp dir");
+        let image_cwd = image_dir.abs();
+
+        turn.environments
+            .turn_environments
+            .first_mut()
+            .expect("default local turn environment")
+            .cwd = image_cwd.clone();
+        let image_path = image_cwd.join("image.png");
         std::fs::write(image_path.as_path(), b"not a real image").expect("write test image");
         turn.permission_profile = PermissionProfile::read_only();
 

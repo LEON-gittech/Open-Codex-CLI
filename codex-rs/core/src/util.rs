@@ -3,10 +3,9 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use codex_protocol::ThreadId;
+use codex_shell_command::parse_command::shlex_join;
 use rand::Rng;
 use tracing::error;
-
-use codex_shell_command::parse_command::shlex_join;
 
 const INITIAL_DELAY_MS: u64 = 200;
 const BACKOFF_FACTOR: f64 = 2.0;

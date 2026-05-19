@@ -10,6 +10,7 @@ use super::*;
 use crate::app_event::ThreadGoalSetMode;
 use crate::bottom_pane::prompt_args::parse_slash_name;
 use crate::bottom_pane::slash_commands;
+use codex_protocol::config_types::ServiceTier;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum SlashCommandDispatchSource {
@@ -29,7 +30,8 @@ struct PreparedSlashCommandArgs {
 const SIDE_STARTING_CONTEXT_LABEL: &str = "Side starting...";
 const SIDE_REVIEW_UNAVAILABLE_MESSAGE: &str =
     "'/side' is unavailable while code review is running.";
-const SIDE_SLASH_COMMAND_UNAVAILABLE_HINT: &str = "Press Esc to return to the main thread first.";
+const SIDE_SLASH_COMMAND_UNAVAILABLE_HINT: &str =
+    "Press Ctrl+C to return to the main thread first.";
 const GOAL_USAGE: &str = "Usage: /goal <objective>";
 const GOAL_USAGE_HINT: &str = "Example: /goal improve benchmark coverage";
 const EFFORT_USAGE: &str = "Usage: /effort [default|none|minimal|low|medium|high|xhigh]";
@@ -293,16 +295,6 @@ impl ChatWidget {
                     );
                 }
             }
-            SlashCommand::Collab => {
-                if !self.collaboration_modes_enabled() {
-                    self.add_info_message(
-                        "Collaboration modes are disabled.".to_string(),
-                        Some("Enable collaboration modes to use /collab.".to_string()),
-                    );
-                    return;
-                }
-                self.open_collaboration_modes_popup();
-            }
             SlashCommand::Side => {
                 self.request_empty_side_conversation();
             }
@@ -311,6 +303,9 @@ impl ChatWidget {
             }
             SlashCommand::Agent => {
                 self.open_agent_profiles_popup();
+            }
+            SlashCommand::Collab => {
+                self.add_app_server_stub_message("collab");
             }
             SlashCommand::MultiAgents => {
                 self.app_event_tx.send(AppEvent::OpenAgentPicker);
@@ -472,6 +467,9 @@ impl ChatWidget {
             }
             SlashCommand::Theme => {
                 self.open_theme_picker();
+            }
+            SlashCommand::Pets => {
+                self.open_pets_picker();
             }
             SlashCommand::Ps => {
                 self.add_ps_output();
@@ -667,15 +665,18 @@ impl ChatWidget {
             }
             SlashCommand::Fast => {
                 match trimmed.to_ascii_lowercase().as_str() {
-                    "on" => self.set_service_tier_selection(Some(ServiceTier::Fast)),
+                    "on" => self.set_service_tier_selection(Some(
+                        ServiceTier::Fast.request_value().to_string(),
+                    )),
                     "off" => self.set_service_tier_selection(/*service_tier*/ None),
                     "status" => {
-                        let status =
-                            if matches!(self.current_service_tier(), Some(ServiceTier::Fast)) {
-                                "on"
-                            } else {
-                                "off"
-                            };
+                        let status = if self.current_service_tier()
+                            == Some(ServiceTier::Fast.request_value())
+                        {
+                            "on"
+                        } else {
+                            "off"
+                        };
                         self.add_info_message(
                             format!("Fast mode is {status}."),
                             /*hint*/ None,
@@ -891,6 +892,17 @@ impl ChatWidget {
                 self.app_event_tx
                     .send(AppEvent::BeginWindowsSandboxGrantReadRoot { path: args });
             }
+            SlashCommand::Pets
+                if matches!(
+                    args.trim().to_ascii_lowercase().as_str(),
+                    "disable" | "disabled" | "hide" | "hidden" | "off" | "none"
+                ) =>
+            {
+                self.app_event_tx.send(AppEvent::PetDisabled);
+            }
+            SlashCommand::Pets if !trimmed.is_empty() => {
+                self.select_pet_by_id(args);
+            }
             _ => self.dispatch_command(cmd),
         }
         if source == SlashCommandDispatchSource::Live && cmd != SlashCommand::Goal {
@@ -1047,7 +1059,6 @@ impl ChatWidget {
             | SlashCommand::Personality
             | SlashCommand::Plan
             | SlashCommand::Goal
-            | SlashCommand::Collab
             | SlashCommand::Side
             | SlashCommand::Keymap
             | SlashCommand::Agent
@@ -1066,7 +1077,9 @@ impl ChatWidget {
             | SlashCommand::Hooks
             | SlashCommand::Title
             | SlashCommand::Statusline
-            | SlashCommand::Theme => QueueDrain::Stop,
+            | SlashCommand::Theme
+            | SlashCommand::Collab
+            | SlashCommand::Pets => QueueDrain::Stop,
         }
     }
 
@@ -1108,7 +1121,7 @@ impl ChatWidget {
     }
 
     fn ensure_side_command_allowed_outside_review(&mut self, cmd: SlashCommand) -> bool {
-        if cmd != SlashCommand::Side || !self.is_review_mode {
+        if cmd != SlashCommand::Side || !self.review.is_review_mode {
             return true;
         }
 

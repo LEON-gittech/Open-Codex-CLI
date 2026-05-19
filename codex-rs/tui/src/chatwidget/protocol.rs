@@ -59,6 +59,11 @@ impl ChatWidget {
                 }
             }
             ServerNotification::TurnCompleted(notification) => {
+                if replay_kind.is_none()
+                    && !self.should_accept_live_turn_output(notification.turn.id.as_str())
+                {
+                    return;
+                }
                 self.handle_turn_completed_notification(notification, replay_kind);
             }
             ServerNotification::ItemStarted(notification) => {
@@ -68,13 +73,35 @@ impl ChatWidget {
                 self.handle_item_completed_notification(notification, replay_kind);
             }
             ServerNotification::AgentMessageDelta(notification) => {
+                if replay_kind.is_none()
+                    && !self.should_accept_live_turn_output(notification.turn_id.as_str())
+                {
+                    return;
+                }
                 self.on_agent_message_delta(notification.delta);
             }
-            ServerNotification::PlanDelta(notification) => self.on_plan_delta(notification.delta),
+            ServerNotification::PlanDelta(notification) => {
+                if replay_kind.is_none()
+                    && !self.should_accept_live_turn_output(notification.turn_id.as_str())
+                {
+                    return;
+                }
+                self.on_plan_delta(notification.delta)
+            }
             ServerNotification::ReasoningSummaryTextDelta(notification) => {
+                if replay_kind.is_none()
+                    && !self.should_accept_live_turn_output(notification.turn_id.as_str())
+                {
+                    return;
+                }
                 self.on_agent_reasoning_delta(notification.delta);
             }
             ServerNotification::ReasoningTextDelta(notification) => {
+                if replay_kind.is_none()
+                    && !self.should_accept_live_turn_output(notification.turn_id.as_str())
+                {
+                    return;
+                }
                 if self.config.show_raw_agent_reasoning {
                     self.on_agent_reasoning_delta(notification.delta);
                 }
@@ -236,7 +263,9 @@ impl ChatWidget {
             | ServerNotification::ThreadRealtimeTranscriptDone(_)
             | ServerNotification::WindowsWorldWritableWarning(_)
             | ServerNotification::WindowsSandboxSetupCompleted(_)
-            | ServerNotification::AccountLoginCompleted(_) => {}
+            | ServerNotification::AccountLoginCompleted(_)
+            | ServerNotification::BtwTextDelta(_)
+            | ServerNotification::BtwCompleted(_) => {}
             ServerNotification::ContextCompacted(_) => {}
         }
     }

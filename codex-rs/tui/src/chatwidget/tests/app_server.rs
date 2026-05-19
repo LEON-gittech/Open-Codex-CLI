@@ -239,9 +239,7 @@ async fn down_lists_spawned_agent_activity_without_submitting_core_op() {
         key: "proc-1".to_string(),
         call_id: "call-terminal".to_string(),
         command_display: "sleep 300".to_string(),
-        started_at: std::time::Instant::now(),
         recent_chunks: vec!["still running".to_string()],
-        output_lines: vec!["still running".to_string()],
     });
     chat.sync_unified_exec_footer();
     chat.refresh_status_line();
@@ -254,7 +252,7 @@ async fn down_lists_spawned_agent_activity_without_submitting_core_op() {
 
     assert!(!chat.is_task_running_for_test());
     assert!(op_rx.try_recv().is_err());
-    assert!(chat.active_cell.is_none());
+    assert!(chat.transcript.active_cell.is_none());
     assert!(
         drain_insert_history(&mut rx).is_empty(),
         "down should open a bottom view instead of inserting history"
@@ -629,13 +627,13 @@ async fn spawned_agent_activity_survives_parent_turn_completion_and_can_be_liste
     handle_turn_completed(&mut chat, "turn-1", /*duration_ms*/ None);
 
     assert_eq!(chat.background_activities.len(), 1);
-    assert!(chat.active_cell.is_none());
+    assert!(chat.transcript.active_cell.is_none());
     drain_insert_history(&mut rx);
 
     chat.handle_key_event(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
 
     assert!(op_rx.try_recv().is_err());
-    assert!(chat.active_cell.is_none());
+    assert!(chat.transcript.active_cell.is_none());
     assert!(
         drain_insert_history(&mut rx).is_empty(),
         "down should open a bottom view instead of inserting history"
@@ -687,7 +685,7 @@ async fn wait_completion_clears_foregrounded_agent_activity() {
         /*replay_kind*/ None,
     );
     chat.handle_key_event(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
-    assert!(chat.active_cell.is_none());
+    assert!(chat.transcript.active_cell.is_none());
 
     chat.handle_server_notification(
         ServerNotification::ItemCompleted(ItemCompletedNotification {
@@ -718,7 +716,7 @@ async fn wait_completion_clears_foregrounded_agent_activity() {
         /*replay_kind*/ None,
     );
 
-    assert!(chat.active_cell.is_none());
+    assert!(chat.transcript.active_cell.is_none());
     assert!(chat.background_activities.is_empty());
 }
 
@@ -1316,7 +1314,7 @@ async fn live_app_server_stream_recovery_restores_previous_status_header() {
         .expect("status indicator should be visible");
     assert_eq!(status.header(), "Working");
     assert_eq!(status.details(), None);
-    assert!(chat.retry_status_header.is_none());
+    assert!(chat.status_state.retry_status_header.is_none());
 }
 
 #[tokio::test]

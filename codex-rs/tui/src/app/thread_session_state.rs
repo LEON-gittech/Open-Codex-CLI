@@ -19,7 +19,8 @@ impl App {
             .chat_widget
             .config_ref()
             .permissions
-            .permission_profile();
+            .permission_profile()
+            .clone();
         let active_permission_profile = self
             .chat_widget
             .config_ref()
@@ -94,7 +95,7 @@ impl App {
                 service_tier: self
                     .chat_widget
                     .current_service_tier()
-                    .map(|service_tier| service_tier.request_value().to_string()),
+                    .map(|service_tier| service_tier.to_string()),
                 approval_policy: AskForApproval::from(
                     self.config.permissions.approval_policy.value(),
                 ),
@@ -102,6 +103,7 @@ impl App {
                 permission_profile: permission_profile.clone(),
                 active_permission_profile: active_permission_profile.clone(),
                 cwd: thread.cwd.clone(),
+                runtime_workspace_roots: self.config.workspace_roots.clone(),
                 instruction_source_paths: Vec::new(),
                 reasoning_effort: self.chat_widget.current_reasoning_effort(),
                 message_history: None,
@@ -111,7 +113,7 @@ impl App {
         session.thread_id = thread_id;
         session.thread_name = thread.name.clone();
         session.model_provider_id = thread.model_provider.clone();
-        session.cwd = thread.cwd.clone();
+        session.set_cwd_retargeting_implicit_runtime_workspace_root(thread.cwd.clone());
         session.permission_profile = permission_profile;
         session.active_permission_profile = active_permission_profile;
         session.instruction_source_paths = Vec::new();
@@ -143,6 +145,7 @@ impl App {
             .config_ref()
             .permissions
             .permission_profile()
+            .clone()
     }
 
     fn current_active_permission_profile(&self) -> Option<ActivePermissionProfile> {
@@ -188,6 +191,7 @@ mod tests {
             permission_profile: PermissionProfile::read_only(),
             active_permission_profile: None,
             cwd: cwd.abs(),
+            runtime_workspace_roots: vec![cwd.abs()],
             instruction_source_paths: Vec::new(),
             reasoning_effort: None,
             message_history: None,
@@ -385,15 +389,14 @@ mod tests {
         app.chat_widget.set_model("main-model-override");
         app.chat_widget
             .set_reasoning_effort(Some(codex_protocol::openai_models::ReasoningEffort::High));
-        app.chat_widget
-            .set_service_tier(Some(codex_protocol::config_types::ServiceTier::Fast));
+        app.chat_widget.set_service_tier(Some("fast".to_string()));
 
         app.sync_active_thread_model_settings_to_cached_session()
             .await;
 
         let expected_main_session = ThreadSessionState {
             model: "main-model-override".to_string(),
-            service_tier: Some("priority".to_string()),
+            service_tier: Some("fast".to_string()),
             reasoning_effort: Some(codex_protocol::openai_models::ReasoningEffort::High),
             ..main_session
         };
@@ -469,11 +472,12 @@ mod tests {
             .chat_widget
             .config_ref()
             .permissions
-            .permission_profile();
+            .permission_profile()
+            .clone();
         assert_eq!(session.permission_profile, expected_permission_profile);
         assert_ne!(
             session.permission_profile,
-            app.config.permissions.permission_profile(),
+            app.config.permissions.permission_profile().clone(),
             "thread/read fallback must use the active widget permissions rather than stale app \
              config defaults"
         );

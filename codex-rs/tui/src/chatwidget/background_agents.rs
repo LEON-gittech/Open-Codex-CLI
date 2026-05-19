@@ -71,7 +71,34 @@ fn sync_collab_agent_activity_state(
             | CollabAgentStatus::Running
             | CollabAgentStatus::Interrupted
     );
+
+    // Merge metadata from the agent state into the cached metadata.
+    let mut metadata = chat.collab_agent_metadata(thread_id);
+    if state.agent_nickname.is_some() {
+        metadata.agent_nickname = state.agent_nickname.clone();
+    }
+    if state.agent_role.is_some() {
+        metadata.agent_role = state.agent_role.clone();
+    }
+    if state.phase.is_some() {
+        metadata.phase = state.phase.clone();
+    }
+    if state.lane.is_some() {
+        metadata.lane = state.lane.clone();
+    }
+    if state.ownership.is_some() {
+        metadata.ownership = state.ownership.clone();
+    }
+    if state.output_contract.is_some() {
+        metadata.output_contract = state.output_contract.clone();
+    }
+    if state.spawn_reason.is_some() {
+        metadata.spawn_reason = state.spawn_reason.clone();
+    }
+    chat.update_collab_agent_metadata(thread_id, metadata.clone());
+
     let active_matches = chat
+        .transcript
         .active_cell
         .as_ref()
         .and_then(|cell| {
@@ -82,14 +109,14 @@ fn sync_collab_agent_activity_state(
     if active_matches {
         if is_live {
             let metadata = chat.collab_agent_metadata(thread_id);
-            if let Some(cell) = chat.active_cell.as_mut().and_then(|cell| {
+            if let Some(cell) = chat.transcript.active_cell.as_mut().and_then(|cell| {
                 cell.as_any_mut()
                     .downcast_mut::<multi_agents::CollabAgentActivityCell>()
             }) {
                 cell.update(state, &metadata);
             }
         } else {
-            chat.active_cell = None;
+            chat.transcript.active_cell = None;
         }
         chat.bump_active_cell_revision();
         return true;
@@ -206,6 +233,5 @@ fn notify_collab_agent_background_completion(
 }
 
 fn refresh_task_backgrounded_from_activity_state(chat: &mut ChatWidget) {
-    chat.task_backgrounded = chat.should_mark_current_turn_backgrounded();
     chat.update_task_running_state();
 }

@@ -3,11 +3,13 @@
 //! Keeping this logic in a focused submodule makes the additive title/status
 //! behavior easier to review without paging through the rest of `chatwidget.rs`.
 
+use super::token_throughput::TokenThroughput;
 use super::*;
 use crate::bottom_pane::status_line_from_segments;
 use crate::branch_summary;
 use crate::status::format_tokens_compact;
 use codex_app_server_protocol::AskForApproval;
+use codex_protocol::config_types::ServiceTier;
 use codex_protocol::models::PermissionProfile;
 use codex_utils_sandbox_summary::summarize_permission_profile;
 
@@ -28,18 +30,6 @@ const TERMINAL_TITLE_ACTION_REQUIRED_INTERVAL: Duration = Duration::from_secs(1)
 /// Prefix shown in the terminal title when the agent is blocked on user input.
 const TERMINAL_TITLE_ACTION_REQUIRED_PREFIX: &str = "[ ! ] Action Required";
 const TERMINAL_TITLE_ACTION_REQUIRED_PREFIX_HIDDEN: &str = "[ . ] Action Required";
-
-/// Compact runtime states that can be rendered into the terminal title.
-///
-/// This is intentionally smaller than the full status-header vocabulary. The
-/// title needs short, stable labels, so callers map richer lifecycle events
-/// onto one of these buckets before rendering.
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub(super) enum TerminalTitleStatusKind {
-    Working,
-    #[default]
-    Thinking,
-}
 
 #[derive(Debug)]
 /// Parsed status-surface configuration for one refresh pass.
@@ -619,6 +609,21 @@ impl ChatWidget {
         });
     }
 
+    pub(crate) fn set_status_line_workspace_changes(
+        &mut self,
+        cwd: PathBuf,
+        stats: Option<GitWorkspaceDiffStats>,
+    ) {
+        if self.status_line_workspace_changes_cwd.as_ref() != Some(&cwd) {
+            self.status_line_workspace_changes_pending = false;
+            return;
+        }
+        self.status_line_workspace_changes = stats;
+        self.status_line_workspace_changes_pending = false;
+        self.status_line_workspace_changes_lookup_complete = true;
+        self.refresh_status_surfaces();
+    }
+
     /// Resolves a display string for one configured status-line item.
     ///
     /// Returning `None` means "omit this item for now", not "configuration error". Callers rely on
@@ -718,15 +723,14 @@ impl ChatWidget {
                 "{} out",
                 format_tokens_compact(self.status_line_total_usage().output_tokens)
             )),
-            StatusLineItem::TokenThroughput => Some(
-                self.token_throughput
-                    .as_ref()
-                    .map(TokenThroughput::display)
-                    .unwrap_or_else(token_throughput::unavailable_display),
-            ),
+            StatusLineItem::TokenThroughput => Some(token_throughput::unavailable_display()),
             StatusLineItem::SessionId => self.thread_id.map(|id| id.to_string()),
             StatusLineItem::FastMode => Some(
-                if matches!(self.current_service_tier(), Some(ServiceTier::Fast)) {
+                if self
+                    .current_service_tier()
+                    .and_then(ServiceTier::from_request_value)
+                    == Some(ServiceTier::Fast)
+                {
                     "Fast on".to_string()
                 } else {
                     "Fast off".to_string()
@@ -884,8 +888,10 @@ impl ChatWidget {
 
     fn model_with_reasoning_display_name(&self) -> String {
         let active_turn_reasoning_effort =
-            if self.user_turn_pending_start || self.foreground_turn_running() {
-                self.active_turn_reasoning_effort
+            if self.input_queue.user_turn_pending_start || self.turn_lifecycle.agent_turn_running {
+                self.turn_lifecycle
+                    .per_turn_effort_override
+                    .or_else(|| self.effective_reasoning_effort())
             } else {
                 None
             };
@@ -910,13 +916,16 @@ impl ChatWidget {
             return "Starting".to_string();
         }
 
-        match self.terminal_title_status_kind {
-            TerminalTitleStatusKind::Working | TerminalTitleStatusKind::Thinking
+        match self.status_state.terminal_title_status_kind {
+            TerminalTitleStatusKind::Working
+            | TerminalTitleStatusKind::WaitingForBackgroundTerminal
+            | TerminalTitleStatusKind::Thinking
                 if !self.bottom_pane.is_task_running() =>
             {
                 "Ready".to_string()
             }
             TerminalTitleStatusKind::Working => "Working".to_string(),
+            TerminalTitleStatusKind::WaitingForBackgroundTerminal => "Waiting".to_string(),
             TerminalTitleStatusKind::Thinking => "Thinking".to_string(),
         }
     }
@@ -979,7 +988,7 @@ impl ChatWidget {
 
     /// Formats the last `update_plan` progress snapshot for terminal-title display.
     pub(super) fn terminal_title_task_progress(&self) -> Option<String> {
-        let (completed, total) = self.last_plan_progress?;
+        let (completed, total) = self.transcript.last_plan_progress?;
         if total == 0 {
             return None;
         }
@@ -1020,8 +1029,10 @@ fn permissions_display(config: &Config) -> String {
         return active_permission_profile.id.clone();
     }
 
-    let permission_profile = config.permissions.permission_profile();
-    let summary = summarize_permission_profile(&permission_profile, config.cwd.as_path());
+    let permission_profile = config.permissions.effective_permission_profile();
+    let workspace_roots = config.effective_workspace_roots();
+    let summary =
+        summarize_permission_profile(&permission_profile, &config.cwd, workspace_roots.as_slice());
     if let Some(details) = summary.strip_prefix("read-only")
         && !details.contains("(network access enabled)")
     {

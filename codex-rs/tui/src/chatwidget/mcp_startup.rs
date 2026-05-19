@@ -11,6 +11,9 @@ use codex_app_server_protocol::McpServerStatusUpdatedNotification;
 
 use super::ChatWidget;
 
+const MCP_STARTUP_SINGLE_HEADER_PREFIX: &str = "Booting MCP server:";
+const MCP_STARTUP_MULTI_HEADER_PREFIX: &str = "Starting MCP servers";
+
 #[derive(Debug, Clone)]
 pub(crate) enum McpStartupStatus {
     Starting,
@@ -125,6 +128,43 @@ impl ChatWidget {
             self.finish_mcp_startup(failed, cancelled);
             return;
         }
+        if let Some(current) = &self.mcp_startup_status {
+            // Otherwise keep the status header focused on the remaining
+            // in-progress servers for the active round.
+            let total = current.len();
+            let mut starting: Vec<_> = current
+                .iter()
+                .filter_map(|(name, state)| {
+                    if matches!(state, McpStartupStatus::Starting) {
+                        Some(name)
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+            starting.sort();
+            if let Some(first) = starting.first() {
+                let completed = total.saturating_sub(starting.len());
+                let max_to_show = 3;
+                let mut to_show: Vec<String> = starting
+                    .iter()
+                    .take(max_to_show)
+                    .map(ToString::to_string)
+                    .collect();
+                if starting.len() > max_to_show {
+                    to_show.push("…".to_string());
+                }
+                let header = if total > 1 {
+                    format!(
+                        "{MCP_STARTUP_MULTI_HEADER_PREFIX} ({completed}/{total}): {}",
+                        to_show.join(", ")
+                    )
+                } else {
+                    format!("{MCP_STARTUP_SINGLE_HEADER_PREFIX} {first}")
+                };
+                self.set_status_header(header);
+            }
+        }
         self.request_redraw();
     }
 
@@ -150,12 +190,16 @@ impl ChatWidget {
             self.on_warning(format!("MCP startup incomplete ({})", parts.join("; ")));
         }
 
+        let mcp_startup_owned_status = self.status_header_is_mcp_startup_owned();
         self.mcp_startup_status = None;
         self.mcp_startup_ignore_updates_until_next_start = true;
         self.mcp_startup_allow_terminal_only_next_round = false;
         self.mcp_startup_pending_next_round.clear();
         self.mcp_startup_pending_next_round_saw_starting = false;
         self.update_task_running_state();
+        if self.bottom_pane.is_task_running() && mcp_startup_owned_status {
+            self.restore_reasoning_status_header();
+        }
         self.maybe_send_next_queued_input();
         self.request_redraw();
     }
@@ -195,6 +239,18 @@ impl ChatWidget {
         cancelled.sort();
         cancelled.dedup();
         self.finish_mcp_startup(failed, cancelled);
+    }
+
+    pub(super) fn status_header_is_mcp_startup_owned(&self) -> bool {
+        self.status_state
+            .current_status
+            .header
+            .starts_with(MCP_STARTUP_SINGLE_HEADER_PREFIX)
+            || self
+                .status_state
+                .current_status
+                .header
+                .starts_with(MCP_STARTUP_MULTI_HEADER_PREFIX)
     }
 
     pub(super) fn on_mcp_server_status_updated(

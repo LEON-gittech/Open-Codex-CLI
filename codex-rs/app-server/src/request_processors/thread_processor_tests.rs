@@ -62,6 +62,9 @@ mod thread_processor_behavior_tests {
     use codex_model_provider_info::ModelProviderInfo;
     use codex_model_provider_info::WireApi;
     use codex_protocol::ThreadId;
+    use codex_protocol::models::BUILT_IN_PERMISSION_PROFILE_DANGER_FULL_ACCESS;
+    use codex_protocol::models::BUILT_IN_PERMISSION_PROFILE_READ_ONLY;
+    use codex_protocol::models::BUILT_IN_PERMISSION_PROFILE_WORKSPACE;
     use codex_protocol::openai_models::ReasoningEffort;
     use codex_protocol::permissions::FileSystemAccessMode;
     use codex_protocol::permissions::FileSystemPath;
@@ -520,14 +523,16 @@ mod thread_processor_behavior_tests {
         ));
         assert!(requested_permissions_trust_project(
             &ConfigOverrides {
-                default_permissions: Some(":workspace".to_string()),
+                default_permissions: Some(BUILT_IN_PERMISSION_PROFILE_WORKSPACE.to_string()),
                 ..Default::default()
             },
             cwd.as_path()
         ));
         assert!(requested_permissions_trust_project(
             &ConfigOverrides {
-                default_permissions: Some(":danger-no-sandbox".to_string()),
+                default_permissions: Some(
+                    BUILT_IN_PERMISSION_PROFILE_DANGER_FULL_ACCESS.to_string()
+                ),
                 ..Default::default()
             },
             cwd.as_path()
@@ -541,7 +546,7 @@ mod thread_processor_behavior_tests {
         ));
         assert!(!requested_permissions_trust_project(
             &ConfigOverrides {
-                default_permissions: Some(":read-only".to_string()),
+                default_permissions: Some(BUILT_IN_PERMISSION_PROFILE_READ_ONLY.to_string()),
                 ..Default::default()
             },
             cwd.as_path()
@@ -635,6 +640,7 @@ mod thread_processor_behavior_tests {
             temp_dir.path().to_path_buf(),
             Vec::new(),
             LoaderOverrides::default(),
+            /*strict_config*/ false,
             CloudRequirementsLoader::default(),
             Arg0DispatchPaths::default(),
             Arc::new(StaticThreadConfigLoader::new(vec![
@@ -683,6 +689,7 @@ mod thread_processor_behavior_tests {
             model_provider: None,
             service_tier: Some(Some("priority".to_string())),
             cwd: None,
+            runtime_workspace_roots: None,
             approval_policy: None,
             approvals_reviewer: None,
             sandbox: None,
@@ -703,6 +710,8 @@ mod thread_processor_behavior_tests {
             permission_profile: codex_protocol::models::PermissionProfile::Disabled,
             active_permission_profile: None,
             cwd,
+            workspace_roots: Vec::new(),
+            profile_workspace_roots: Vec::new(),
             ephemeral: false,
             reasoning_effort: None,
             personality: None,

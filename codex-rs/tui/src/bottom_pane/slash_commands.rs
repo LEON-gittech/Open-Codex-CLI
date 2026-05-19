@@ -72,10 +72,7 @@ pub(crate) fn builtins_for_input(flags: BuiltinCommandFlags) -> Vec<(&'static st
     built_in_slash_commands()
         .into_iter()
         .filter(|(_, cmd)| flags.allow_elevate_sandbox || *cmd != SlashCommand::ElevateSandbox)
-        .filter(|(_, cmd)| {
-            flags.collaboration_modes_enabled
-                || !matches!(*cmd, SlashCommand::Collab | SlashCommand::Plan)
-        })
+        .filter(|(_, cmd)| flags.collaboration_modes_enabled || *cmd != SlashCommand::Plan)
         .filter(|(_, cmd)| flags.connectors_enabled || *cmd != SlashCommand::Apps)
         .filter(|(_, cmd)| flags.plugins_command_enabled || *cmd != SlashCommand::Plugins)
         .filter(|(_, cmd)| flags.goal_command_enabled || *cmd != SlashCommand::Goal)
@@ -212,11 +209,11 @@ mod tests {
         flags.service_tier_commands_enabled = false;
         let commands = vec![ServiceTierCommand {
             id: "priority".to_string(),
-            name: "fast".to_string(),
+            name: "turbo".to_string(),
             description: "fastest inference".to_string(),
         }];
 
-        assert_eq!(find_slash_command("fast", flags, &commands), None);
+        assert_eq!(find_slash_command("turbo", flags, &commands), None);
     }
 
     #[test]
@@ -323,7 +320,7 @@ mod tests {
     fn side_conversation_exact_lookup_still_resolves_service_tier_commands_for_dispatch_error() {
         let command = ServiceTierCommand {
             id: "priority".to_string(),
-            name: "fast".to_string(),
+            name: "turbo".to_string(),
             description: "fastest inference".to_string(),
         };
         let flags = BuiltinCommandFlags {
@@ -332,7 +329,7 @@ mod tests {
         };
 
         assert_eq!(
-            find_slash_command("fast", flags, from_ref(&command)),
+            find_slash_command("turbo", flags, from_ref(&command)),
             Some(SlashCommandItem::ServiceTier(command))
         );
     }

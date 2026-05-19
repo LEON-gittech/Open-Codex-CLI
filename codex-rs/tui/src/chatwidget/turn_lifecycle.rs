@@ -13,6 +13,8 @@ pub(super) struct TurnLifecycleState {
     pub(super) last_turn_id: Option<String>,
     pub(super) budget_limited_turn_ids: HashSet<String>,
     pub(super) goal_status_active_turn_started_at: Option<Instant>,
+    /// Per-turn reasoning effort override (e.g. xhigh detected in user text).
+    pub(super) per_turn_effort_override: Option<codex_protocol::openai_models::ReasoningEffort>,
 }
 
 impl TurnLifecycleState {
@@ -23,6 +25,7 @@ impl TurnLifecycleState {
             last_turn_id: None,
             budget_limited_turn_ids: HashSet::new(),
             goal_status_active_turn_started_at: None,
+            per_turn_effort_override: None,
         }
     }
 
@@ -35,6 +38,7 @@ impl TurnLifecycleState {
     pub(super) fn finish(&mut self) {
         self.agent_turn_running = false;
         self.goal_status_active_turn_started_at = None;
+        self.per_turn_effort_override = None;
         self.sleep_inhibitor
             .set_turn_running(/*turn_running*/ false);
     }
@@ -49,6 +53,7 @@ impl TurnLifecycleState {
         self.finish();
         self.last_turn_id = None;
         self.budget_limited_turn_ids.clear();
+        self.per_turn_effort_override = None;
     }
 
     pub(super) fn set_prevent_idle_sleep(&mut self, enabled: bool) {

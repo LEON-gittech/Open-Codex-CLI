@@ -1,11 +1,13 @@
 use crate::function_tool::FunctionCallError;
 use crate::tools::context::FunctionToolOutput;
 use crate::tools::context::ToolInvocation;
+use crate::tools::context::ToolOutput;
 use crate::tools::context::ToolPayload;
 use crate::tools::handlers::memory_stage_spec::MEMORY_STAGE_UPDATE_TOOL_NAME;
 use crate::tools::handlers::memory_stage_spec::create_memory_stage_update_tool;
 use crate::tools::handlers::parse_arguments;
-use crate::tools::registry::ToolHandler;
+use crate::tools::registry::CoreToolRuntime;
+use crate::tools::registry::ToolExecutor;
 use chrono::Utc;
 use codex_tools::ToolName;
 use codex_tools::ToolSpec;
@@ -45,9 +47,8 @@ struct MemoryStageUpdateResponse {
 
 pub struct MemoryStageUpdateHandler;
 
-impl ToolHandler for MemoryStageUpdateHandler {
-    type Output = FunctionToolOutput;
-
+#[async_trait::async_trait]
+impl ToolExecutor<ToolInvocation> for MemoryStageUpdateHandler {
     fn tool_name(&self) -> ToolName {
         ToolName::plain(MEMORY_STAGE_UPDATE_TOOL_NAME)
     }
@@ -56,7 +57,10 @@ impl ToolHandler for MemoryStageUpdateHandler {
         Some(create_memory_stage_update_tool())
     }
 
-    async fn handle(&self, invocation: ToolInvocation) -> Result<Self::Output, FunctionCallError> {
+    async fn handle(
+        &self,
+        invocation: ToolInvocation,
+    ) -> Result<Box<dyn ToolOutput>, FunctionCallError> {
         let ToolInvocation {
             session,
             turn,
@@ -102,9 +106,14 @@ impl ToolHandler for MemoryStageUpdateHandler {
             reason,
         })
         .map_err(|err| FunctionCallError::Fatal(err.to_string()))?;
-        Ok(FunctionToolOutput::from_text(response, Some(true)))
+        Ok(Box::new(FunctionToolOutput::from_text(
+            response,
+            Some(true),
+        )))
     }
 }
+
+impl CoreToolRuntime for MemoryStageUpdateHandler {}
 
 async fn write_ad_hoc_note(
     codex_home: &Path,

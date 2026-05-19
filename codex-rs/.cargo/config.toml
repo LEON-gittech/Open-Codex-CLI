@@ -1,0 +1,6 @@
+[target.x86_64-unknown-linux-gnu]
+linker = "/opt/rh/gcc-toolset-12/root/usr/bin/gcc"
+
+[env]
+SCCACHE_CACHE_SIZE = "50G"
+SCCACHE_DIR = "/home/admin/zzw/tmp/codex-sccache"

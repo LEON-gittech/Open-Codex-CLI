@@ -460,7 +460,7 @@ async fn exec_end_without_begin_flushes_completed_unrelated_exploring_cell() {
         "expected orphan end entry after flush: {second:?}"
     );
     assert!(
-        chat.active_cell.is_none(),
+        chat.transcript.active_cell.is_none(),
         "both entries should be finalized"
     );
 }
@@ -652,7 +652,7 @@ async fn unified_exec_background_terminal_does_not_block_chat_input() {
 
     assert!(!chat.is_task_running_for_test());
     assert_ne!(
-        chat.current_status.header,
+        chat.status_state.current_status.header,
         "Waiting for background terminal"
     );
     assert!(chat.bottom_pane.status_widget().is_none());
@@ -671,7 +671,7 @@ async fn unified_exec_background_terminal_does_not_block_chat_input() {
         ),
         other => panic!("expected chat input to submit while terminal runs, got {other:?}"),
     }
-    assert!(chat.queued_user_messages.is_empty());
+    assert!(chat.input_queue.queued_user_messages.is_empty());
 }
 
 #[tokio::test]
@@ -683,18 +683,16 @@ async fn main_turn_activity_after_background_terminal_restores_working() {
     begin_unified_exec_startup(&mut chat, "call-bg", "proc-bg", "cargo test -p codex-core");
     terminal_interaction(&mut chat, "call-bg-stdin", "proc-bg", "");
 
-    assert!(chat.agent_turn_running);
-    assert!(chat.task_backgrounded);
+    assert!(chat.turn_lifecycle.agent_turn_running);
     assert!(!chat.is_task_running_for_test());
     assert!(chat.bottom_pane.status_widget().is_none());
 
     handle_agent_message_delta(&mut chat, "Continuing with the fix.");
 
-    assert!(chat.agent_turn_running);
-    assert!(!chat.task_backgrounded);
+    assert!(chat.turn_lifecycle.agent_turn_running);
     assert!(chat.is_task_running_for_test());
     assert!(chat.bottom_pane.status_widget().is_some());
-    assert_eq!(chat.current_status.header, "Working");
+    assert_eq!(chat.status_state.current_status.header, "Working");
 }
 
 #[tokio::test]
@@ -762,14 +760,12 @@ async fn unified_exec_empty_terminal_interaction_stays_backgrounded() {
         key: "proc-1".to_string(),
         call_id: "call-1".to_string(),
         command_display: "sleep 5".to_string(),
-        started_at: std::time::Instant::now(),
         recent_chunks: Vec::new(),
-        output_lines: Vec::new(),
     });
 
     terminal_interaction(&mut chat, "call-1", "proc-1", "");
 
-    assert!(chat.active_cell.is_none());
+    assert!(chat.transcript.active_cell.is_none());
     assert!(!chat.is_task_running_for_test());
     assert!(chat.bottom_pane.status_widget().is_none());
 }
@@ -781,9 +777,7 @@ async fn down_opens_background_terminal_process_list_without_submitting_core_op(
         key: "proc-1".to_string(),
         call_id: "call-1".to_string(),
         command_display: "sleep 300".to_string(),
-        started_at: std::time::Instant::now(),
         recent_chunks: vec!["still running".to_string()],
-        output_lines: vec!["tick 01".to_string(), "still running".to_string()],
     });
     chat.sync_unified_exec_footer();
 
@@ -832,9 +826,7 @@ async fn down_enter_background_terminal_opens_shell_detail_without_core_op() {
         key: "proc-1".to_string(),
         call_id: "call-1".to_string(),
         command_display: command.to_string(),
-        started_at: std::time::Instant::now(),
         recent_chunks: vec!["tick 02".to_string()],
-        output_lines: vec!["tick 01".to_string(), "tick 02".to_string()],
     });
     chat.sync_unified_exec_footer();
 
@@ -878,9 +870,7 @@ async fn down_x_background_terminal_requests_stop_event() {
         key: "proc-1".to_string(),
         call_id: "call-1".to_string(),
         command_display: "sleep 300".to_string(),
-        started_at: std::time::Instant::now(),
         recent_chunks: vec!["tick 01".to_string()],
-        output_lines: vec!["tick 01".to_string()],
     });
     chat.sync_unified_exec_footer();
 
@@ -910,17 +900,13 @@ async fn down_x_background_terminal_stops_only_selected_process() {
         key: "proc-1".to_string(),
         call_id: "call-1".to_string(),
         command_display: "sleep 300".to_string(),
-        started_at: std::time::Instant::now(),
         recent_chunks: vec!["first".to_string()],
-        output_lines: vec!["first".to_string()],
     });
     chat.unified_exec_processes.push(UnifiedExecProcessSummary {
         key: "proc-2".to_string(),
         call_id: "call-2".to_string(),
         command_display: "sleep 600".to_string(),
-        started_at: std::time::Instant::now(),
         recent_chunks: vec!["second".to_string()],
-        output_lines: vec!["second".to_string()],
     });
     chat.sync_unified_exec_footer();
 
@@ -949,9 +935,7 @@ async fn open_background_task_panel_refreshes_when_terminal_state_changes() {
         key: "proc-1".to_string(),
         call_id: "call-1".to_string(),
         command_display: "sleep 300".to_string(),
-        started_at: std::time::Instant::now(),
         recent_chunks: vec!["tick 01".to_string()],
-        output_lines: vec!["tick 01".to_string()],
     });
     chat.sync_unified_exec_footer();
 
@@ -982,12 +966,12 @@ async fn ctrl_b_backgrounds_active_exec_without_submitting_core_op() {
     let exec = begin_exec(&mut chat, "call-bg", "sleep 5");
 
     assert!(chat.is_task_running_for_test());
-    assert!(chat.active_cell.is_some());
+    assert!(chat.transcript.active_cell.is_some());
 
     chat.handle_key_event(KeyEvent::new(KeyCode::Char('b'), KeyModifiers::CONTROL));
 
     assert!(!chat.is_task_running_for_test());
-    assert!(chat.active_cell.is_none());
+    assert!(chat.transcript.active_cell.is_none());
     assert!(
         op_rx.try_recv().is_err(),
         "backgrounding is a TUI-only action and must not submit a core op"
@@ -1042,12 +1026,12 @@ async fn down_lists_backgrounded_active_exec_without_submitting_core_op() {
 
     chat.handle_key_event(KeyEvent::new(KeyCode::Char('b'), KeyModifiers::CONTROL));
     assert!(!chat.is_task_running_for_test());
-    assert!(chat.active_cell.is_none());
+    assert!(chat.transcript.active_cell.is_none());
 
     chat.handle_key_event(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
 
     assert!(!chat.is_task_running_for_test());
-    assert!(chat.active_cell.is_none());
+    assert!(chat.transcript.active_cell.is_none());
     assert!(
         op_rx.try_recv().is_err(),
         "listing background activity is a TUI-only action"
@@ -1349,6 +1333,7 @@ async fn bang_shell_enter_while_task_running_submits_run_user_shell_command() {
         permission_profile: PermissionProfile::read_only(),
         active_permission_profile: None,
         cwd: test_path_buf("/home/user/project").abs(),
+        runtime_workspace_roots: Vec::new(),
         instruction_source_paths: Vec::new(),
         reasoning_effort: Some(ReasoningEffortConfig::default()),
         message_history: None,
@@ -1414,7 +1399,7 @@ async fn user_message_during_user_shell_command_is_queued_not_steered() {
         ),
         other => panic!("expected queued user message after shell completion, got {other:?}"),
     }
-    assert!(chat.queued_user_messages.is_empty());
+    assert!(chat.input_queue.queued_user_messages.is_empty());
 }
 
 #[tokio::test]
@@ -1453,7 +1438,7 @@ async fn esc_interrupts_user_shell_wait_and_submits_queued_message_after_interru
         ),
         other => panic!("expected queued user message after interrupt, got {other:?}"),
     }
-    assert!(chat.queued_user_messages.is_empty());
+    assert!(chat.input_queue.queued_user_messages.is_empty());
 }
 
 #[tokio::test]
@@ -1464,8 +1449,7 @@ async fn esc_with_pending_query_submits_it_instead_of_showing_quit_hint() {
     chat.on_task_started();
     chat.bottom_pane.set_task_running(/*running*/ true);
     chat.queue_user_message("run pending".into());
-    chat.agent_turn_running = false;
-    chat.task_backgrounded = false;
+    chat.turn_lifecycle.agent_turn_running = false;
     chat.bottom_pane.set_task_running(/*running*/ false);
     assert_eq!(
         chat.queued_user_message_texts(),
@@ -1485,7 +1469,7 @@ async fn esc_with_pending_query_submits_it_instead_of_showing_quit_hint() {
         ),
         other => panic!("expected pending user message to submit on Esc, got {other:?}"),
     }
-    assert!(chat.queued_user_messages.is_empty());
+    assert!(chat.input_queue.queued_user_messages.is_empty());
 }
 
 #[tokio::test]
@@ -1494,8 +1478,7 @@ async fn esc_with_pending_query_ignores_stale_task_running_flag() {
     chat.thread_id = Some(ThreadId::new());
 
     chat.queue_user_message("send despite stale running".into());
-    chat.agent_turn_running = false;
-    chat.task_backgrounded = false;
+    chat.turn_lifecycle.agent_turn_running = false;
     chat.bottom_pane.set_task_running(/*running*/ true);
 
     chat.handle_key_event(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
@@ -1511,7 +1494,7 @@ async fn esc_with_pending_query_ignores_stale_task_running_flag() {
         ),
         other => panic!("expected pending user message to submit on Esc, got {other:?}"),
     }
-    assert!(chat.queued_user_messages.is_empty());
+    assert!(chat.input_queue.queued_user_messages.is_empty());
 }
 
 #[tokio::test]
@@ -1522,8 +1505,7 @@ async fn esc_with_pending_query_prefers_send_over_edit_queued_message() {
 
     chat.on_task_started();
     chat.queue_user_message("send me".into());
-    chat.agent_turn_running = false;
-    chat.task_backgrounded = false;
+    chat.turn_lifecycle.agent_turn_running = false;
     chat.bottom_pane.set_task_running(/*running*/ false);
 
     chat.handle_key_event(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
@@ -1539,7 +1521,7 @@ async fn esc_with_pending_query_prefers_send_over_edit_queued_message() {
         ),
         other => panic!("expected pending user message to submit on Esc, got {other:?}"),
     }
-    assert!(chat.queued_user_messages.is_empty());
+    assert!(chat.input_queue.queued_user_messages.is_empty());
 }
 
 #[tokio::test]

@@ -258,7 +258,7 @@ impl App {
         let config = self.chat_widget.config_ref();
         let cwd = config.cwd.to_path_buf();
         let approval_policy = AskForApproval::from(config.permissions.approval_policy.value());
-        let permission_profile = config.permissions.permission_profile();
+        let permission_profile = config.permissions.permission_profile().clone();
         let service_tier = match config.service_tier.clone() {
             Some(service_tier) => Some(Some(service_tier)),
             None if config.notices.fast_default_opt_out == Some(true) => Some(None),
