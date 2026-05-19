@@ -2809,6 +2809,15 @@ pub struct TurnContextNetworkItem {
     pub denied_domains: Vec<String>,
 }
 
+fn deserialize_present_optional_string<'de, D>(
+    deserializer: D,
+) -> Result<Option<Option<String>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Option::<String>::deserialize(deserializer).map(Some)
+}
+
 /// Persist once per real user turn after computing that turn's model-visible
 /// context updates, and again after mid-turn compaction when replacement
 /// history re-establishes full context, so resume/fork replay can recover the
@@ -2839,6 +2848,12 @@ pub struct TurnContextItem {
     pub collaboration_mode: Option<CollaborationMode>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub realtime_active: Option<bool>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "deserialize_present_optional_string"
+    )]
+    pub service_tier: Option<Option<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub effort: Option<ReasoningEffortConfig>,
     pub summary: ReasoningSummaryConfig,
@@ -5243,6 +5258,7 @@ mod tests {
             personality: None,
             collaboration_mode: None,
             realtime_active: None,
+            service_tier: None,
             effort: None,
             summary: ReasoningSummaryConfig::Auto,
             user_instructions: None,

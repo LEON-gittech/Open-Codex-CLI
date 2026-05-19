@@ -40,6 +40,7 @@ fn resume_history(
         personality: None,
         collaboration_mode: None,
         realtime_active: None,
+        service_tier: None,
         effort: config.model_reasoning_effort,
         summary: config
             .model_reasoning_summary

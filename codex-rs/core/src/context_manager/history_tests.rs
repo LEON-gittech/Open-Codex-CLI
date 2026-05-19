@@ -134,6 +134,7 @@ fn reference_context_item() -> TurnContextItem {
         personality: None,
         collaboration_mode: None,
         realtime_active: Some(false),
+        service_tier: None,
         effort: None,
         summary: ReasoningSummary::Auto,
         user_instructions: None,

@@ -27,6 +27,7 @@ struct RolloutResumeState {
     cwd: Option<PathBuf>,
     model: Option<String>,
     reasoning_effort: Option<ReasoningEffort>,
+    service_tier: Option<Option<String>>,
 }
 
 #[derive(Deserialize)]
@@ -40,6 +41,17 @@ struct TurnContextResumeState {
     cwd: PathBuf,
     model: String,
     reasoning_effort: Option<ReasoningEffort>,
+    #[serde(default, deserialize_with = "deserialize_present_optional_string")]
+    service_tier: Option<Option<String>>,
+}
+
+fn deserialize_present_optional_string<'de, D>(
+    deserializer: D,
+) -> Result<Option<Option<String>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Option::<String>::deserialize(deserializer).map(Some)
 }
 
 #[derive(Deserialize)]
@@ -80,6 +92,7 @@ pub(crate) async fn read_session_model(
 pub(crate) struct SessionModelSettings {
     pub(crate) model: Option<String>,
     pub(crate) reasoning_effort: Option<ReasoningEffort>,
+    pub(crate) service_tier: Option<Option<String>>,
 }
 
 pub(crate) async fn read_session_model_settings(
@@ -89,11 +102,14 @@ pub(crate) async fn read_session_model_settings(
 ) -> Option<SessionModelSettings> {
     if let Some(state_db_ctx) = state_db_ctx
         && let Ok(Some(metadata)) = state_db_ctx.get_thread(thread_id).await
-        && (metadata.model.is_some() || metadata.reasoning_effort.is_some())
+        && (metadata.model.is_some()
+            || metadata.reasoning_effort.is_some()
+            || metadata.service_tier.is_some())
     {
         return Some(SessionModelSettings {
             model: metadata.model,
             reasoning_effort: metadata.reasoning_effort,
+            service_tier: metadata.service_tier,
         });
     }
 
@@ -102,6 +118,7 @@ pub(crate) async fn read_session_model_settings(
     Some(SessionModelSettings {
         model: state.model,
         reasoning_effort: state.reasoning_effort,
+        service_tier: state.service_tier,
     })
 }
 
@@ -196,6 +213,7 @@ async fn read_rollout_resume_state(path: &Path) -> io::Result<RolloutResumeState
                     state.cwd = Some(turn_context.cwd);
                     state.model = Some(turn_context.model);
                     state.reasoning_effort = turn_context.reasoning_effort;
+                    state.service_tier = turn_context.service_tier;
                 }
             }
             _ => {}

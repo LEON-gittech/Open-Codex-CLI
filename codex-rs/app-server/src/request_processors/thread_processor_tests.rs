@@ -719,6 +719,7 @@ mod thread_processor_behavior_tests {
     fn test_thread_metadata(
         model: Option<&str>,
         reasoning_effort: Option<ReasoningEffort>,
+        service_tier: Option<Option<&str>>,
     ) -> Result<ThreadMetadata> {
         let thread_id = ThreadId::from_string("3f941c35-29b3-493b-b0a4-e25800d9aeb0")?;
         let mut builder = ThreadMetadataBuilder::new(
@@ -731,13 +732,14 @@ mod thread_processor_behavior_tests {
         let mut metadata = builder.build("mock_provider");
         metadata.model = model.map(ToString::to_string);
         metadata.reasoning_effort = reasoning_effort;
+        metadata.service_tier = service_tier.map(|tier| tier.map(ToString::to_string));
         Ok(metadata)
     }
 
     #[test]
     fn summary_from_thread_metadata_formats_protocol_timestamps_as_seconds() -> Result<()> {
         let mut metadata =
-            test_thread_metadata(/*model*/ None, /*reasoning_effort*/ None)?;
+            test_thread_metadata(/*model*/ None, /*reasoning_effort*/ None, None)?;
         metadata.created_at =
             DateTime::parse_from_rfc3339("2025-09-05T16:53:11.123Z")?.with_timezone(&Utc);
         metadata.updated_at =
@@ -756,7 +758,7 @@ mod thread_processor_behavior_tests {
         let mut request_overrides = None;
         let mut typesafe_overrides = ConfigOverrides::default();
         let persisted_metadata =
-            test_thread_metadata(Some("gpt-5.1-codex-max"), Some(ReasoningEffort::High))?;
+            test_thread_metadata(Some("gpt-5.1-codex-max"), Some(ReasoningEffort::High), None)?;
 
         merge_persisted_resume_metadata(
             &mut request_overrides,
@@ -793,7 +795,7 @@ mod thread_processor_behavior_tests {
             ..Default::default()
         };
         let persisted_metadata =
-            test_thread_metadata(Some("gpt-5.1-codex-max"), Some(ReasoningEffort::High))?;
+            test_thread_metadata(Some("gpt-5.1-codex-max"), Some(ReasoningEffort::High), None)?;
 
         merge_persisted_resume_metadata(
             &mut request_overrides,
@@ -822,7 +824,7 @@ mod thread_processor_behavior_tests {
         )]));
         let mut typesafe_overrides = ConfigOverrides::default();
         let persisted_metadata =
-            test_thread_metadata(Some("gpt-5.1-codex-max"), Some(ReasoningEffort::High))?;
+            test_thread_metadata(Some("gpt-5.1-codex-max"), Some(ReasoningEffort::High), None)?;
 
         merge_persisted_resume_metadata(
             &mut request_overrides,
@@ -843,7 +845,7 @@ mod thread_processor_behavior_tests {
     }
 
     #[test]
-    fn merge_persisted_resume_metadata_skips_persisted_values_when_provider_overridden()
+    fn merge_persisted_resume_metadata_uses_persisted_values_when_only_provider_is_present()
     -> Result<()> {
         let mut request_overrides = None;
         let mut typesafe_overrides = ConfigOverrides {
@@ -851,7 +853,7 @@ mod thread_processor_behavior_tests {
             ..Default::default()
         };
         let persisted_metadata =
-            test_thread_metadata(Some("gpt-5.1-codex-max"), Some(ReasoningEffort::High))?;
+            test_thread_metadata(Some("gpt-5.1-codex-max"), Some(ReasoningEffort::High), None)?;
 
         merge_persisted_resume_metadata(
             &mut request_overrides,
@@ -859,9 +861,21 @@ mod thread_processor_behavior_tests {
             &persisted_metadata,
         );
 
-        assert_eq!(typesafe_overrides.model, None);
-        assert_eq!(typesafe_overrides.model_provider, Some("oss".to_string()));
-        assert_eq!(request_overrides, None);
+        assert_eq!(
+            typesafe_overrides.model,
+            Some("gpt-5.1-codex-max".to_string())
+        );
+        assert_eq!(
+            typesafe_overrides.model_provider,
+            Some("mock_provider".to_string())
+        );
+        assert_eq!(
+            request_overrides,
+            Some(HashMap::from([(
+                "model_reasoning_effort".to_string(),
+                serde_json::Value::String("high".to_string()),
+            )]))
+        );
         Ok(())
     }
 
@@ -874,7 +888,7 @@ mod thread_processor_behavior_tests {
         )]));
         let mut typesafe_overrides = ConfigOverrides::default();
         let persisted_metadata =
-            test_thread_metadata(Some("gpt-5.1-codex-max"), Some(ReasoningEffort::High))?;
+            test_thread_metadata(Some("gpt-5.1-codex-max"), Some(ReasoningEffort::High), None)?;
 
         merge_persisted_resume_metadata(
             &mut request_overrides,
@@ -899,7 +913,7 @@ mod thread_processor_behavior_tests {
         let mut request_overrides = None;
         let mut typesafe_overrides = ConfigOverrides::default();
         let persisted_metadata =
-            test_thread_metadata(/*model*/ None, /*reasoning_effort*/ None)?;
+            test_thread_metadata(/*model*/ None, /*reasoning_effort*/ None, None)?;
 
         merge_persisted_resume_metadata(
             &mut request_overrides,
@@ -913,6 +927,64 @@ mod thread_processor_behavior_tests {
             Some("mock_provider".to_string())
         );
         assert_eq!(request_overrides, None);
+        Ok(())
+    }
+
+    #[test]
+    fn merge_persisted_resume_metadata_restores_persisted_fast_service_tier() -> Result<()> {
+        let mut request_overrides = None;
+        let mut typesafe_overrides = ConfigOverrides::default();
+        let persisted_metadata = test_thread_metadata(
+            Some("gpt-5.1-codex-max"),
+            Some(ReasoningEffort::High),
+            Some(Some("priority")),
+        )?;
+
+        merge_persisted_resume_metadata(
+            &mut request_overrides,
+            &mut typesafe_overrides,
+            &persisted_metadata,
+        );
+
+        assert_eq!(
+            typesafe_overrides.service_tier,
+            Some(Some("priority".to_string()))
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn merge_persisted_resume_metadata_restores_persisted_standard_service_tier() -> Result<()> {
+        let mut request_overrides = None;
+        let mut typesafe_overrides = ConfigOverrides {
+            service_tier: Some(Some("priority".to_string())),
+            ..Default::default()
+        };
+        let persisted_metadata = test_thread_metadata(
+            Some("gpt-5.1-codex-max"),
+            Some(ReasoningEffort::High),
+            Some(None),
+        )?;
+
+        merge_persisted_resume_metadata(
+            &mut request_overrides,
+            &mut typesafe_overrides,
+            &persisted_metadata,
+        );
+
+        assert_eq!(
+            typesafe_overrides.service_tier,
+            Some(Some("priority".to_string())),
+            "explicit request service tier should still win"
+        );
+
+        let mut typesafe_overrides = ConfigOverrides::default();
+        merge_persisted_resume_metadata(
+            &mut request_overrides,
+            &mut typesafe_overrides,
+            &persisted_metadata,
+        );
+        assert_eq!(typesafe_overrides.service_tier, Some(None));
         Ok(())
     }
 

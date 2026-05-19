@@ -1359,6 +1359,7 @@ async fn resume_candidate_matches_cwd_reads_latest_turn_context() -> std::io::Re
             personality: None,
             collaboration_mode: None,
             realtime_active: None,
+            service_tier: None,
             effort: None,
             summary: ReasoningSummaryConfig::Auto,
             user_instructions: None,

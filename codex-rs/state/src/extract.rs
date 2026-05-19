@@ -76,6 +76,9 @@ fn apply_turn_context(metadata: &mut ThreadMetadata, turn_ctx: &TurnContextItem)
     }
     metadata.model = Some(turn_ctx.model.clone());
     metadata.reasoning_effort = turn_ctx.effort;
+    if let Some(service_tier) = &turn_ctx.service_tier {
+        metadata.service_tier = Some(service_tier.clone());
+    }
     metadata.sandbox_policy = enum_to_string(&turn_ctx.sandbox_policy);
     metadata.approval_mode = enum_to_string(&turn_ctx.approval_policy);
 }
@@ -348,6 +351,7 @@ mod tests {
                 personality: None,
                 collaboration_mode: None,
                 realtime_active: None,
+                service_tier: None,
                 effort: None,
                 summary: ReasoningSummary::Auto,
                 user_instructions: None,
@@ -388,6 +392,7 @@ mod tests {
                 personality: None,
                 collaboration_mode: None,
                 realtime_active: None,
+                service_tier: None,
                 effort: Some(ReasoningEffort::High),
                 summary: ReasoningSummary::Auto,
                 user_instructions: None,
@@ -402,7 +407,7 @@ mod tests {
     }
 
     #[test]
-    fn turn_context_sets_model_and_reasoning_effort() {
+    fn turn_context_sets_model_reasoning_effort_and_service_tier() {
         let mut metadata = metadata_for_test();
 
         apply_rollout_item(
@@ -422,6 +427,7 @@ mod tests {
                 personality: None,
                 collaboration_mode: None,
                 realtime_active: None,
+                service_tier: Some(Some("priority".to_string())),
                 effort: Some(ReasoningEffort::High),
                 summary: ReasoningSummary::Auto,
                 user_instructions: None,
@@ -434,6 +440,7 @@ mod tests {
 
         assert_eq!(metadata.model.as_deref(), Some("gpt-5"));
         assert_eq!(metadata.reasoning_effort, Some(ReasoningEffort::High));
+        assert_eq!(metadata.service_tier, Some(Some("priority".to_string())));
     }
 
     #[test]
@@ -486,6 +493,7 @@ mod tests {
             model_provider: "openai".to_string(),
             model: None,
             reasoning_effort: None,
+            service_tier: None,
             cwd: PathBuf::from("/tmp"),
             cli_version: "0.0.0".to_string(),
             title: String::new(),

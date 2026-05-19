@@ -144,6 +144,8 @@ SELECT
     threads.model_provider,
     threads.model,
     threads.reasoning_effort,
+    threads.service_tier_known,
+    threads.service_tier,
     threads.cwd,
     threads.cli_version,
     threads.title,

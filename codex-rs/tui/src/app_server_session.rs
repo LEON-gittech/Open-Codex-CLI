@@ -1375,9 +1375,9 @@ fn thread_resume_params_from_config(
         .flatten();
     ThreadResumeParams {
         thread_id: thread_id.to_string(),
-        model: config.model.clone(),
-        model_provider: thread_params_mode.model_provider_from_config(&config),
-        service_tier: service_tier_override_from_config(&config),
+        model: None,
+        model_provider: None,
+        service_tier: None,
         cwd: thread_cwd_from_config(&config, thread_params_mode, remote_cwd_override),
         approval_policy: Some(config.permissions.approval_policy.value().into()),
         approvals_reviewer: approvals_reviewer_override_from_config(&config),

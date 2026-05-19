@@ -152,18 +152,22 @@ fn merge_persisted_resume_metadata(
     typesafe_overrides: &mut ConfigOverrides,
     persisted_metadata: &ThreadMetadata,
 ) {
-    if has_model_resume_override(request_overrides.as_ref(), typesafe_overrides) {
-        return;
+    if !has_model_resume_override(request_overrides.as_ref(), typesafe_overrides) {
+        typesafe_overrides.model = persisted_metadata.model.clone();
+        typesafe_overrides.model_provider = Some(persisted_metadata.model_provider.clone());
+
+        if let Some(reasoning_effort) = persisted_metadata.reasoning_effort {
+            request_overrides.get_or_insert_with(HashMap::new).insert(
+                "model_reasoning_effort".to_string(),
+                serde_json::Value::String(reasoning_effort.to_string()),
+            );
+        }
     }
 
-    typesafe_overrides.model = persisted_metadata.model.clone();
-    typesafe_overrides.model_provider = Some(persisted_metadata.model_provider.clone());
-
-    if let Some(reasoning_effort) = persisted_metadata.reasoning_effort {
-        request_overrides.get_or_insert_with(HashMap::new).insert(
-            "model_reasoning_effort".to_string(),
-            serde_json::Value::String(reasoning_effort.to_string()),
-        );
+    if typesafe_overrides.service_tier.is_none()
+        && let Some(service_tier) = &persisted_metadata.service_tier
+    {
+        typesafe_overrides.service_tier = Some(service_tier.clone());
     }
 }
 
@@ -196,7 +200,6 @@ fn has_model_resume_override(
     typesafe_overrides: &ConfigOverrides,
 ) -> bool {
     typesafe_overrides.model.is_some()
-        || typesafe_overrides.model_provider.is_some()
         || request_overrides.is_some_and(|overrides| overrides.contains_key("model"))
         || request_overrides
             .is_some_and(|overrides| overrides.contains_key("model_reasoning_effort"))

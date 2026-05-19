@@ -23,6 +23,7 @@ use crate::protocol::v2::UserInput;
 use crate::protocol::v2::WebSearchAction;
 use codex_protocol::items::parse_hook_prompt_message;
 use codex_protocol::models::MessagePhase;
+use codex_protocol::protocol::AgentMessageContentDeltaEvent;
 use codex_protocol::protocol::AgentReasoningEvent;
 use codex_protocol::protocol::AgentReasoningRawContentEvent;
 use codex_protocol::protocol::AgentStatus;
@@ -55,6 +56,7 @@ use codex_protocol::protocol::ViewImageToolCallEvent;
 use codex_protocol::protocol::WebSearchBeginEvent;
 use codex_protocol::protocol::WebSearchEndEvent;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use tracing::warn;
 use uuid::Uuid;
 
@@ -97,6 +99,7 @@ pub struct ThreadHistoryBuilder {
     next_item_index: i64,
     current_rollout_index: usize,
     next_rollout_index: usize,
+    delta_agent_message_item_ids: HashSet<String>,
 }
 
 impl Default for ThreadHistoryBuilder {
@@ -113,6 +116,7 @@ impl ThreadHistoryBuilder {
             next_item_index: 1,
             current_rollout_index: 0,
             next_rollout_index: 0,
+            delta_agent_message_item_ids: HashSet::new(),
         }
     }
 
@@ -171,6 +175,9 @@ impl ThreadHistoryBuilder {
     pub fn handle_event(&mut self, event: &EventMsg) {
         match event {
             EventMsg::UserMessage(payload) => self.handle_user_message(payload),
+            EventMsg::AgentMessageContentDelta(payload) => {
+                self.handle_agent_message_content_delta(payload)
+            }
             EventMsg::AgentMessage(payload) => self.handle_agent_message(
                 payload.message.clone(),
                 payload.phase.clone(),
@@ -300,6 +307,28 @@ impl ThreadHistoryBuilder {
             return;
         }
 
+        let delta_backed_last_id = self.ensure_turn().items.last().and_then(|item| {
+            if matches!(item, ThreadItem::AgentMessage { .. }) {
+                Some(item.id().to_string())
+            } else {
+                None
+            }
+        });
+        if let Some(id) = delta_backed_last_id
+            && self.delta_agent_message_item_ids.remove(&id)
+            && let Some(ThreadItem::AgentMessage {
+                text: existing_text,
+                phase: existing_phase,
+                memory_citation: existing_memory_citation,
+                ..
+            }) = self.ensure_turn().items.last_mut()
+        {
+            *existing_text = text;
+            *existing_phase = phase;
+            *existing_memory_citation = memory_citation;
+            return;
+        }
+
         let id = self.next_item_id();
         self.ensure_turn().items.push(ThreadItem::AgentMessage {
             id,
@@ -307,6 +336,52 @@ impl ThreadHistoryBuilder {
             phase,
             memory_citation,
         });
+    }
+
+    fn handle_agent_message_content_delta(&mut self, payload: &AgentMessageContentDeltaEvent) {
+        if payload.delta.is_empty() {
+            return;
+        }
+
+        self.delta_agent_message_item_ids
+            .insert(payload.item_id.clone());
+
+        let append_delta = |items: &mut Vec<ThreadItem>| {
+            if let Some(ThreadItem::AgentMessage { text, .. }) =
+                items.iter_mut().find(|item| item.id() == payload.item_id)
+            {
+                text.push_str(&payload.delta);
+                return;
+            }
+
+            items.push(ThreadItem::AgentMessage {
+                id: payload.item_id.clone(),
+                text: payload.delta.clone(),
+                phase: None,
+                memory_citation: None,
+            });
+        };
+
+        if let Some(turn) = self.current_turn.as_mut()
+            && turn.id == payload.turn_id
+        {
+            append_delta(&mut turn.items);
+            return;
+        }
+
+        if let Some(turn) = self
+            .turns
+            .iter_mut()
+            .find(|turn| turn.id == payload.turn_id)
+        {
+            append_delta(&mut turn.items);
+            return;
+        }
+
+        warn!(
+            item_id = payload.item_id,
+            "dropping agent message delta for unknown turn id `{}`", payload.turn_id
+        );
     }
 
     fn handle_agent_reasoning(&mut self, payload: &AgentReasoningEvent) {
@@ -1254,6 +1329,7 @@ mod tests {
     use codex_protocol::models::MessagePhase as CoreMessagePhase;
     use codex_protocol::models::WebSearchAction as CoreWebSearchAction;
     use codex_protocol::parse_command::ParsedCommand;
+    use codex_protocol::protocol::AgentMessageContentDeltaEvent;
     use codex_protocol::protocol::AgentMessageEvent;
     use codex_protocol::protocol::AgentReasoningEvent;
     use codex_protocol::protocol::AgentReasoningRawContentEvent;
@@ -1401,7 +1477,7 @@ mod tests {
                 local_images: Vec::new(),
             }),
             EventMsg::ItemStarted(ItemStartedEvent {
-                thread_id,
+                thread_id: thread_id.clone(),
                 turn_id: turn_id.to_string(),
                 item: CoreTurnItem::UserMessage(CoreUserMessageItem {
                     id: "user-item-id".to_string(),
@@ -1459,6 +1535,86 @@ mod tests {
                 phase: Some(MessagePhase::FinalAnswer),
                 memory_citation: None,
             }
+        );
+    }
+
+    #[test]
+    fn active_turn_snapshot_accumulates_agent_message_deltas() {
+        let thread_id = ThreadId::new().to_string();
+        let mut builder = ThreadHistoryBuilder::new();
+
+        builder.handle_event(&EventMsg::TurnStarted(TurnStartedEvent {
+            turn_id: "turn-1".to_string(),
+            started_at: None,
+            model_context_window: None,
+            collaboration_mode_kind: Default::default(),
+        }));
+        builder.handle_event(&EventMsg::AgentMessageContentDelta(
+            AgentMessageContentDeltaEvent {
+                thread_id: thread_id.clone(),
+                turn_id: "turn-1".to_string(),
+                item_id: "msg-1".to_string(),
+                delta: "partial ".to_string(),
+            },
+        ));
+        builder.handle_event(&EventMsg::AgentMessageContentDelta(
+            AgentMessageContentDeltaEvent {
+                thread_id: thread_id.clone(),
+                turn_id: "turn-1".to_string(),
+                item_id: "msg-1".to_string(),
+                delta: "reply".to_string(),
+            },
+        ));
+
+        let turn = builder
+            .active_turn_snapshot()
+            .expect("active turn snapshot");
+        assert_eq!(
+            turn.items,
+            vec![ThreadItem::AgentMessage {
+                id: "msg-1".to_string(),
+                text: "partial reply".to_string(),
+                phase: None,
+                memory_citation: None,
+            }]
+        );
+    }
+
+    #[test]
+    fn final_agent_message_replaces_delta_backed_message() {
+        let thread_id = ThreadId::new().to_string();
+        let mut builder = ThreadHistoryBuilder::new();
+
+        builder.handle_event(&EventMsg::TurnStarted(TurnStartedEvent {
+            turn_id: "turn-1".to_string(),
+            started_at: None,
+            model_context_window: None,
+            collaboration_mode_kind: Default::default(),
+        }));
+        builder.handle_event(&EventMsg::AgentMessageContentDelta(
+            AgentMessageContentDeltaEvent {
+                thread_id: thread_id.clone(),
+                turn_id: "turn-1".to_string(),
+                item_id: "msg-1".to_string(),
+                delta: "streamed prefix".to_string(),
+            },
+        ));
+        builder.handle_event(&EventMsg::AgentMessage(AgentMessageEvent {
+            message: "Final reply".to_string(),
+            phase: Some(CoreMessagePhase::FinalAnswer),
+            memory_citation: None,
+        }));
+
+        let turns = builder.finish();
+        assert_eq!(turns.len(), 1);
+        assert_eq!(
+            turns[0].items,
+            vec![ThreadItem::AgentMessage {
+                id: "msg-1".to_string(),
+                text: "Final reply".to_string(),
+                phase: Some(MessagePhase::FinalAnswer),
+                memory_citation: None,
+            }]
         );
     }
 

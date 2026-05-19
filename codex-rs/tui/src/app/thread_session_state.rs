@@ -126,9 +126,13 @@ impl App {
                 session.model.clear();
             }
             session.reasoning_effort = settings.reasoning_effort;
+            if let Some(service_tier) = settings.service_tier {
+                session.service_tier = service_tier;
+            }
         } else if thread.path.is_some() {
             session.model.clear();
             session.reasoning_effort = None;
+            session.service_tier = None;
         }
         session.message_history = None;
         session
@@ -493,7 +497,8 @@ mod tests {
                     "payload": {
                         "cwd": temp_dir.path(),
                         "model": "target-model",
-                        "reasoning_effort": "low"
+                        "reasoning_effort": "low",
+                        "service_tier": "priority"
                     }
                 })
             ),
@@ -537,5 +542,6 @@ mod tests {
             session.reasoning_effort,
             Some(codex_protocol::openai_models::ReasoningEffort::Low)
         );
+        assert_eq!(session.service_tier, Some("priority".to_string()));
     }
 }

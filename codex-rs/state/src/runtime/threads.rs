@@ -20,6 +20,8 @@ SELECT
     threads.model_provider,
     threads.model,
     threads.reasoning_effort,
+    threads.service_tier_known,
+    threads.service_tier,
     threads.cwd,
     threads.cli_version,
     threads.title,
@@ -496,6 +498,8 @@ INSERT INTO threads (
     model_provider,
     model,
     reasoning_effort,
+    service_tier_known,
+    service_tier,
     cwd,
     cli_version,
     title,
@@ -510,7 +514,7 @@ INSERT INTO threads (
     git_branch,
     git_origin_url,
     memory_mode
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(id) DO NOTHING
             "#,
         )
@@ -537,6 +541,8 @@ ON CONFLICT(id) DO NOTHING
                 .as_ref()
                 .map(crate::extract::enum_to_string),
         )
+        .bind(metadata.service_tier.is_some())
+        .bind(metadata.service_tier.as_ref().and_then(Clone::clone))
         .bind(metadata.cwd.display().to_string())
         .bind(metadata.cli_version.as_str())
         .bind(metadata.title.as_str())
@@ -702,6 +708,8 @@ INSERT INTO threads (
     model_provider,
     model,
     reasoning_effort,
+    service_tier_known,
+    service_tier,
     cwd,
     cli_version,
     title,
@@ -716,7 +724,7 @@ INSERT INTO threads (
     git_branch,
     git_origin_url,
     memory_mode
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(id) DO UPDATE SET
     rollout_path = excluded.rollout_path,
     created_at = excluded.created_at,
@@ -731,6 +739,8 @@ ON CONFLICT(id) DO UPDATE SET
     model_provider = excluded.model_provider,
     model = excluded.model,
     reasoning_effort = excluded.reasoning_effort,
+    service_tier_known = excluded.service_tier_known,
+    service_tier = excluded.service_tier,
     cwd = excluded.cwd,
     cli_version = excluded.cli_version,
     title = excluded.title,
@@ -769,6 +779,8 @@ ON CONFLICT(id) DO UPDATE SET
                 .as_ref()
                 .map(crate::extract::enum_to_string),
         )
+        .bind(metadata.service_tier.is_some())
+        .bind(metadata.service_tier.as_ref().and_then(Clone::clone))
         .bind(metadata.cwd.display().to_string())
         .bind(metadata.cli_version.as_str())
         .bind(metadata.title.as_str())
@@ -987,6 +999,8 @@ SELECT
     threads.model_provider,
     threads.model,
     threads.reasoning_effort,
+    threads.service_tier_known,
+    threads.service_tier,
     threads.cwd,
     threads.cli_version,
     threads.title,
@@ -1208,6 +1222,51 @@ mod tests {
                 .await
                 .expect("memory mode should remain readable");
         assert_eq!(memory_mode, "disabled");
+    }
+
+    #[tokio::test]
+    async fn upsert_thread_round_trips_service_tier_state() {
+        let codex_home = unique_temp_dir();
+        let runtime = StateRuntime::init(codex_home.clone(), "test-provider".to_string())
+            .await
+            .expect("state db should initialize");
+        let fast_thread_id =
+            ThreadId::from_string("00000000-0000-0000-0000-000000000124").expect("valid thread id");
+        let standard_thread_id =
+            ThreadId::from_string("00000000-0000-0000-0000-000000000125").expect("valid thread id");
+
+        let mut fast_metadata =
+            test_thread_metadata(&codex_home, fast_thread_id, codex_home.clone());
+        fast_metadata.service_tier = Some(Some("priority".to_string()));
+        runtime
+            .upsert_thread(&fast_metadata)
+            .await
+            .expect("fast thread should upsert");
+
+        let fast_persisted = runtime
+            .get_thread(fast_thread_id)
+            .await
+            .expect("fast thread should load")
+            .expect("fast thread should exist");
+        assert_eq!(
+            fast_persisted.service_tier,
+            Some(Some("priority".to_string()))
+        );
+
+        let mut standard_metadata =
+            test_thread_metadata(&codex_home, standard_thread_id, codex_home.clone());
+        standard_metadata.service_tier = Some(None);
+        runtime
+            .upsert_thread(&standard_metadata)
+            .await
+            .expect("standard thread should upsert");
+
+        let standard_persisted = runtime
+            .get_thread(standard_thread_id)
+            .await
+            .expect("standard thread should load")
+            .expect("standard thread should exist");
+        assert_eq!(standard_persisted.service_tier, Some(None));
     }
 
     #[tokio::test]
