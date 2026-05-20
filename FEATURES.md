@@ -90,6 +90,14 @@ Fast-moving prompt packs, hooks, setup flows, and project policies are better ha
 
 ## Release Notes
 
+### 0.131.3 - 2026-05-21
+
+- Merge upstream `openai/codex` through `cfa16fcc2e`, bringing in 271 upstream commits after the fork point.
+- Preserve Open Codex fork behavior across the merge, including memory overlay/browser, rewind/revoke UX, persistent `Shift+Tab` speed toggle, `/btw`, `/effort`, subagent tracking, and git attribution.
+- Reconcile upstream ThreadSettings, `Op::UserInput`, MCP runtime environment, permission profile, rate-limit, status-surface, and package-layout changes with fork-specific runtime state.
+- Keep stale-turn output guards, foreground/background task state, and fork-correct package/update identity intact after the upstream merge.
+- Restore the Rust workspace release version so built binaries report `0.131.3` instead of upstream source-build `0.0.0`.
+
 ### 0.131.2 - 2026-05-20
 
 - Fix slash popup navigation: use keymap `list.move_up/down` instead of hardcoded `Ctrl-P/N`, fixing popup only moving upward.
