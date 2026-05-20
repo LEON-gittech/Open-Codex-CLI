@@ -90,6 +90,15 @@ Fast-moving prompt packs, hooks, setup flows, and project policies are better ha
 
 ## Release Notes
 
+### 0.131.2 - 2026-05-20
+
+- Fix slash popup navigation: use keymap `list.move_up/down` instead of hardcoded `Ctrl-P/N`, fixing popup only moving upward.
+- Open slash popup immediately on bare `/` without paste-burst flush delay.
+- Deduplicate service tier commands that collide with builtin slash command names.
+- Restore top/bottom border on chat composer to visually separate history from input.
+- Clarify `/subagents` description: closed rows are reviewable, not quota holders.
+- Support `CODEX_RESUME_COMMAND_NAME` env var for fork-specific resume command formatting.
+
 ### 0.131.1 - 2026-05-19
 
 - Merge upstream Codex 0.131.0 into Open Codex.
