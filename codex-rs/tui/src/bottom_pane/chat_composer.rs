@@ -387,6 +387,8 @@ pub(crate) struct ChatComposer {
     toggle_shortcuts_keys: Vec<KeyBinding>,
     history_search_previous_keys: Vec<KeyBinding>,
     history_search_next_keys: Vec<KeyBinding>,
+    list_move_up_keys: Vec<KeyBinding>,
+    list_move_down_keys: Vec<KeyBinding>,
     editor_keymap: EditorKeymap,
     vim_normal_keymap: VimNormalKeymap,
 }
@@ -555,6 +557,8 @@ impl ChatComposer {
             ],
             history_search_previous_keys: default_keymap.composer.history_search_previous.clone(),
             history_search_next_keys: default_keymap.composer.history_search_next.clone(),
+            list_move_up_keys: default_keymap.list.move_up.clone(),
+            list_move_down_keys: default_keymap.list.move_down.clone(),
             editor_keymap: default_editor_keymap,
             vim_normal_keymap: default_vim_normal_keymap,
         };
@@ -660,6 +664,8 @@ impl ChatComposer {
         self.toggle_shortcuts_keys = keymap.composer.toggle_shortcuts.clone();
         self.history_search_previous_keys = keymap.composer.history_search_previous.clone();
         self.history_search_next_keys = keymap.composer.history_search_next.clone();
+        self.list_move_up_keys = keymap.list.move_up.clone();
+        self.list_move_down_keys = keymap.list.move_down.clone();
         self.editor_keymap = keymap.editor.clone();
         self.vim_normal_keymap = keymap.vim_normal.clone();
         self.draft.textarea.set_keymap_bindings(keymap);
@@ -1676,14 +1682,11 @@ impl ChatComposer {
             unreachable!();
         };
 
+        let allow_plain_char_navigation = !key_hint::is_plain_text_key_event(key_event);
+
         match key_event {
             KeyEvent {
                 code: KeyCode::Up, ..
-            }
-            | KeyEvent {
-                code: KeyCode::Char('p'),
-                modifiers: KeyModifiers::CONTROL,
-                ..
             } => {
                 popup.move_up();
                 (InputResult::None, true)
@@ -1691,12 +1694,15 @@ impl ChatComposer {
             KeyEvent {
                 code: KeyCode::Down,
                 ..
-            }
-            | KeyEvent {
-                code: KeyCode::Char('n'),
-                modifiers: KeyModifiers::CONTROL,
-                ..
             } => {
+                popup.move_down();
+                (InputResult::None, true)
+            }
+            _ if allow_plain_char_navigation && self.list_move_up_keys.is_pressed(key_event) => {
+                popup.move_up();
+                (InputResult::None, true)
+            }
+            _ if allow_plain_char_navigation && self.list_move_down_keys.is_pressed(key_event) => {
                 popup.move_down();
                 (InputResult::None, true)
             }
@@ -3384,6 +3390,7 @@ impl ChatComposer {
             if !has_ctrl_or_alt
                 && !self.draft.disable_paste_burst
                 && self.draft.textarea.allows_paste_burst()
+                && !self.should_insert_plain_char_without_paste_burst(ch)
             {
                 // Non-ASCII characters (e.g., from IMEs) can arrive in quick bursts, so avoid
                 // holding the first char while still allowing burst detection for paste input.
@@ -3490,6 +3497,10 @@ impl ChatComposer {
         }
 
         (InputResult::None, true)
+    }
+
+    fn should_insert_plain_char_without_paste_burst(&self, ch: char) -> bool {
+        ch == '/' && self.slash_commands_enabled() && !self.draft.is_bash_mode && self.is_empty()
     }
 
     fn sync_bash_mode_from_text(&mut self) {
@@ -4599,7 +4610,10 @@ impl ChatComposer {
             }
         }
         let style = user_message_style();
-        Block::default().style(style).render_ref(composer_rect, buf);
+        Block::default()
+            .borders(Borders::TOP | Borders::BOTTOM)
+            .style(style)
+            .render_ref(composer_rect, buf);
         if !remote_images_rect.is_empty() {
             Paragraph::new(self.attachments.remote_image_lines())
                 .style(style)
@@ -4738,14 +4752,46 @@ mod tests {
 
         assert!(
             hint_row_idx > 0,
-            "expected a spacing row above the footer hints",
+            "expected a divider above the footer hints"
         );
 
-        let spacing_row = row_to_string(hint_row_idx - 1);
+        let divider_row = row_to_string(hint_row_idx - 1);
         assert_eq!(
-            spacing_row.trim(),
-            "",
-            "expected blank spacing row above hints but saw: {spacing_row:?}",
+            divider_row.trim(),
+            "─".repeat(area.width as usize),
+            "expected divider row above hints but saw: {divider_row:?}",
+        );
+    }
+
+    #[test]
+    fn composer_renders_top_and_bottom_dividers() {
+        let (tx, _rx) = unbounded_channel::<AppEvent>();
+        let sender = AppEventSender::new(tx);
+        let composer = ChatComposer::new(
+            /*has_input_focus*/ true,
+            sender,
+            /*enhanced_keys_supported*/ false,
+            "Ask Codex to do anything".to_string(),
+            /*disable_paste_burst*/ false,
+        );
+
+        let area = Rect::new(0, 0, 40, 10);
+        let mut buf = Buffer::empty(area);
+        composer.render(area, &mut buf);
+
+        let row_to_string = |y: u16| {
+            let mut row = String::new();
+            for x in 0..area.width {
+                row.push(buf[(x, y)].symbol().chars().next().unwrap_or(' '));
+            }
+            row
+        };
+
+        assert_eq!(row_to_string(0), "────────────────────────────────────────");
+        assert!(
+            (1..area.height - 1)
+                .any(|y| row_to_string(y) == "────────────────────────────────────────"),
+            "expected bottom divider before footer"
         );
     }
 
@@ -7590,6 +7636,150 @@ mod tests {
     }
 
     #[test]
+    fn slash_popup_ctrl_j_uses_list_move_down() {
+        use super::super::command_popup::CommandItem;
+
+        let (tx, _rx) = unbounded_channel::<AppEvent>();
+        let sender = AppEventSender::new(tx);
+        let mut composer = ChatComposer::new(
+            /*has_input_focus*/ true,
+            sender,
+            /*enhanced_keys_supported*/ false,
+            "Ask Codex to do anything".to_string(),
+            /*disable_paste_burst*/ false,
+        );
+        type_chars_humanlike(&mut composer, &['/']);
+
+        let result =
+            composer.handle_key_event(KeyEvent::new(KeyCode::Char('j'), KeyModifiers::CONTROL));
+        assert_eq!(result, (InputResult::None, true));
+
+        match &composer.popups.active {
+            ActivePopup::Command(popup) => match popup.selected_item() {
+                Some(CommandItem::Builtin(cmd)) => assert_eq!(cmd.command(), "effort"),
+                Some(CommandItem::ServiceTier(command)) => {
+                    panic!("expected effort command, got service tier {command:?}")
+                }
+                None => panic!("no selected command after list move down"),
+            },
+            _ => panic!("slash popup not active after list move down"),
+        }
+    }
+
+    #[test]
+    fn slash_popup_down_arrow_uses_list_move_down() {
+        use super::super::command_popup::CommandItem;
+
+        let (tx, _rx) = unbounded_channel::<AppEvent>();
+        let sender = AppEventSender::new(tx);
+        let mut composer = ChatComposer::new(
+            /*has_input_focus*/ true,
+            sender,
+            /*enhanced_keys_supported*/ false,
+            "Ask Codex to do anything".to_string(),
+            /*disable_paste_burst*/ false,
+        );
+        type_chars_humanlike(&mut composer, &['/']);
+
+        let result = composer.handle_key_event(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+        assert_eq!(result, (InputResult::None, true));
+
+        match &composer.popups.active {
+            ActivePopup::Command(popup) => match popup.selected_item() {
+                Some(CommandItem::Builtin(cmd)) => assert_eq!(cmd.command(), "effort"),
+                Some(CommandItem::ServiceTier(command)) => {
+                    panic!("expected effort command, got service tier {command:?}")
+                }
+                None => panic!("no selected command after list move down"),
+            },
+            _ => panic!("slash popup not active after list move down"),
+        }
+    }
+
+    #[test]
+    fn slash_popup_opens_immediately_for_bare_slash() {
+        let (tx, _rx) = unbounded_channel::<AppEvent>();
+        let sender = AppEventSender::new(tx);
+        let mut composer = ChatComposer::new(
+            /*has_input_focus*/ true,
+            sender,
+            /*enhanced_keys_supported*/ false,
+            "Ask Codex to do anything".to_string(),
+            /*disable_paste_burst*/ false,
+        );
+
+        let result =
+            composer.handle_key_event(KeyEvent::new(KeyCode::Char('/'), KeyModifiers::NONE));
+        assert_eq!(result, (InputResult::None, true));
+        assert_eq!(composer.current_text(), "/");
+        assert!(!composer.is_in_paste_burst());
+        assert!(
+            matches!(composer.popups.active, ActivePopup::Command(_)),
+            "bare slash should open the slash popup without waiting for paste-burst flush"
+        );
+    }
+
+    #[test]
+    fn slash_popup_down_arrow_works_after_raw_bare_slash() {
+        use super::super::command_popup::CommandItem;
+
+        let (tx, _rx) = unbounded_channel::<AppEvent>();
+        let sender = AppEventSender::new(tx);
+        let mut composer = ChatComposer::new(
+            /*has_input_focus*/ true,
+            sender,
+            /*enhanced_keys_supported*/ false,
+            "Ask Codex to do anything".to_string(),
+            /*disable_paste_burst*/ false,
+        );
+
+        let _ = composer.handle_key_event(KeyEvent::new(KeyCode::Char('/'), KeyModifiers::NONE));
+        let result = composer.handle_key_event(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+        assert_eq!(result, (InputResult::None, true));
+
+        match &composer.popups.active {
+            ActivePopup::Command(popup) => match popup.selected_item() {
+                Some(CommandItem::Builtin(cmd)) => assert_eq!(cmd.command(), "effort"),
+                Some(CommandItem::ServiceTier(command)) => {
+                    panic!("expected effort command, got service tier {command:?}")
+                }
+                None => panic!("no selected command after list move down"),
+            },
+            _ => panic!("slash popup not active after list move down"),
+        }
+    }
+
+    #[test]
+    fn slash_popup_modified_down_arrow_uses_list_move_down() {
+        use super::super::command_popup::CommandItem;
+
+        let (tx, _rx) = unbounded_channel::<AppEvent>();
+        let sender = AppEventSender::new(tx);
+        let mut composer = ChatComposer::new(
+            /*has_input_focus*/ true,
+            sender,
+            /*enhanced_keys_supported*/ false,
+            "Ask Codex to do anything".to_string(),
+            /*disable_paste_burst*/ false,
+        );
+        type_chars_humanlike(&mut composer, &['/']);
+
+        let result = composer.handle_key_event(KeyEvent::new(KeyCode::Down, KeyModifiers::SHIFT));
+        assert_eq!(result, (InputResult::None, true));
+
+        match &composer.popups.active {
+            ActivePopup::Command(popup) => match popup.selected_item() {
+                Some(CommandItem::Builtin(cmd)) => assert_eq!(cmd.command(), "effort"),
+                Some(CommandItem::ServiceTier(command)) => {
+                    panic!("expected effort command, got service tier {command:?}")
+                }
+                None => panic!("no selected command after list move down"),
+            },
+            _ => panic!("slash popup not active after list move down"),
+        }
+    }
+
+    #[test]
     fn slash_popup_resume_for_res_ui() {
         use ratatui::Terminal;
         use ratatui::backend::TestBackend;
@@ -7713,10 +7903,10 @@ mod tests {
         composer.set_service_tier_commands_enabled(/*enabled*/ true);
         composer.set_service_tier_commands(vec![ServiceTierCommand {
             id: "priority".to_string(),
-            name: "fast".to_string(),
+            name: "turbo".to_string(),
             description: "Fastest inference with increased plan usage".to_string(),
         }]);
-        type_chars_humanlike(&mut composer, &['/', 'f', 'a', 's', 't']);
+        type_chars_humanlike(&mut composer, &['/', 't', 'u', 'r', 'b', 'o']);
 
         let (result, _needs_redraw) =
             composer.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
@@ -7725,7 +7915,7 @@ mod tests {
             result,
             InputResult::ServiceTierCommand(ServiceTierCommand {
                 id: "priority".to_string(),
-                name: "fast".to_string(),
+                name: "turbo".to_string(),
                 description: "Fastest inference with increased plan usage".to_string(),
             })
         );

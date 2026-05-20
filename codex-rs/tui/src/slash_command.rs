@@ -132,7 +132,7 @@ impl SlashCommand {
             SlashCommand::Goal => "set or view the goal for a long-running task",
             SlashCommand::Collab => "change collaboration mode (experimental)",
             SlashCommand::Agent => "view available agent profiles",
-            SlashCommand::MultiAgents => "switch the active agent thread",
+            SlashCommand::MultiAgents => "view and switch subagent threads",
             SlashCommand::Side => "start a side conversation in an ephemeral fork",
             SlashCommand::Btw => "ask a quick side question without switching threads",
             SlashCommand::Permissions => "choose what Codex is allowed to do",

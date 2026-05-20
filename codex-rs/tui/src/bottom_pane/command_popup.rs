@@ -339,28 +339,47 @@ mod tests {
             },
             vec![ServiceTierCommand {
                 id: "priority".to_string(),
-                name: "fast".to_string(),
+                name: "turbo".to_string(),
                 description: "Fastest inference with increased plan usage".to_string(),
             }],
         );
-        popup.on_composer_text_change("/fa".to_string());
+        popup.on_composer_text_change("/tu".to_string());
 
         match popup.selected_item() {
             Some(CommandItem::ServiceTier(command)) => assert_eq!(
                 command,
                 ServiceTierCommand {
                     id: "priority".to_string(),
-                    name: "fast".to_string(),
+                    name: "turbo".to_string(),
                     description: "Fastest inference with increased plan usage".to_string(),
                 }
             ),
-            other => panic!("expected fast service tier to be selected, got {other:?}"),
+            other => panic!("expected turbo service tier to be selected, got {other:?}"),
         }
         let rows = popup.rows_from_matches(popup.filtered());
         assert_eq!(
             rows.first().and_then(|row| row.description.as_deref()),
             Some("Fastest inference with increased plan usage")
         );
+    }
+
+    #[test]
+    fn service_tier_commands_do_not_duplicate_builtin_command_names() {
+        let mut popup = CommandPopup::new(
+            CommandPopupFlags {
+                service_tier_commands_enabled: true,
+                ..CommandPopupFlags::default()
+            },
+            vec![ServiceTierCommand {
+                id: "priority".to_string(),
+                name: "fast".to_string(),
+                description: "Fastest inference with increased plan usage".to_string(),
+            }],
+        );
+        popup.on_composer_text_change("/fast".to_string());
+
+        let items = popup.filtered_items();
+        assert_eq!(items, vec![CommandItem::Builtin(SlashCommand::Fast)]);
     }
 
     #[test]

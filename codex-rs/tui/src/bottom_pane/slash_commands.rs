@@ -89,12 +89,18 @@ pub(crate) fn commands_for_input(
 ) -> Vec<SlashCommandItem> {
     let mut commands = Vec::new();
     let tiers_enabled = flags.service_tier_commands_enabled;
-    for (_, cmd) in builtins_for_input(flags) {
+    let builtins = builtins_for_input(flags);
+    let builtin_names = builtins
+        .iter()
+        .map(|(name, _)| *name)
+        .collect::<std::collections::HashSet<_>>();
+    for (_, cmd) in builtins {
         commands.push(SlashCommandItem::Builtin(cmd));
         if cmd == SlashCommand::Model && tiers_enabled {
             commands.extend(
                 service_tier_commands
                     .iter()
+                    .filter(|command| !builtin_names.contains(command.name.as_str()))
                     .cloned()
                     .map(SlashCommandItem::ServiceTier),
             );
@@ -221,7 +227,7 @@ mod tests {
         let commands = vec![
             ServiceTierCommand {
                 id: "priority".to_string(),
-                name: "fast".to_string(),
+                name: "turbo".to_string(),
                 description: "fastest inference".to_string(),
             },
             ServiceTierCommand {

@@ -2,6 +2,10 @@
 
 use super::*;
 
+const OPEN_CODEX_REPO_URL: &str = "https://github.com/LEON-gittech/Open-Codex-CLI";
+const OPEN_CODEX_RELEASE_NOTES_URL: &str =
+    "https://github.com/LEON-gittech/Open-Codex-CLI/releases/latest";
+
 #[cfg_attr(debug_assertions, allow(dead_code))]
 #[derive(Debug)]
 pub(crate) struct UpdateAvailableHistoryCell {
@@ -28,7 +32,7 @@ impl HistoryCell for UpdateAvailableHistoryCell {
         } else {
             line![
                 "See ",
-                "https://github.com/openai/codex".cyan().underlined(),
+                OPEN_CODEX_REPO_URL.cyan().underlined(),
                 " for installation options."
             ]
         };
@@ -43,9 +47,7 @@ impl HistoryCell for UpdateAvailableHistoryCell {
             update_instruction,
             "",
             "See full release notes:",
-            "https://github.com/openai/codex/releases/latest"
-                .cyan()
-                .underlined(),
+            OPEN_CODEX_RELEASE_NOTES_URL.cyan().underlined(),
         ];
 
         let inner_width = content
@@ -59,7 +61,7 @@ impl HistoryCell for UpdateAvailableHistoryCell {
         let update_instruction = if let Some(update_action) = self.update_action {
             format!("Run {} to update.", update_action.command_str())
         } else {
-            "See https://github.com/openai/codex for installation options.".to_string()
+            format!("See {OPEN_CODEX_REPO_URL} for installation options.")
         };
         vec![
             Line::from("Update available!"),
@@ -67,7 +69,7 @@ impl HistoryCell for UpdateAvailableHistoryCell {
             Line::from(update_instruction),
             Line::from(""),
             Line::from("See full release notes:"),
-            Line::from("https://github.com/openai/codex/releases/latest"),
+            Line::from(OPEN_CODEX_RELEASE_NOTES_URL),
         ]
     }
 }
@@ -183,4 +185,28 @@ pub(crate) fn new_error_event(message: String) -> PlainHistoryCell {
     // in terminals like Ghostty.
     let lines: Vec<Line<'static>> = vec![vec![format!("■ {message}").red()].into()];
     PlainHistoryCell { lines }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use pretty_assertions::assert_eq;
+
+    #[test]
+    fn update_notice_points_to_open_codex_release_notes() {
+        let cell = UpdateAvailableHistoryCell::new("999.0.0".to_string(), None);
+        let lines: Vec<String> = cell.raw_lines().iter().map(ToString::to_string).collect();
+
+        assert_eq!(
+            lines,
+            vec![
+                "Update available!".to_string(),
+                format!("{CODEX_CLI_VERSION} -> 999.0.0"),
+                format!("See {OPEN_CODEX_REPO_URL} for installation options."),
+                "".to_string(),
+                "See full release notes:".to_string(),
+                OPEN_CODEX_RELEASE_NOTES_URL.to_string(),
+            ]
+        );
+    }
 }

@@ -17,15 +17,6 @@ Fast-moving prompt packs, hooks, setup flows, and project policies are better ha
 
 ## Implemented Features
 
-## Release Notes
-
-### 0.131.1 - 2026-05-19
-
-- Merge upstream Codex 0.131.0 into Open Codex.
-- Preserve fork runtime features across the merge: memory overlay/browser, persistent `Shift+Tab` speed toggle, Claude-style rewind/revoke, `/btw`, `/effort`, subagent quota reclamation, background subagent tracking, git attribution, and inline update release notes.
-- Restore fork-correct npm packaging and update diagnostics so install/update guidance targets `@leonw24/open-codex`.
-- Keep the release publishable through the local `release-fast` path with concrete GitHub release notes for the startup update prompt.
-
 ### TUI readability and turn correctness
 
 | Feature | User-facing behavior | Main entry points | Notes |
@@ -68,7 +59,7 @@ Fast-moving prompt packs, hooks, setup flows, and project policies are better ha
 | --- | --- | --- | --- |
 | Nonblocking terminal tasks | Long-running terminal commands can continue in the background while chat continues. | `Ctrl+B`, task panel | Completed output remains available in history. |
 | Background subagent tracking | Spawned agents appear as background activity with role, status, runtime, progress, and task context. | Task panel, spawn/wait tool handling | Foreground `Working` state is separate from background counts. |
-| `/agent` and `/subagents` split | `/agent` lists agent profiles, while `/subagents` remains the active/resumable subagent view. | Slash commands | Keeps profile discovery separate from thread switching. |
+| `/agent` and `/subagents` split | `/agent` lists agent profiles, while `/subagents` opens the subagent thread picker for live, resumable, and reviewable threads. | Slash commands | Closed review rows do not imply spawn quota is still held; quota availability is determined by active/interrupted runtime handles. |
 | Subagent completion wakeups | Completed subagent work wakes the parent turn without requiring manual wait/close. | Core completion events | Added/fixed around `8670c2c842`. |
 | Subagent quota reclamation | Completed subagents are reclaimed from spawn quota, and spawn performs opportunistic cleanup when quota is exhausted. | Subagent runtime, spawn path | Interrupted subagents remain active/resumable quota holders. Fixed by `5348fb6fcd`. |
 | Parallel-first subagent policy | Complex tasks are encouraged to use independent read-only exploration, review, validation, and release-check lanes. | `~/.codex/AGENTS.md`, `docs/parallel-first-agent-execution.md` | Instruction-policy feature, not a hardcoded scheduler. |
@@ -96,6 +87,15 @@ Fast-moving prompt packs, hooks, setup flows, and project policies are better ha
 | --- | --- | --- | --- |
 | `/btw` side questions | Ask quick side questions without taking over the primary chat thread. | `/btw <question>` | Runs as an inline hidden thread with expected model, effort, permission, and tool behavior. |
 | Default commit attribution | Open Codex can apply the fork's commit attribution identity by default. | git attribution extension/config | Implemented before the recent 0.130.x release series. |
+
+## Release Notes
+
+### 0.131.1 - 2026-05-19
+
+- Merge upstream Codex 0.131.0 into Open Codex.
+- Preserve fork runtime features across the merge: memory overlay/browser, persistent `Shift+Tab` speed toggle, Claude-style rewind/revoke, `/btw`, `/effort`, subagent quota reclamation, background subagent tracking, git attribution, and inline update release notes.
+- Restore fork-correct npm packaging and update diagnostics so install/update guidance targets `@leonw24/open-codex`.
+- Keep the release publishable through the local `release-fast` path with concrete GitHub release notes for the startup update prompt.
 
 ## Recently Important Fixes
 

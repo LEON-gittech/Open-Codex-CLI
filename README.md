@@ -174,9 +174,9 @@ The shared interaction model is:
 - `Enter` opens details, `x` stops the selected stoppable background item, and `Esc`/`Left` closes the panel.
 - the status line keeps foreground `Working` state separate from background subagent/terminal counts.
 - terminal details show runtime and recent output; subagent details show role, task, status, runtime, progress, and task-boundary context.
-- `/agent` shows available agent profiles, while `/subagents` keeps the subagent thread picker/switching workflow.
+- `/agent` shows available agent profiles, while `/subagents` opens the subagent thread picker/switching workflow for live, resumable, and closed-but-reviewable threads.
 - completed subagent work wakes the parent turn through a core completion event, so results can be integrated without manually calling `wait_agent` or closing the agent.
-- completed subagents are reclaimed from spawn quota when they reach a final state, and the spawn path performs opportunistic cleanup before reporting that no quota is available. Interrupted subagents remain visible as active quota holders because they may still be resumed; `/subagents` is therefore the active/resumable subagent view, not a stale-handle inventory.
+- completed subagents are reclaimed from spawn quota when they reach a final state, and the spawn path performs opportunistic cleanup before reporting that no quota is available. Interrupted subagents remain active quota holders because they may still be resumed; closed `/subagents` rows are retained for review/switching context and should not be read as proof that spawn quota is still held.
 - completed background command output is preserved in history without pulling the task back into the foreground.
 
 This is the essential interaction change behind the Claude Code-style behavior: background work stays visible and controllable, but it no longer blocks normal chat flow.
@@ -476,9 +476,9 @@ Codex CLI 是开源的，但上游仓库当前对外部代码贡献采用 invita
 - `Enter` 打开详情，`x` 停止当前选中的 stoppable 后台项，`Esc`/`Left` 关闭 panel。
 - status line 会把前台 `Working` 状态和后台 subagent/terminal 数量分开显示。
 - terminal detail 展示运行时间和最近输出；subagent detail 展示 role、task、status、运行时间、progress 和任务边界信息。
-- `/agent` 用于查看可用 agent profiles，`/subagents` 保留 subagent thread picker / 切换工作流。
+- `/agent` 用于查看可用 agent profiles，`/subagents` 打开 subagent thread picker / 切换工作流，覆盖 live、resumable、以及 closed-but-reviewable threads。
 - subagent 完成后会通过 core completion event 唤醒 parent turn，因此不需要手动调用 `wait_agent` 或关闭 agent 才能继续整合结果。
-- completed subagent 到达 final state 后会从 spawn quota 中回收；当 spawn 没有可用 quota 时，主线程会先做 opportunistic cleanup 再返回 quota 不足。Interrupted subagent 仍会作为 active quota holder 保留，因为它们可能被 resume；因此 `/subagents` 的语义是 active/resumable subagent view，而不是僵尸 handle 列表。
+- completed subagent 到达 final state 后会从 spawn quota 中回收；当 spawn 没有可用 quota 时，主线程会先做 opportunistic cleanup 再返回 quota 不足。Interrupted subagent 仍会作为 active quota holder 保留，因为它们可能被 resume；closed `/subagents` rows 会保留用于 review / switching context，不应被理解为 spawn quota 仍被占用。
 - background command 完成后会保留输出到 history，但不会把任务重新拉回前台。
 
 这是 Claude Code 风格体验背后的本质交互变化：后台工作仍然可见、可管理，但不会阻塞正常聊天流。

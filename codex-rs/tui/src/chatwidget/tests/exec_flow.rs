@@ -816,6 +816,41 @@ async fn down_opens_background_terminal_process_list_without_submitting_core_op(
 }
 
 #[tokio::test]
+async fn down_moves_slash_popup_even_when_background_terminal_exists() {
+    let (mut chat, mut rx, mut op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.unified_exec_processes.push(UnifiedExecProcessSummary {
+        key: "proc-1".to_string(),
+        call_id: "call-1".to_string(),
+        command_display: "sleep 300".to_string(),
+        recent_chunks: vec!["still running".to_string()],
+    });
+    chat.sync_unified_exec_footer();
+
+    chat.handle_key_event(KeyEvent::new(KeyCode::Char('/'), KeyModifiers::NONE));
+    chat.handle_key_event(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+    chat.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+    assert!(
+        op_rx.try_recv().is_err(),
+        "slash popup navigation must not submit a core op"
+    );
+    assert_ne!(
+        chat.bottom_pane.active_view_id(),
+        Some("background_tasks"),
+        "down should stay inside the slash popup instead of opening background tasks"
+    );
+    let rendered = drain_insert_history(&mut rx)
+        .iter()
+        .map(|lines| lines_to_single_string(lines))
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        rendered.contains("Current reasoning effort is"),
+        "expected Enter after Down to dispatch /effort, got {rendered:?}"
+    );
+}
+
+#[tokio::test]
 async fn down_enter_background_terminal_opens_shell_detail_without_core_op() {
     let (mut chat, mut rx, mut op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
     let command = concat!(
