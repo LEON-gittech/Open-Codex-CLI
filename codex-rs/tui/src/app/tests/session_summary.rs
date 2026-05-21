@@ -44,6 +44,11 @@ async fn session_summary_includes_resume_hint_for_persisted_rollout() {
     let temp_dir = tempdir().expect("temp dir");
     let rollout_path = temp_dir.path().join("rollout.jsonl");
     std::fs::write(&rollout_path, "{}\n").expect("write rollout");
+    let expected_resume_hint = codex_utils_cli::resume_hint(
+        /*thread_name*/ None,
+        Some(ThreadId::from_string("123e4567-e89b-12d3-a456-426614174000").unwrap()),
+    )
+    .expect("resume hint");
 
     let summary = session_summary(
         usage,
@@ -56,10 +61,7 @@ async fn session_summary_includes_resume_hint_for_persisted_rollout() {
         summary.usage_line,
         Some("Token usage: total=12 input=10 output=2".to_string())
     );
-    assert_eq!(
-        summary.resume_hint,
-        Some("codex resume 123e4567-e89b-12d3-a456-426614174000".to_string())
-    );
+    assert_eq!(summary.resume_hint, Some(expected_resume_hint));
 }
 
 #[tokio::test]
@@ -74,6 +76,11 @@ async fn session_summary_names_picker_item_when_thread_has_name() {
     let temp_dir = tempdir().expect("temp dir");
     let rollout_path = temp_dir.path().join("rollout.jsonl");
     std::fs::write(&rollout_path, "{}\n").expect("write rollout");
+    let expected_resume_hint = codex_utils_cli::resume_hint(
+        /*thread_name*/ None,
+        Some(ThreadId::from_string("123e4567-e89b-12d3-a456-426614174000").unwrap()),
+    )
+    .expect("resume hint");
 
     let summary = session_summary(
         usage,
@@ -82,11 +89,5 @@ async fn session_summary_names_picker_item_when_thread_has_name() {
         Some(&rollout_path),
     )
     .expect("summary");
-    assert_eq!(
-        summary.resume_hint,
-        Some(
-            "codex resume, then select my-session (123e4567-e89b-12d3-a456-426614174000)"
-                .to_string()
-        )
-    );
+    assert_eq!(summary.resume_hint, Some(expected_resume_hint));
 }

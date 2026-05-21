@@ -119,6 +119,8 @@ From recent fork-specific changes:
 - adds `/export <path>` for the current session transcript
 - supports user-chosen filenames like `/export talk.md` or `/export talk.txt`
 - writes a markdown transcript suitable for debugging, archival, and sharing
+- shows renamed session identity in the chat composer as `Session: <name>`, so long-lived or resumed sessions remain visually anchored
+- keeps resume guidance direct after rename and quit: `open-codex resume <thread-id>` or `open-codex-dev resume <thread-id>`, rather than asking users to open a picker and select a named session
 
 This brings a Claude Code-style export flow into the TUI without requiring external scripts or manual transcript scraping.
 
@@ -421,6 +423,8 @@ Codex CLI 是开源的，但上游仓库当前对外部代码贡献采用 invita
 - 为当前 session 增加 `/export <path>`
 - 支持用户自定义文件名，例如 `/export talk.md` 或 `/export talk.txt`
 - 导出 markdown transcript，便于调试、归档和分享
+- rename 后的 session 会在聊天输入框显示 `Session: <name>`，让长会话或 resume 后的会话身份更清楚
+- rename 和 quit 后的 resume 提示保持直接命令：`open-codex resume <thread-id>` 或 `open-codex-dev resume <thread-id>`，不再要求用户先打开 picker 再选择命名会话
 
 这让类似 Claude Code 的会话导出能力直接进入 TUI，而不需要额外脚本或手工抓 transcript。
 

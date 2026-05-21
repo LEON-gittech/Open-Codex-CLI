@@ -453,6 +453,12 @@ impl BottomPane {
         self.request_redraw();
     }
 
+    pub(crate) fn set_session_name(&mut self, name: Option<String>) {
+        if self.composer.set_session_name(name) {
+            self.request_redraw();
+        }
+    }
+
     pub(crate) fn set_placeholder_text(&mut self, placeholder: String) {
         self.composer.set_placeholder_text(placeholder);
         self.request_redraw();

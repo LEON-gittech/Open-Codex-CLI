@@ -631,7 +631,12 @@ fn format_exit_messages(exit_info: AppExitInfo, color_enabled: bool) -> Vec<Stri
         } else {
             resume_cmd
         };
-        lines.push(format!("To continue this session, run {command}"));
+        let subject = thread_name
+            .as_deref()
+            .map(str::trim)
+            .filter(|name| !name.is_empty())
+            .unwrap_or("this session");
+        lines.push(format!("To continue {subject}, run {command}"));
     }
 
     lines
@@ -2638,13 +2643,17 @@ mod tests {
             Some("123e4567-e89b-12d3-a456-426614174000"),
             /*thread_name*/ None,
         );
+        let expected_resume_hint = resume_hint(
+            /*thread_name*/ None,
+            Some(ThreadId::from_string("123e4567-e89b-12d3-a456-426614174000").unwrap()),
+        )
+        .expect("resume hint");
         let lines = format_exit_messages(exit_info, /*color_enabled*/ false);
         assert_eq!(
             lines,
             vec![
                 "Token usage: total=2 input=0 output=2".to_string(),
-                "To continue this session, run codex resume 123e4567-e89b-12d3-a456-426614174000"
-                    .to_string(),
+                format!("To continue this session, run {expected_resume_hint}"),
             ]
         );
     }
@@ -2666,12 +2675,17 @@ mod tests {
             Some("123e4567-e89b-12d3-a456-426614174000"),
             Some("my-thread"),
         );
+        let expected_resume_hint = resume_hint(
+            /*thread_name*/ None,
+            Some(ThreadId::from_string("123e4567-e89b-12d3-a456-426614174000").unwrap()),
+        )
+        .expect("resume hint");
         let lines = format_exit_messages(exit_info, /*color_enabled*/ false);
         assert_eq!(
             lines,
             vec![
                 "Token usage: total=2 input=0 output=2".to_string(),
-                "To continue this session, run codex resume, then select my-thread (123e4567-e89b-12d3-a456-426614174000)".to_string(),
+                format!("To continue my-thread, run {expected_resume_hint}"),
             ]
         );
     }

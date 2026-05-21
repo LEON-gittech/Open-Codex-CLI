@@ -51,6 +51,7 @@ Fast-moving prompt packs, hooks, setup flows, and project policies are better ha
 | Feature | User-facing behavior | Main entry points | Notes |
 | --- | --- | --- | --- |
 | `/export` | Export the current session transcript to a user-chosen `.md` or `.txt` path. | `/export <path>` | Useful for debugging, archival, and sharing. |
+| Renamed session identity | Renamed sessions show `Session: <name>` in the chat composer and use the name in quit guidance while keeping resume commands direct. | `/rename`, chat composer, quit summary | Resume hints use `open-codex resume <thread-id>` / `open-codex-dev resume <thread-id>` instead of picker wording. |
 | Claude Code-style rewind UX | Double-Esc rewind supports code + conversation restore and a cleaner picker. | Double-Esc backtrack flow | Recent fixes tightened session scoping and ordering. |
 | Revoke restore scope fix | Conversation-only restore no longer rolls back files. | Revoke/rewind restore logic | Fixed by `b6f62e4867`. |
 | Esc interrupt routing | Single Esc interrupt and double-Esc rewind detection both work without blocking each other. | Composer key handling | Fixed by `0d20c120d8`. |
@@ -91,6 +92,14 @@ Fast-moving prompt packs, hooks, setup flows, and project policies are better ha
 | Default commit attribution | Open Codex can apply the fork's commit attribution identity by default. | git attribution extension/config | Implemented before the recent 0.130.x release series. |
 
 ## Release Notes
+
+### 0.131.5 - 2026-05-21
+
+- Show renamed session identity directly in the chat composer border with a `Session: <name>` marker.
+- Update live `/rename` feedback to use direct resume commands such as `open-codex resume <thread-id>` instead of `resume, then select <name> (<thread-id>)`.
+- Update quit summaries so renamed sessions say `To continue <name>, run open-codex resume <thread-id>` while unnamed sessions keep `this session`.
+- Keep fork-specific launcher names through `CODEX_RESUME_COMMAND_NAME`, so local dev installs can show `open-codex-dev resume <thread-id>`.
+- Add snapshot and focused CLI/TUI regression coverage for renamed-session display and resume hint formatting.
 
 ### 0.131.4 - 2026-05-21
 

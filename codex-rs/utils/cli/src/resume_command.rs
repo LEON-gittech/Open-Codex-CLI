@@ -10,15 +10,17 @@ pub fn resume_command(thread_name: Option<&str>, thread_id: Option<ThreadId>) ->
     resume_command_for_program(&resume_command_name(), thread_name, thread_id)
 }
 
-pub fn resume_hint(thread_name: Option<&str>, thread_id: Option<ThreadId>) -> Option<String> {
+pub fn resume_hint(_thread_name: Option<&str>, thread_id: Option<ThreadId>) -> Option<String> {
+    resume_hint_for_program(&resume_command_name(), /*thread_name*/ None, thread_id)
+}
+
+fn resume_hint_for_program(
+    program: &str,
+    _thread_name: Option<&str>,
+    thread_id: Option<ThreadId>,
+) -> Option<String> {
     let thread_id = thread_id?;
-    let program = resume_command_name();
-    match thread_name.filter(|name| !name.is_empty()) {
-        Some(thread_name) => Some(format!(
-            "{program} resume, then select {thread_name} ({thread_id})"
-        )),
-        None => resume_command_for_program(&program, /*thread_name*/ None, Some(thread_id)),
-    }
+    resume_command_for_program(program, /*thread_name*/ None, Some(thread_id))
 }
 
 fn resume_command_name() -> String {
@@ -62,7 +64,20 @@ mod tests {
     use pretty_assertions::assert_eq;
 
     #[test]
-    fn prefers_name_over_id() {
+    fn resume_hint_uses_id_directly_even_when_name_exists() {
+        let thread_id = ThreadId::from_string("123e4567-e89b-12d3-a456-426614174000").unwrap();
+        assert_eq!(
+            resume_hint_for_program(
+                DEFAULT_RESUME_COMMAND_NAME,
+                Some("my-thread"),
+                Some(thread_id)
+            ),
+            Some("codex resume 123e4567-e89b-12d3-a456-426614174000".to_string())
+        );
+    }
+
+    #[test]
+    fn resume_command_prefers_name_over_id() {
         let thread_id = ThreadId::from_string("123e4567-e89b-12d3-a456-426614174000").unwrap();
         let command = resume_command_for_program(
             DEFAULT_RESUME_COMMAND_NAME,

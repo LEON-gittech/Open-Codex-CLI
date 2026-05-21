@@ -355,6 +355,7 @@ pub(crate) struct ChatComposer {
     frame_requester: Option<FrameRequester>,
     attachments: AttachmentState,
     placeholder_text: String,
+    session_name: Option<String>,
     is_task_running: bool,
     /// Slash-command draft staged for local recall after application-level dispatch.
     ///
@@ -525,6 +526,7 @@ impl ChatComposer {
             frame_requester: None,
             attachments: AttachmentState::default(),
             placeholder_text,
+            session_name: None,
             is_task_running: false,
             pending_slash_command_history: None,
             #[cfg(not(target_os = "linux"))]
@@ -701,6 +703,18 @@ impl ChatComposer {
 
     pub fn set_audio_device_selection_enabled(&mut self, enabled: bool) {
         self.audio_device_selection_enabled = enabled;
+    }
+
+    pub(crate) fn set_session_name(&mut self, name: Option<String>) -> bool {
+        let name = name.and_then(|name| {
+            let trimmed = name.trim();
+            (!trimmed.is_empty()).then(|| trimmed.to_string())
+        });
+        if self.session_name == name {
+            return false;
+        }
+        self.session_name = name;
+        true
     }
 
     pub fn set_side_conversation_active(&mut self, active: bool) {
@@ -1116,6 +1130,15 @@ impl ChatComposer {
             line.spans.push(vim_mode);
         }
         line
+    }
+
+    fn session_name_title(&self, width: u16) -> Option<Line<'static>> {
+        let name = self.session_name.as_deref()?;
+        let line = Line::from(vec![" Session: ".dim(), name.to_string().cyan(), " ".dim()]);
+        Some(truncate_line_with_ellipsis_if_overflow(
+            line,
+            width.max(1) as usize,
+        ))
     }
 
     pub(crate) fn current_text_with_pending(&self) -> String {
@@ -4623,10 +4646,13 @@ impl ChatComposer {
             }
         }
         let style = user_message_style();
-        Block::default()
+        let mut block = Block::default()
             .borders(Borders::TOP | Borders::BOTTOM)
-            .style(style)
-            .render_ref(composer_rect, buf);
+            .style(style);
+        if let Some(title) = self.session_name_title(composer_rect.width) {
+            block = block.title(title);
+        }
+        block.render_ref(composer_rect, buf);
         if !remote_images_rect.is_empty() {
             Paragraph::new(self.attachments.remote_image_lines())
                 .style(style)

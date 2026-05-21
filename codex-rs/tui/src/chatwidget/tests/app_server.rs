@@ -1503,7 +1503,19 @@ async fn live_app_server_thread_name_update_shows_resume_hint() {
     let cells = drain_insert_history(&mut rx);
     assert_eq!(cells.len(), 1);
     let rendered = lines_to_single_string(&cells[0]);
+    let rendered = normalize_resume_launcher_for_snapshot(&rendered);
     assert_chatwidget_snapshot!("thread_name_update_resume_hint", rendered);
+}
+
+fn normalize_resume_launcher_for_snapshot(rendered: &str) -> String {
+    let Ok(launcher) = std::env::var("CODEX_RESUME_COMMAND_NAME") else {
+        return rendered.to_string();
+    };
+    let launcher = launcher.trim();
+    if launcher.is_empty() || launcher == "codex" {
+        return rendered.to_string();
+    }
+    rendered.replace(&format!("{launcher} resume "), "codex resume ")
 }
 
 #[tokio::test]
