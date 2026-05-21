@@ -34,7 +34,7 @@ impl UnifiedExecFooter {
     }
 
     pub(crate) fn is_empty(&self) -> bool {
-        self.processes.is_empty()
+        true
     }
 
     /// Returns the unindented summary text used by both footer and status-row rendering.
@@ -43,15 +43,7 @@ impl UnifiedExecFooter {
     /// callers can choose layout-specific framing (inline separator vs. row
     /// indentation). Returning `None` means there is nothing to surface.
     pub(crate) fn summary_text(&self) -> Option<String> {
-        if self.processes.is_empty() {
-            return None;
-        }
-
-        let count = self.processes.len();
-        let plural = if count == 1 { "" } else { "s" };
-        Some(format!(
-            "{count} background terminal{plural} running · /ps to view · /stop to close"
-        ))
+        None
     }
 
     fn render_lines(&self, width: u16) -> Vec<Line<'static>> {
@@ -84,7 +76,6 @@ impl Renderable for UnifiedExecFooter {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use insta::assert_snapshot;
     use pretty_assertions::assert_eq;
 
     #[test]
@@ -94,24 +85,25 @@ mod tests {
     }
 
     #[test]
+    fn background_terminals_are_not_rendered_as_footer_summary() {
+        let mut footer = UnifiedExecFooter::new();
+        footer.set_processes(vec!["rg \"foo\" src".to_string()]);
+
+        assert!(footer.summary_text().is_none());
+        assert_eq!(footer.desired_height(/*width*/ 40), 0);
+    }
+
+    #[test]
     fn render_more_sessions() {
         let mut footer = UnifiedExecFooter::new();
         footer.set_processes(vec!["rg \"foo\" src".to_string()]);
-        let width = 50;
-        let height = footer.desired_height(width);
-        let mut buf = Buffer::empty(Rect::new(0, 0, width, height));
-        footer.render(Rect::new(0, 0, width, height), &mut buf);
-        assert_snapshot!("render_more_sessions", format!("{buf:?}"));
+        assert_eq!(footer.desired_height(/*width*/ 50), 0);
     }
 
     #[test]
     fn render_many_sessions() {
         let mut footer = UnifiedExecFooter::new();
         footer.set_processes((0..123).map(|idx| format!("cmd {idx}")).collect());
-        let width = 50;
-        let height = footer.desired_height(width);
-        let mut buf = Buffer::empty(Rect::new(0, 0, width, height));
-        footer.render(Rect::new(0, 0, width, height), &mut buf);
-        assert_snapshot!("render_many_sessions", format!("{buf:?}"));
+        assert_eq!(footer.desired_height(/*width*/ 50), 0);
     }
 }

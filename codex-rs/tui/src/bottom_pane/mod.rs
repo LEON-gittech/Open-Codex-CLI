@@ -2415,7 +2415,7 @@ mod tests {
     }
 
     #[test]
-    fn unified_exec_summary_does_not_increase_height_when_status_visible() {
+    fn unified_exec_summary_is_hidden_when_status_visible() {
         let (tx_raw, _rx) = unbounded_channel::<AppEvent>();
         let tx = AppEventSender::new(tx_raw);
         let mut pane = BottomPane::new(BottomPaneParams {
@@ -2440,7 +2440,7 @@ mod tests {
 
         let area = Rect::new(0, 0, width, after);
         let rendered = render_snapshot(&pane, area);
-        assert!(rendered.contains("background terminal running · /ps to view"));
+        assert!(!rendered.contains("background terminal"));
     }
 
     #[test]

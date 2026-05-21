@@ -1194,8 +1194,8 @@ async fn unified_exec_background_terminal_does_not_render_persistent_footer_snap
 
     let rendered = render_bottom_popup(&chat, /*width*/ 48);
     assert!(
-        rendered.contains("background terminal"),
-        "background terminal footer should be rendered when processes are backgrounded: {rendered}"
+        !rendered.contains("background terminal"),
+        "background terminal footer should not be rendered outside the down panel: {rendered}"
     );
     assert_chatwidget_snapshot!(
         "unified_exec_background_terminal_does_not_render_persistent_footer",

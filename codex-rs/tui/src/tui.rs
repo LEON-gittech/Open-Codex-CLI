@@ -91,6 +91,7 @@ impl Drop for Tui {
 mod tests {
     use std::io::Write as _;
 
+    use super::alternate_scroll_enabled_for_env;
     use super::clear_for_viewport_change;
     use super::should_emit_notification;
     use crate::custom_terminal::Terminal as CustomTerminal;
@@ -121,6 +122,21 @@ mod tests {
             NotificationCondition::Unfocused,
             /*terminal_focused*/ false
         ));
+    }
+
+    #[test]
+    fn alternate_scroll_is_enabled_outside_zellij() {
+        assert!(alternate_scroll_enabled_for_env(|_| false));
+    }
+
+    #[test]
+    fn alternate_scroll_is_disabled_inside_zellij() {
+        for env_name in ["ZELLIJ", "ZELLIJ_SESSION_NAME", "ZELLIJ_VERSION"] {
+            assert!(
+                !alternate_scroll_enabled_for_env(|name| name == env_name),
+                "expected {env_name} to disable alternate scroll"
+            );
+        }
     }
 
     #[test]
@@ -221,6 +237,14 @@ impl Command for DisableAlternateScroll {
     fn is_ansi_code_supported(&self) -> bool {
         true
     }
+}
+
+fn alternate_scroll_enabled_for_env(env_present: impl Fn(&str) -> bool) -> bool {
+    !env_present("ZELLIJ") && !env_present("ZELLIJ_SESSION_NAME") && !env_present("ZELLIJ_VERSION")
+}
+
+pub(super) fn alternate_scroll_enabled() -> bool {
+    alternate_scroll_enabled_for_env(|name| std::env::var_os(name).is_some())
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -660,8 +684,10 @@ impl Tui {
             return Ok(());
         }
         let _ = execute!(self.terminal.backend_mut(), EnterAlternateScreen);
-        // Enable "alternate scroll" so terminals may translate wheel to arrows
-        let _ = execute!(self.terminal.backend_mut(), EnableAlternateScroll);
+        if alternate_scroll_enabled() {
+            // Enable "alternate scroll" so terminals may translate wheel to arrows.
+            let _ = execute!(self.terminal.backend_mut(), EnableAlternateScroll);
+        }
         if let Ok(size) = self.terminal.size() {
             self.alt_saved_viewport = Some(self.terminal.viewport_area);
             self.terminal.set_viewport_area(ratatui::layout::Rect::new(
@@ -681,8 +707,10 @@ impl Tui {
         if !self.alt_screen_enabled {
             return Ok(());
         }
-        // Disable alternate scroll when leaving alt-screen
-        let _ = execute!(self.terminal.backend_mut(), DisableAlternateScroll);
+        if alternate_scroll_enabled() {
+            // Disable alternate scroll when leaving alt-screen.
+            let _ = execute!(self.terminal.backend_mut(), DisableAlternateScroll);
+        }
         let _ = execute!(self.terminal.backend_mut(), LeaveAlternateScreen);
         if let Some(saved) = self.alt_saved_viewport.take() {
             self.terminal.set_viewport_area(saved);

@@ -1635,6 +1635,21 @@ impl ChatWidget {
     pub(crate) fn has_pending_or_queued_input(&self) -> bool {
         self.input_queue.user_turn_pending_start
             || !self.input_queue.queued_user_messages.is_empty()
+            || !self.input_queue.rejected_steers_queue.is_empty()
+            || !self.input_queue.pending_steers.is_empty()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn push_pending_steer_for_test(&mut self, text: &str) {
+        self.input_queue.pending_steers.push_back(PendingSteer {
+            user_message: UserMessage::from(text),
+            history_record: UserMessageHistoryRecord::UserMessageText,
+            compare_key: user_messages::PendingSteerCompareKey {
+                message: text.to_string(),
+                image_count: 0,
+            },
+        });
+        self.refresh_pending_input_preview();
     }
 
     /// Refresh the background tasks view if it is currently open.

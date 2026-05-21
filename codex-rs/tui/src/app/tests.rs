@@ -5820,6 +5820,17 @@ async fn backtrack_esc_does_not_steal_queued_follow_up() {
 }
 
 #[tokio::test]
+async fn backtrack_esc_does_not_steal_pending_steer_after_turn_completion() {
+    let mut app = make_test_app().await;
+    app.chat_widget.push_pending_steer_for_test("pending steer");
+
+    let esc = crossterm::event::KeyEvent::new(crossterm::event::KeyCode::Esc, KeyModifiers::NONE);
+
+    assert!(app.chat_widget.composer_is_empty());
+    assert!(!app.should_handle_backtrack_esc(esc));
+}
+
+#[tokio::test]
 async fn session_summary_skips_when_no_usage_or_resume_hint() {
     assert!(
         session_summary(

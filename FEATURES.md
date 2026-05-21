@@ -22,7 +22,9 @@ Fast-moving prompt packs, hooks, setup flows, and project policies are better ha
 | Feature | User-facing behavior | Main entry points | Notes |
 | --- | --- | --- | --- |
 | User-query highlighting | User-authored queries are visually easier to scan in composer and history. | Chat composer, `UserHistoryCell` | Shared styling keeps light/dark terminal behavior consistent. |
+| Zellij pane scroll compatibility | Running Open Codex inside Zellij no longer steals pane wheel scroll through xterm alternate-scroll mode. | Alt-screen enter/leave, Ctrl-Z suspend/resume | Disables `CSI ?1007 h/l` only when Zellij environment variables are present, preserving existing terminal behavior elsewhere. |
 | Stale turn output guard | Old assistant, plan, reasoning deltas, and stale completions are dropped when they belong to an older turn. | Live TUI notification/render path | Replay remains separate so historical resumed content still renders. |
+| Esc steer priority restoration | Pending steers and rejected steers prevent double-Esc rewind from stealing single-Esc steering/interrupt behavior. | App Esc routing, `has_pending_or_queued_input` | Restores the 0.130.x pending-input semantics after the 0.131 merge split input state. |
 | Resume latest-response restoration | Resuming or rejoining a running session preserves already-streamed assistant deltas instead of showing a truncated latest response. | App-server thread history builder, active thread snapshot | Final `AgentMessage` replaces the delta-backed item to avoid duplication. Added in `d587d950bc`. |
 
 ### Memory UX
@@ -89,6 +91,15 @@ Fast-moving prompt packs, hooks, setup flows, and project policies are better ha
 | Default commit attribution | Open Codex can apply the fork's commit attribution identity by default. | git attribution extension/config | Implemented before the recent 0.130.x release series. |
 
 ## Release Notes
+
+### 0.131.4 - 2026-05-21
+
+- Fix Zellij pane scroll compatibility by disabling xterm alternate-scroll mode when Open Codex detects `ZELLIJ`, `ZELLIJ_SESSION_NAME`, or `ZELLIJ_VERSION`.
+- Preserve normal terminal behavior outside Zellij, so non-Zellij sessions still get alternate-scroll handling while inside the TUI alt screen.
+- Apply the same Zellij guard across Ctrl-Z suspend/resume so pane scroll remains usable after returning to Open Codex.
+- Remove the redundant background-terminal footer/status text (`/ps to view · /stop to close`) now that background terminals are managed through the down panel.
+- Restore 0.130.x Esc routing semantics for pending steers and rejected steers, so single Esc can steer/interrupt instead of being intercepted by double-Esc rewind detection.
+- Add focused regression coverage for alternate-scroll enablement inside and outside Zellij.
 
 ### 0.131.3 - 2026-05-21
 
