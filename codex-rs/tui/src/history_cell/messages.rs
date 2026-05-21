@@ -91,6 +91,10 @@ fn trim_trailing_blank_lines(mut lines: Vec<Line<'static>>) -> Vec<Line<'static>
     lines
 }
 
+fn user_message_divider_line(width: u16, style: Style) -> Line<'static> {
+    Line::from("─".repeat(usize::from(width))).style(style)
+}
+
 impl HistoryCell for UserHistoryCell {
     fn display_lines(&self, width: u16) -> Vec<Line<'static>> {
         let wrap_width = width
@@ -151,7 +155,7 @@ impl HistoryCell for UserHistoryCell {
             return Vec::new();
         }
 
-        let mut lines: Vec<Line<'static>> = vec![Line::from("").style(style)];
+        let mut lines: Vec<Line<'static>> = vec![user_message_divider_line(width, style)];
 
         if let Some(wrapped_remote_images) = wrapped_remote_images {
             lines.extend(prefix_lines(
@@ -167,12 +171,12 @@ impl HistoryCell for UserHistoryCell {
         if let Some(wrapped_message) = wrapped_message {
             lines.extend(prefix_lines(
                 wrapped_message,
-                "› ".bold().dim(),
-                "  ".into(),
+                "User › ".bold().cyan(),
+                "       ".into(),
             ));
         }
 
-        lines.push(Line::from("").style(style));
+        lines.push(user_message_divider_line(width, style));
         lines
     }
 

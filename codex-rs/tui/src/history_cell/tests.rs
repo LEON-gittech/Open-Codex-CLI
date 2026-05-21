@@ -1887,6 +1887,24 @@ fn user_history_cell_wraps_and_prefixes_each_line_snapshot() {
 }
 
 #[test]
+fn user_history_cell_uses_highlighted_user_label_and_dividers() {
+    let cell = UserHistoryCell {
+        message: "hello".to_string(),
+        text_elements: Vec::new(),
+        local_image_paths: Vec::new(),
+        remote_image_urls: Vec::new(),
+    };
+
+    let width: u16 = 12;
+    let rendered = render_lines(&cell.display_lines(width));
+    let divider = "─".repeat(usize::from(width));
+
+    assert_eq!(rendered.first(), Some(&divider));
+    assert_eq!(rendered.get(1).map(String::as_str), Some("User › hello"));
+    assert_eq!(rendered.last(), Some(&divider));
+}
+
+#[test]
 fn user_history_cell_renders_remote_image_urls() {
     let cell = UserHistoryCell {
         message: "describe these".to_string(),
@@ -1973,7 +1991,7 @@ fn user_history_cell_trims_trailing_blank_message_lines() {
         .rev()
         .take_while(|line| line.trim().is_empty())
         .count();
-    assert_eq!(trailing_blank_count, 1);
+    assert_eq!(trailing_blank_count, 0);
     assert!(rendered.iter().any(|line| line.contains("line one")));
 }
 
@@ -1996,7 +2014,7 @@ fn user_history_cell_trims_trailing_blank_message_lines_with_text_elements() {
         .rev()
         .take_while(|line| line.trim().is_empty())
         .count();
-    assert_eq!(trailing_blank_count, 1);
+    assert_eq!(trailing_blank_count, 0);
     assert!(rendered.iter().any(|line| line.contains("tokenized")));
 }
 

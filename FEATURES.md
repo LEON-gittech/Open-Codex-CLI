@@ -1,6 +1,6 @@
 # Open Codex Feature Inventory
 
-Last updated: 2026-05-19
+Last updated: 2026-05-21
 
 This file tracks fork-specific features and fixes that should remain visible during README, release-note, and roadmap updates. It is an engineering inventory, not a marketing page. Keep it scoped to behavior implemented in this fork.
 
@@ -96,6 +96,7 @@ Fast-moving prompt packs, hooks, setup flows, and project policies are better ha
 - Preserve Open Codex fork behavior across the merge, including memory overlay/browser, rewind/revoke UX, persistent `Shift+Tab` speed toggle, `/btw`, `/effort`, subagent tracking, and git attribution.
 - Reconcile upstream ThreadSettings, `Op::UserInput`, MCP runtime environment, permission profile, rate-limit, status-surface, and package-layout changes with fork-specific runtime state.
 - Keep stale-turn output guards, foreground/background task state, and fork-correct package/update identity intact after the upstream merge.
+- Restore the 0.130.x user-query history highlighting with visible divider rows and the cyan `User ›` label after the upstream history-cell split.
 - Restore the Rust workspace release version so built binaries report `0.131.3` instead of upstream source-build `0.0.0`.
 
 ### 0.131.2 - 2026-05-20
