@@ -523,30 +523,6 @@
             },
             "method": {
               "enum": [
-                "thread/fileHistory/restore"
-              ],
-              "title": "Thread/fileHistory/restoreRequestMethod",
-              "type": "string"
-            },
-            "params": {
-              "$ref": "#/definitions/v2/ThreadFileHistoryRestoreParams"
-            }
-          },
-          "required": [
-            "id",
-            "method",
-            "params"
-          ],
-          "title": "Thread/fileHistory/restoreRequest",
-          "type": "object"
-        },
-        {
-          "properties": {
-            "id": {
-              "$ref": "#/definitions/v2/RequestId"
-            },
-            "method": {
-              "enum": [
                 "thread/list"
               ],
               "title": "Thread/listRequestMethod",
@@ -779,6 +755,30 @@
             "params"
           ],
           "title": "Plugin/listRequest",
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "$ref": "#/definitions/v2/RequestId"
+            },
+            "method": {
+              "enum": [
+                "plugin/installed"
+              ],
+              "title": "Plugin/installedRequestMethod",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/definitions/v2/PluginInstalledParams"
+            }
+          },
+          "required": [
+            "id",
+            "method",
+            "params"
+          ],
+          "title": "Plugin/installedRequest",
           "type": "object"
         },
         {
@@ -1340,30 +1340,6 @@
             },
             "method": {
               "enum": [
-                "btw/start"
-              ],
-              "title": "Btw/startRequestMethod",
-              "type": "string"
-            },
-            "params": {
-              "$ref": "#/definitions/v2/BtwStartParams"
-            }
-          },
-          "required": [
-            "id",
-            "method",
-            "params"
-          ],
-          "title": "Btw/startRequest",
-          "type": "object"
-        },
-        {
-          "properties": {
-            "id": {
-              "$ref": "#/definitions/v2/RequestId"
-            },
-            "method": {
-              "enum": [
                 "review/start"
               ],
               "title": "Review/startRequestMethod",
@@ -1451,6 +1427,30 @@
             "params"
           ],
           "title": "ExperimentalFeature/listRequest",
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "$ref": "#/definitions/v2/RequestId"
+            },
+            "method": {
+              "enum": [
+                "permissionProfile/list"
+              ],
+              "title": "PermissionProfile/listRequestMethod",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/definitions/v2/PermissionProfileListParams"
+            }
+          },
+          "required": [
+            "id",
+            "method",
+            "params"
+          ],
+          "title": "PermissionProfile/listRequest",
           "type": "object"
         },
         {
@@ -4721,46 +4721,6 @@
           "type": "object"
         },
         {
-          "properties": {
-            "method": {
-              "enum": [
-                "btw/textDelta"
-              ],
-              "title": "Btw/textDeltaNotificationMethod",
-              "type": "string"
-            },
-            "params": {
-              "$ref": "#/definitions/v2/BtwTextDeltaNotification"
-            }
-          },
-          "required": [
-            "method",
-            "params"
-          ],
-          "title": "Btw/textDeltaNotification",
-          "type": "object"
-        },
-        {
-          "properties": {
-            "method": {
-              "enum": [
-                "btw/completed"
-              ],
-              "title": "Btw/completedNotificationMethod",
-              "type": "string"
-            },
-            "params": {
-              "$ref": "#/definitions/v2/BtwCompletedNotification"
-            }
-          },
-          "required": [
-            "method",
-            "params"
-          ],
-          "title": "Btw/completedNotification",
-          "type": "object"
-        },
-        {
           "description": "Deprecated: Use `ContextCompaction` item type instead.",
           "properties": {
             "method": {
@@ -5702,34 +5662,6 @@
         ],
         "type": "object"
       },
-      "AdHocMemoryNoteStatus": {
-        "properties": {
-          "content": {
-            "type": "string"
-          },
-          "durableMatches": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          },
-          "path": {
-            "type": "string"
-          },
-          "reason": {
-            "type": [
-              "string",
-              "null"
-            ]
-          }
-        },
-        "required": [
-          "content",
-          "durableMatches",
-          "path"
-        ],
-        "type": "object"
-      },
       "AddCreditsNudgeCreditType": {
         "enum": [
           "credits",
@@ -6406,110 +6338,31 @@
           }
         ]
       },
+      "AutoCompactTokenLimitScope": {
+        "description": "Selects which part of the active context is charged against `model_auto_compact_token_limit`.",
+        "oneOf": [
+          {
+            "description": "Count the full active context against the limit.",
+            "enum": [
+              "total"
+            ],
+            "type": "string"
+          },
+          {
+            "description": "Count sampled output and later growth after the carried window prefix.",
+            "enum": [
+              "body_after_prefix"
+            ],
+            "type": "string"
+          }
+        ]
+      },
       "AutoReviewDecisionSource": {
         "description": "[UNSTABLE] Source that produced a terminal approval auto-review decision.",
         "enum": [
           "agent"
         ],
         "type": "string"
-      },
-      "BtwCompletedNotification": {
-        "$schema": "http://json-schema.org/draft-07/schema#",
-        "properties": {
-          "answer": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "btwId": {
-            "type": "string"
-          },
-          "error": {
-            "type": [
-              "string",
-              "null"
-            ]
-          }
-        },
-        "required": [
-          "btwId"
-        ],
-        "title": "BtwCompletedNotification",
-        "type": "object"
-      },
-      "BtwStartParams": {
-        "$schema": "http://json-schema.org/draft-07/schema#",
-        "properties": {
-          "btwId": {
-            "type": "string"
-          },
-          "effort": {
-            "anyOf": [
-              {
-                "$ref": "#/definitions/v2/ReasoningEffort"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "model": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "question": {
-            "type": "string"
-          },
-          "serviceTier": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "threadId": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "btwId",
-          "question",
-          "threadId"
-        ],
-        "title": "BtwStartParams",
-        "type": "object"
-      },
-      "BtwStartResponse": {
-        "$schema": "http://json-schema.org/draft-07/schema#",
-        "properties": {
-          "btwId": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "btwId"
-        ],
-        "title": "BtwStartResponse",
-        "type": "object"
-      },
-      "BtwTextDeltaNotification": {
-        "$schema": "http://json-schema.org/draft-07/schema#",
-        "properties": {
-          "btwId": {
-            "type": "string"
-          },
-          "delta": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "btwId",
-          "delta"
-        ],
-        "title": "BtwTextDeltaNotification",
-        "type": "object"
       },
       "ByteRange": {
         "properties": {
@@ -6702,56 +6555,7 @@
       },
       "CollabAgentState": {
         "properties": {
-          "agentNickname": {
-            "default": null,
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "agentRole": {
-            "default": null,
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "lane": {
-            "default": null,
-            "type": [
-              "string",
-              "null"
-            ]
-          },
           "message": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "outputContract": {
-            "default": null,
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "ownership": {
-            "default": null,
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "phase": {
-            "default": null,
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "spawnReason": {
-            "default": null,
             "type": [
               "string",
               "null"
@@ -6784,8 +6588,7 @@
           "sendInput",
           "resumeAgent",
           "wait",
-          "closeAgent",
-          "statusUpdate"
+          "closeAgent"
         ],
         "type": "string"
       },
@@ -7310,6 +7113,17 @@
         ],
         "type": "object"
       },
+      "ComputerUseRequirements": {
+        "properties": {
+          "allowLockedComputerUse": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
       "Config": {
         "additionalProperties": true,
         "properties": {
@@ -7400,6 +7214,16 @@
             "type": [
               "integer",
               "null"
+            ]
+          },
+          "model_auto_compact_token_limit_scope": {
+            "anyOf": [
+              {
+                "$ref": "#/definitions/v2/AutoCompactTokenLimitScope"
+              },
+              {
+                "type": "null"
+              }
             ]
           },
           "model_context_window": {
@@ -7844,6 +7668,16 @@
             "type": [
               "array",
               "null"
+            ]
+          },
+          "computerUse": {
+            "anyOf": [
+              {
+                "$ref": "#/definitions/v2/ComputerUseRequirements"
+              },
+              {
+                "type": "null"
+              }
             ]
           },
           "enforceResidency": {
@@ -8434,6 +8268,13 @@
               "integer",
               "null"
             ]
+          },
+          "threadId": {
+            "description": "Optional loaded thread id. Pass this when showing feature state for an existing thread so enablement is computed from that thread's refreshed config, including project-local config for the thread's cwd.",
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "title": "ExperimentalFeatureListParams",
@@ -8728,7 +8569,7 @@
         "enum": [
           "read",
           "write",
-          "none"
+          "deny"
         ],
         "type": "string"
       },
@@ -9828,6 +9669,7 @@
           "postCompact",
           "sessionStart",
           "userPromptSubmit",
+          "subagentStart",
           "stop"
         ],
         "type": "string"
@@ -10184,8 +10026,6 @@
       },
       "ImageDetail": {
         "enum": [
-          "auto",
-          "low",
           "high",
           "original"
         ],
@@ -10720,6 +10560,12 @@
             },
             "type": "array"
           },
+          "SubagentStart": {
+            "items": {
+              "$ref": "#/definitions/v2/ConfiguredHookMatcherGroup"
+            },
+            "type": "array"
+          },
           "UserPromptSubmit": {
             "items": {
               "$ref": "#/definitions/v2/ConfiguredHookMatcherGroup"
@@ -10747,6 +10593,7 @@
           "PreToolUse",
           "SessionStart",
           "Stop",
+          "SubagentStart",
           "UserPromptSubmit"
         ],
         "type": "object"
@@ -11272,70 +11119,6 @@
           "lineStart",
           "note",
           "path"
-        ],
-        "type": "object"
-      },
-      "MemoryFileKind": {
-        "enum": [
-          "summary",
-          "index",
-          "topic"
-        ],
-        "type": "string"
-      },
-      "MemoryFileStatus": {
-        "properties": {
-          "content": {
-            "type": "string"
-          },
-          "kind": {
-            "$ref": "#/definitions/v2/MemoryFileKind"
-          },
-          "path": {
-            "type": "string"
-          },
-          "title": {
-            "type": "string"
-          },
-          "truncated": {
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "content",
-          "kind",
-          "path",
-          "title",
-          "truncated"
-        ],
-        "type": "object"
-      },
-      "MemoryOverlayEntryStatus": {
-        "properties": {
-          "content": {
-            "type": "string"
-          },
-          "createdAtUnixMs": {
-            "format": "int64",
-            "type": "integer"
-          },
-          "durableMatches": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          },
-          "reason": {
-            "type": [
-              "string",
-              "null"
-            ]
-          }
-        },
-        "required": [
-          "content",
-          "createdAtUnixMs",
-          "durableMatches"
         ],
         "type": "object"
       },
@@ -11949,132 +11732,75 @@
           }
         ]
       },
-      "PermissionProfile": {
-        "oneOf": [
-          {
-            "description": "Codex owns sandbox construction for this profile.",
-            "properties": {
-              "fileSystem": {
-                "$ref": "#/definitions/v2/PermissionProfileFileSystemPermissions"
-              },
-              "network": {
-                "$ref": "#/definitions/v2/PermissionProfileNetworkPermissions"
-              },
-              "type": {
-                "enum": [
-                  "managed"
-                ],
-                "title": "ManagedPermissionProfileType",
-                "type": "string"
-              }
-            },
-            "required": [
-              "fileSystem",
-              "network",
-              "type"
-            ],
-            "title": "ManagedPermissionProfile",
-            "type": "object"
-          },
-          {
-            "description": "Do not apply an outer sandbox.",
-            "properties": {
-              "type": {
-                "enum": [
-                  "disabled"
-                ],
-                "title": "DisabledPermissionProfileType",
-                "type": "string"
-              }
-            },
-            "required": [
-              "type"
-            ],
-            "title": "DisabledPermissionProfile",
-            "type": "object"
-          },
-          {
-            "description": "Filesystem isolation is enforced by an external caller.",
-            "properties": {
-              "network": {
-                "$ref": "#/definitions/v2/PermissionProfileNetworkPermissions"
-              },
-              "type": {
-                "enum": [
-                  "external"
-                ],
-                "title": "ExternalPermissionProfileType",
-                "type": "string"
-              }
-            },
-            "required": [
-              "network",
-              "type"
-            ],
-            "title": "ExternalPermissionProfile",
-            "type": "object"
-          }
-        ]
-      },
-      "PermissionProfileFileSystemPermissions": {
-        "oneOf": [
-          {
-            "properties": {
-              "entries": {
-                "items": {
-                  "$ref": "#/definitions/v2/FileSystemSandboxEntry"
-                },
-                "type": "array"
-              },
-              "globScanMaxDepth": {
-                "format": "uint",
-                "minimum": 1.0,
-                "type": [
-                  "integer",
-                  "null"
-                ]
-              },
-              "type": {
-                "enum": [
-                  "restricted"
-                ],
-                "title": "RestrictedPermissionProfileFileSystemPermissionsType",
-                "type": "string"
-              }
-            },
-            "required": [
-              "entries",
-              "type"
-            ],
-            "title": "RestrictedPermissionProfileFileSystemPermissions",
-            "type": "object"
-          },
-          {
-            "properties": {
-              "type": {
-                "enum": [
-                  "unrestricted"
-                ],
-                "title": "UnrestrictedPermissionProfileFileSystemPermissionsType",
-                "type": "string"
-              }
-            },
-            "required": [
-              "type"
-            ],
-            "title": "UnrestrictedPermissionProfileFileSystemPermissions",
-            "type": "object"
-          }
-        ]
-      },
-      "PermissionProfileNetworkPermissions": {
+      "PermissionProfileListParams": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
         "properties": {
-          "enabled": {
-            "type": "boolean"
+          "cursor": {
+            "description": "Opaque pagination cursor returned by a previous call.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "cwd": {
+            "description": "Optional working directory to resolve project config layers.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "limit": {
+            "description": "Optional page size; defaults to the full result set.",
+            "format": "uint32",
+            "minimum": 0.0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "title": "PermissionProfileListParams",
+        "type": "object"
+      },
+      "PermissionProfileListResponse": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/definitions/v2/PermissionProfileSummary"
+            },
+            "type": "array"
+          },
+          "nextCursor": {
+            "description": "Opaque cursor to pass to the next call to continue after the last item. If None, there are no more items to return.",
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
-          "enabled"
+          "data"
+        ],
+        "title": "PermissionProfileListResponse",
+        "type": "object"
+      },
+      "PermissionProfileSummary": {
+        "properties": {
+          "description": {
+            "description": "Optional user-facing description for display in clients.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "description": "Available permission profile identifier.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
         ],
         "type": "object"
       },
@@ -12284,6 +12010,56 @@
         "title": "PluginInstallResponse",
         "type": "object"
       },
+      "PluginInstalledParams": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "properties": {
+          "cwds": {
+            "description": "Optional working directories used to discover repo marketplaces.",
+            "items": {
+              "$ref": "#/definitions/v2/AbsolutePathBuf"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "installSuggestionPluginNames": {
+            "description": "Additional uninstalled plugin names that should be returned when present locally. This is used by mention surfaces that intentionally expose install entrypoints.",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "title": "PluginInstalledParams",
+        "type": "object"
+      },
+      "PluginInstalledResponse": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "properties": {
+          "marketplaceLoadErrors": {
+            "default": [],
+            "items": {
+              "$ref": "#/definitions/v2/MarketplaceLoadErrorInfo"
+            },
+            "type": "array"
+          },
+          "marketplaces": {
+            "items": {
+              "$ref": "#/definitions/v2/PluginMarketplaceEntry"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "marketplaces"
+        ],
+        "title": "PluginInstalledResponse",
+        "type": "object"
+      },
       "PluginInterface": {
         "properties": {
           "brandColor": {
@@ -12417,6 +12193,7 @@
       "PluginListMarketplaceKind": {
         "enum": [
           "local",
+          "vertical",
           "workspace-directory",
           "shared-with-me"
         ],
@@ -15709,34 +15486,9 @@
         "title": "ThreadCompactStartResponse",
         "type": "object"
       },
-      "ThreadFileHistoryRestoreParams": {
-        "$schema": "http://json-schema.org/draft-07/schema#",
-        "properties": {
-          "numTurns": {
-            "description": "Restore tracked file changes made by the last N user turns. Must be >= 1.",
-            "format": "uint32",
-            "minimum": 0.0,
-            "type": "integer"
-          },
-          "threadId": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "numTurns",
-          "threadId"
-        ],
-        "title": "ThreadFileHistoryRestoreParams",
-        "type": "object"
-      },
-      "ThreadFileHistoryRestoreResponse": {
-        "$schema": "http://json-schema.org/draft-07/schema#",
-        "title": "ThreadFileHistoryRestoreResponse",
-        "type": "object"
-      },
       "ThreadForkParams": {
         "$schema": "http://json-schema.org/draft-07/schema#",
-        "description": "There are two ways to fork a thread: 1. By thread_id: load the thread from disk by thread_id and fork it into a new thread. 2. By path: load the thread from disk by path and fork it into a new thread.\n\nIf using path, the thread_id param will be ignored.\n\nPrefer using thread_id whenever possible.",
+        "description": "There are two ways to fork a thread: 1. By thread_id: load the thread from disk by thread_id and fork it into a new thread. 2. By path: load the thread from disk by path and fork it into a new thread.\n\nIf using a non-empty path, the thread_id param will be ignored. Empty string path values are treated as absent.\n\nPrefer using thread_id whenever possible.",
         "properties": {
           "approvalPolicy": {
             "anyOf": [
@@ -15971,6 +15723,8 @@
         "enum": [
           "active",
           "paused",
+          "blocked",
+          "usageLimited",
           "budgetLimited",
           "complete"
         ],
@@ -16877,28 +16631,6 @@
         ],
         "type": "string"
       },
-      "ThreadMemoryOverlayStatus": {
-        "properties": {
-          "entries": {
-            "items": {
-              "$ref": "#/definitions/v2/MemoryOverlayEntryStatus"
-            },
-            "type": "array"
-          },
-          "sessionId": {
-            "type": "string"
-          },
-          "threadId": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "entries",
-          "sessionId",
-          "threadId"
-        ],
-        "type": "object"
-      },
       "ThreadMetadataGitInfoUpdateParams": {
         "properties": {
           "branch": {
@@ -17254,7 +16986,7 @@
       },
       "ThreadResumeParams": {
         "$schema": "http://json-schema.org/draft-07/schema#",
-        "description": "There are three ways to resume a thread: 1. By thread_id: load the thread from disk by thread_id and resume it. 2. By history: instantiate the thread from memory and resume it. 3. By path: load the thread from disk by path and resume it.\n\nThe precedence is: history > path > thread_id. If using history or path, the thread_id param will be ignored.\n\nPrefer using thread_id whenever possible.",
+        "description": "There are three ways to resume a thread: 1. By thread_id: load the thread from disk by thread_id and resume it. 2. By history: instantiate the thread from memory and resume it. 3. By path: load the thread from disk by path and resume it.\n\nFor non-running threads, the precedence is: history > non-empty path > thread_id. If using history or a non-empty path for a non-running thread, the thread_id param will be ignored.\n\nIf thread_id identifies a running thread, app-server rejoins that thread and treats a non-empty path as a consistency check against the active rollout path. Empty string path values are treated as absent.\n\nPrefer using thread_id whenever possible.",
         "properties": {
           "approvalPolicy": {
             "anyOf": [
@@ -18509,6 +18241,17 @@
           },
           {
             "properties": {
+              "detail": {
+                "anyOf": [
+                  {
+                    "$ref": "#/definitions/v2/ImageDetail"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null
+              },
               "type": {
                 "enum": [
                   "image"
@@ -18529,6 +18272,17 @@
           },
           {
             "properties": {
+              "detail": {
+                "anyOf": [
+                  {
+                    "$ref": "#/definitions/v2/ImageDetail"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null
+              },
               "path": {
                 "type": "string"
               },

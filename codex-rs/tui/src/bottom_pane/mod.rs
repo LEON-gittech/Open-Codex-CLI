@@ -386,6 +386,10 @@ impl BottomPane {
         self.request_redraw();
     }
 
+    pub fn show_shutdown_in_progress(&mut self) {
+        self.composer.show_shutdown_in_progress();
+    }
+
     pub fn set_connectors_enabled(&mut self, enabled: bool) {
         self.composer.set_connectors_enabled(enabled);
     }
@@ -1371,7 +1375,7 @@ impl BottomPane {
             self.has_input_focus,
             self.enhanced_keys_supported,
             self.disable_paste_burst,
-            self.keymap.list.clone(),
+            self.keymap.clone(),
         );
         self.pause_status_timer_for_modal();
         self.set_composer_input_enabled(

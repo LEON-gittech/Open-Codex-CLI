@@ -2,6 +2,8 @@
 source: tui/src/chatwidget/tests/exec_flow.rs
 expression: normalize_snapshot_paths(rendered)
 ---
+  1 background terminal running · /ps to view ·
+
 ────────────────────────────────────────────────
 › Ask Codex to do anything
 ────────────────────────────────────────────────

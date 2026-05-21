@@ -20,6 +20,7 @@ use core_test_support::responses::ev_completed;
 use core_test_support::responses::ev_response_created;
 use core_test_support::responses::mount_models_once;
 use core_test_support::responses::mount_sse_once;
+use core_test_support::responses::namespace_child_tool;
 use core_test_support::responses::sse;
 use core_test_support::responses::start_mock_server;
 use core_test_support::test_codex::test_codex;
@@ -28,22 +29,14 @@ use std::time::Duration;
 use std::time::Instant;
 use tokio::time::sleep;
 
+const MULTI_AGENT_V1_NAMESPACE: &str = "multi_agent_v1";
 const SPAWN_AGENT_TOOL_NAME: &str = "spawn_agent";
 
 fn spawn_agent_description(body: &Value) -> Option<String> {
-    body.get("tools")
-        .and_then(Value::as_array)
-        .and_then(|tools| {
-            tools.iter().find_map(|tool| {
-                if tool.get("name").and_then(Value::as_str) == Some(SPAWN_AGENT_TOOL_NAME) {
-                    tool.get("description")
-                        .and_then(Value::as_str)
-                        .map(str::to_string)
-                } else {
-                    None
-                }
-            })
-        })
+    namespace_child_tool(body, MULTI_AGENT_V1_NAMESPACE, SPAWN_AGENT_TOOL_NAME)
+        .and_then(|tool| tool.get("description"))
+        .and_then(Value::as_str)
+        .map(str::to_string)
 }
 
 fn test_model_info(
@@ -124,6 +117,10 @@ async fn spawn_agent_description_lists_visible_models_and_reasoning_efforts() ->
                             description: "Quick scan".to_string(),
                         },
                         ReasoningEffortPreset {
+                            effort: ReasoningEffort::Medium,
+                            description: "Balanced".to_string(),
+                        },
+                        ReasoningEffortPreset {
                             effort: ReasoningEffort::High,
                             description: "Deep dive".to_string(),
                         },
@@ -175,7 +172,7 @@ async fn spawn_agent_description_lists_visible_models_and_reasoning_efforts() ->
         spawn_agent_description(&body).expect("spawn_agent description should be present");
 
     assert!(
-        description.contains("- Visible Model (`visible-model`): Fast and capable"),
+        description.contains("- `visible-model`: Fast and capable"),
         "expected visible model summary in spawn_agent description: {description:?}"
     );
     assert!(
@@ -196,43 +193,32 @@ async fn spawn_agent_description_lists_visible_models_and_reasoning_efforts() ->
         "expected model override usage guidance in spawn_agent description: {description:?}"
     );
     assert!(
-        description.contains("Default reasoning effort: medium."),
+        description.contains("Reasoning efforts: low, medium (default), high."),
         "expected default reasoning effort in spawn_agent description: {description:?}"
     );
     assert!(
-        description.contains("low (Quick scan), high (Deep dive)."),
-        "expected reasoning efforts in spawn_agent description: {description:?}"
-    );
-    assert!(
-        description
-            .contains("Supported service tiers: priority (Fast: 1.5x speed, increased usage)."),
+        description.contains("Service tiers: priority."),
         "expected service tier guidance in spawn_agent description: {description:?}"
     );
     assert!(
-        !description.contains("Hidden Model"),
+        !description.contains("hidden-model"),
         "hidden picker model should be omitted from spawn_agent description: {description:?}"
     );
     assert!(
-        !description.contains(
+        description.contains(
             "Only use `spawn_agent` if and only if the user explicitly asks for sub-agents, delegation, or parallel agent work."
         ),
-        "spawn_agent description should not require explicit user authorization: {description:?}"
+        "expected explicit authorization rule in spawn_agent description: {description:?}"
     );
     assert!(
         description.contains(
-            "For non-trivial tasks, first decide whether the work has independent axes that can run in parallel."
+            "Requests for depth, thoroughness, research, investigation, or detailed codebase analysis do not count as permission to spawn."
         ),
-        "expected parallel-first guidance in spawn_agent description: {description:?}"
+        "expected non-authorization clarification in spawn_agent description: {description:?}"
     );
     assert!(
         description.contains(
-            "spawn_agent starts work in the background; after spawning, continue useful local work instead of immediately polling by default."
-        ),
-        "expected background execution guidance in spawn_agent description: {description:?}"
-    );
-    assert!(
-        description.contains(
-            "Agent-role guidance helps choose which agent to use after you decide delegation is appropriate."
+            "Agent-role guidance below only helps choose which agent to use after spawning is already authorized; it never authorizes spawning by itself."
         ),
         "expected agent-role clarification in spawn_agent description: {description:?}"
     );

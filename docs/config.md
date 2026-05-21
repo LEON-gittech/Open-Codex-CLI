@@ -6,45 +6,6 @@ For advanced configuration instructions, see [this documentation](https://develo
 
 For a full configuration reference, see [this documentation](https://developers.openai.com/codex/config-reference).
 
-## Commit attribution
-
-Open Codex can add a [git trailer](https://git-scm.com/docs/git-interpret-trailers)
-to generated commit messages so commits make Open Codex's involvement explicit.
-This behavior is enabled by default. The top-level `commit_attribution` setting
-can override the default trailer identity.
-
-Add the following to `~/.codex/config.toml`:
-
-```toml
-commit_attribution = "Open Codex <hff582580@gmail.com>"
-```
-
-Open Codex appends a `Co-authored-by:` trailer using the configured attribution
-value. If `commit_attribution` is omitted, Open Codex uses
-`Open Codex <hff582580@gmail.com>`. Set `commit_attribution = ""` to disable the
-trailer.
-
-## OpenTelemetry Trace Metadata
-
-Codex can add static OpenTelemetry span attributes to exported trace spans and
-static W3C tracestate fields to propagated trace context:
-
-```toml
-[otel.span_attributes]
-"example.trace_attr" = "enabled"
-
-[otel.tracestate.example]
-alpha = "one"
-beta = "two"
-```
-
-Nested `otel.tracestate` tables are encoded as semicolon-separated `key:value`
-fields inside the named tracestate member. If propagated trace context already
-has the named member, Codex upserts configured fields and preserves other fields
-in that member. This config shape does not support setting opaque tracestate
-member values. Invalid trace metadata entries are ignored during config load and
-reported as startup warnings.
-
 ## Lifecycle hooks
 
 Admins can set top-level `allow_managed_hooks_only = true` in

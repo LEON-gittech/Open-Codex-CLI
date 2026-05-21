@@ -9,8 +9,9 @@ impl ChatWidget {
     /// Synchronize the bottom-pane "task running" indicator with the current lifecycles.
     ///
     /// The bottom pane only has one running flag, but this module treats it as a derived state of
-    /// the agent turn lifecycle. A backgrounded turn suppresses the running indicator so the user
-    /// can continue composing input while the agent is still working.
+    /// both the agent turn lifecycle and MCP startup lifecycle. A backgrounded turn suppresses
+    /// the running indicator so the user can continue composing input while the agent is still
+    /// working.
     pub(super) fn update_task_running_state(&mut self) {
         self.bottom_pane
             .set_task_running(self.foreground_turn_running());
@@ -378,6 +379,7 @@ impl ChatWidget {
 
     pub(super) fn on_error(&mut self, message: String) {
         self.input_queue.submit_pending_steers_after_interrupt = false;
+        self.flush_answer_stream_with_separator();
         self.finalize_turn();
         self.add_to_history(history_cell::new_error_event(message));
         self.set_ambient_pet_notification(

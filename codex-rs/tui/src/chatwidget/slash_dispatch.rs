@@ -1078,8 +1078,8 @@ impl ChatWidget {
             | SlashCommand::Title
             | SlashCommand::Statusline
             | SlashCommand::Theme
-            | SlashCommand::Collab
-            | SlashCommand::Pets => QueueDrain::Stop,
+            | SlashCommand::Pets
+            | SlashCommand::Collab => QueueDrain::Stop,
         }
     }
 

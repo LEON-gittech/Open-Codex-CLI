@@ -61,8 +61,6 @@ http = { workspace = true }
 libc = { workspace = true }
 owo-colors = { workspace = true }
 regex-lite = { workspace = true }
-reqwest = { workspace = true, features = ["json", "rustls-tls"] }
-chrono = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 supports-color = { workspace = true }

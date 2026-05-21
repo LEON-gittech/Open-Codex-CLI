@@ -60,8 +60,6 @@ async fn handle_spawn_agent(
         .as_deref()
         .map(str::trim)
         .filter(|role| !role.is_empty());
-    args.validate_role_metadata(role_name)?;
-    let metadata = args.task_metadata();
 
     let initial_operation = parse_collab_input(Some(args.message), /*items*/ None)?;
     let prompt = render_input_preview(&initial_operation);
@@ -78,17 +76,15 @@ async fn handle_spawn_agent(
                 prompt: prompt.clone(),
                 model: args.model.clone().unwrap_or_default(),
                 reasoning_effort: args.reasoning_effort.unwrap_or_default(),
-                phase: metadata.phase.clone(),
-                lane: metadata.lane.clone(),
-                ownership: metadata.ownership.clone(),
-                output_contract: metadata.output_contract.clone(),
-                spawn_reason: metadata.spawn_reason.clone(),
             }
             .into(),
         )
         .await;
     let mut config =
         build_agent_spawn_config(&session.get_base_instructions().await, turn.as_ref())?;
+    if let Some(service_tier) = args.service_tier.as_ref() {
+        config.service_tier = Some(service_tier.clone());
+    }
     if matches!(fork_mode, Some(SpawnAgentForkMode::FullHistory)) {
         reject_full_fork_spawn_overrides(role_name, args.model.as_deref(), args.reasoning_effort)?;
     } else {
@@ -209,11 +205,6 @@ async fn handle_spawn_agent(
                 model: effective_model,
                 reasoning_effort: effective_reasoning_effort,
                 status,
-                phase: metadata.phase.clone(),
-                lane: metadata.lane.clone(),
-                ownership: metadata.ownership.clone(),
-                output_contract: metadata.output_contract.clone(),
-                spawn_reason: metadata.spawn_reason.clone(),
             }
             .into(),
         )
@@ -238,7 +229,6 @@ async fn handle_spawn_agent(
         Ok(SpawnAgentResult::WithNickname {
             task_name,
             nickname,
-            metadata,
         })
     }
 }
@@ -260,40 +250,9 @@ struct SpawnAgentArgs {
     service_tier: Option<String>,
     fork_turns: Option<String>,
     fork_context: Option<bool>,
-    phase: Option<String>,
-    lane: Option<String>,
-    ownership: Option<String>,
-    output_contract: Option<String>,
-    spawn_reason: Option<String>,
 }
 
 impl SpawnAgentArgs {
-    fn validate_role_metadata(&self, role_name: Option<&str>) -> Result<(), FunctionCallError> {
-        if role_name.is_some_and(|role| role == "worker")
-            && self
-                .ownership
-                .as_deref()
-                .map(str::trim)
-                .filter(|ownership| !ownership.is_empty())
-                .is_none()
-        {
-            return Err(FunctionCallError::RespondToModel(
-                "worker subagents require `ownership` to describe the files/modules or responsibility lane they may edit".to_string(),
-            ));
-        }
-        Ok(())
-    }
-
-    fn task_metadata(&self) -> SpawnAgentTaskMetadata {
-        SpawnAgentTaskMetadata {
-            phase: clean_optional_metadata(self.phase.as_deref()),
-            lane: clean_optional_metadata(self.lane.as_deref()),
-            ownership: clean_optional_metadata(self.ownership.as_deref()),
-            output_contract: clean_optional_metadata(self.output_contract.as_deref()),
-            spawn_reason: clean_optional_metadata(self.spawn_reason.as_deref()),
-        }
-    }
-
     fn fork_mode(&self) -> Result<Option<SpawnAgentForkMode>, FunctionCallError> {
         if self.fork_context.is_some() {
             return Err(FunctionCallError::RespondToModel(
@@ -330,45 +289,12 @@ impl SpawnAgentArgs {
     }
 }
 
-fn clean_optional_metadata(value: Option<&str>) -> Option<String> {
-    value
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(str::to_string)
-}
-
-#[derive(Debug, Serialize)]
-pub(crate) struct SpawnAgentTaskMetadata {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    phase: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    lane: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    ownership: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    output_contract: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    spawn_reason: Option<String>,
-}
-
-impl SpawnAgentTaskMetadata {
-    fn is_empty(&self) -> bool {
-        self.phase.is_none()
-            && self.lane.is_none()
-            && self.ownership.is_none()
-            && self.output_contract.is_none()
-            && self.spawn_reason.is_none()
-    }
-}
-
 #[derive(Debug, Serialize)]
 #[serde(untagged)]
 pub(crate) enum SpawnAgentResult {
     WithNickname {
         task_name: String,
         nickname: Option<String>,
-        #[serde(skip_serializing_if = "SpawnAgentTaskMetadata::is_empty")]
-        metadata: SpawnAgentTaskMetadata,
     },
     HiddenMetadata {
         task_name: String,

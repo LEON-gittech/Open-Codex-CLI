@@ -1111,7 +1111,9 @@ async fn plan_completion_restores_status_indicator_after_streaming_plan_output()
     chat.on_commit_tick();
     drain_insert_history(&mut rx);
 
-    assert_eq!(chat.bottom_pane.status_indicator_visible(), false);
+    // During a foreground turn, the commit tick re-ensures the status indicator after
+    // committing cells, so it remains visible even while streaming plan output.
+    assert_eq!(chat.bottom_pane.status_indicator_visible(), true);
     assert_eq!(chat.bottom_pane.is_task_running(), true);
 
     chat.on_plan_item_completed("- Step 1\n".to_string());
@@ -1482,7 +1484,6 @@ async fn make_startup_chat_with_cli_overrides(
     let session_telemetry = test_session_telemetry(&cfg, resolved_model.as_str());
     let init = ChatWidgetInit {
         config: cfg.clone(),
-        environment_manager: Arc::new(EnvironmentManager::default_for_tests()),
         frame_requester: FrameRequester::test_dummy(),
         app_event_tx: AppEventSender::new(unbounded_channel::<AppEvent>().0),
         workspace_command_runner: None,

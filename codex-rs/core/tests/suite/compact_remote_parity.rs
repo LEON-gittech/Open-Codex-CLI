@@ -606,6 +606,7 @@ async fn submit_user_input(codex: &codex_core::CodexThread, items: Vec<UserInput
             items,
             final_output_json_schema: None,
             responsesapi_client_metadata: None,
+            thread_settings: Default::default(),
         })
         .await?;
     wait_for_turn_complete(codex).await;
@@ -621,6 +622,7 @@ fn user_input_for_step(scenario_name: &str, idx: usize, step: Step) -> Vec<UserI
     if matches!(step, Step::ImageAssistant) {
         items.push(UserInput::Image {
             image_url: IMAGE_URL.to_string(),
+            detail: None,
         });
     }
     items.push(UserInput::Text {

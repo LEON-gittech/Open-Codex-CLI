@@ -44,11 +44,12 @@ struct GitAttributionConfig {
     prompt: Option<String>,
 }
 
+#[async_trait::async_trait]
 impl ThreadLifecycleContributor<Config> for GitAttributionExtension {
-    fn on_thread_start(&self, input: ThreadStartInput<'_, Config>) {
+    async fn on_thread_start(&self, input: ThreadStartInput<'_, Config>) {
         input.thread_store.insert(GitAttributionConfig {
             enabled: input.config.features.enabled(Feature::CodexGitCommit),
-            prompt: input.config.commit_attribution.clone(),
+            prompt: None,
         });
     }
 }

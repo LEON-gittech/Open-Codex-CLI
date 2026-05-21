@@ -144,7 +144,6 @@ impl ChatWidget {
             text_elements,
             mention_bindings,
         } = user_message;
-        let xhigh_effort_override = super::text_requests_xhigh_reasoning(&text);
 
         let render_in_history = !self.turn_lifecycle.agent_turn_running;
         let mut items: Vec<UserInput> = Vec::new();
@@ -165,12 +164,14 @@ impl ChatWidget {
         for image_url in &remote_image_urls {
             items.push(UserInput::Image {
                 url: image_url.clone(),
+                detail: None,
             });
         }
 
         for image in &local_images {
             items.push(UserInput::LocalImage {
                 path: image.path.clone(),
+                detail: None,
             });
         }
 
@@ -308,24 +309,11 @@ impl ChatWidget {
         self.maybe_apply_ide_context(&mut items);
 
         let collaboration_mode = if self.collaboration_modes_enabled() {
-            self.active_collaboration_mask.as_ref().map(|_| {
-                if xhigh_effort_override {
-                    effective_mode.with_updates(
-                        /*model*/ None,
-                        Some(Some(ReasoningEffortConfig::XHigh)),
-                        /*developer_instructions*/ None,
-                    )
-                } else {
-                    effective_mode.clone()
-                }
-            })
+            self.active_collaboration_mask
+                .as_ref()
+                .map(|_| effective_mode.clone())
         } else {
             None
-        };
-        let reasoning_effort = if xhigh_effort_override {
-            Some(ReasoningEffortConfig::XHigh)
-        } else {
-            effective_mode.reasoning_effort()
         };
         let pending_steer = (!render_in_history).then(|| PendingSteer {
             user_message: UserMessage {
@@ -348,14 +336,14 @@ impl ChatWidget {
             None if self.config.notices.fast_default_opt_out == Some(true) => Some(None),
             None => None,
         };
-        let permission_profile = self.config.permissions.effective_permission_profile();
+        let active_permission_profile = self.config.permissions.active_permission_profile();
         let op = AppCommand::user_turn(
             items,
             self.config.cwd.to_path_buf(),
             AskForApproval::from(self.config.permissions.approval_policy.value()),
-            permission_profile,
+            active_permission_profile,
             effective_mode.model().to_string(),
-            reasoning_effort,
+            effective_mode.reasoning_effort(),
             /*summary*/ None,
             service_tier,
             /*final_output_json_schema*/ None,
@@ -365,9 +353,6 @@ impl ChatWidget {
 
         if !self.submit_op(op.clone()) {
             return (false, None);
-        }
-        if xhigh_effort_override {
-            self.turn_lifecycle.per_turn_effort_override = Some(ReasoningEffortConfig::XHigh);
         }
         if render_in_history {
             self.input_queue.user_turn_pending_start = true;

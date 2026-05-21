@@ -1,14 +1,20 @@
 use codex_protocol::openai_models::ModelPreset;
 use codex_tools::JsonSchema;
+use codex_tools::ResponsesApiNamespace;
+use codex_tools::ResponsesApiNamespaceTool;
 use codex_tools::ResponsesApiTool;
 use codex_tools::ToolSpec;
 use serde_json::Value;
 use serde_json::json;
 use std::collections::BTreeMap;
 
+pub const MULTI_AGENT_V1_NAMESPACE: &str = "multi_agent_v1";
+const MULTI_AGENT_V1_NAMESPACE_DESCRIPTION: &str = "Tools for spawning and managing sub-agents.";
+
 const SPAWN_AGENT_INHERITED_MODEL_GUIDANCE: &str = "Spawned agents inherit your current model by default. Omit `model` to use that preferred default; set `model` only when an explicit override is needed.";
 const SPAWN_AGENT_MODEL_OVERRIDE_DESCRIPTION: &str = "Optional model override for the new agent. Leave unset to inherit the same model as the parent, which is the preferred default. Only set this when the user explicitly asks for a different model or the task clearly requires one.";
 const SPAWN_AGENT_SERVICE_TIER_OVERRIDE_DESCRIPTION: &str = "Optional service tier override for the new agent. Leave unset unless the user explicitly asks for one.";
+const MAX_MODEL_OVERRIDES_IN_SPAWN_AGENT_DESCRIPTION: usize = 5;
 
 #[derive(Debug, Clone, Default)]
 pub struct SpawnAgentToolOptions {
@@ -47,18 +53,22 @@ pub fn create_spawn_agent_tool_v1(options: SpawnAgentToolOptions) -> ToolSpec {
         hide_spawn_agent_metadata_options(&mut properties);
     }
 
-    ToolSpec::Function(ResponsesApiTool {
-        name: "spawn_agent".to_string(),
-        description: spawn_agent_tool_description(
-            available_models_description.as_deref(),
-            return_value_description,
-            options.include_usage_hint,
-            options.usage_hint_text,
-        ),
-        strict: false,
-        defer_loading: None,
-        parameters: JsonSchema::object(properties, /*required*/ None, Some(false.into())),
-        output_schema: Some(spawn_agent_output_schema_v1()),
+    ToolSpec::Namespace(ResponsesApiNamespace {
+        name: MULTI_AGENT_V1_NAMESPACE.to_string(),
+        description: MULTI_AGENT_V1_NAMESPACE_DESCRIPTION.to_string(),
+        tools: vec![ResponsesApiNamespaceTool::Function(ResponsesApiTool {
+            name: "spawn_agent".to_string(),
+            description: spawn_agent_tool_description(
+                available_models_description.as_deref(),
+                return_value_description,
+                options.include_usage_hint,
+                options.usage_hint_text,
+            ),
+            strict: false,
+            defer_loading: None,
+            parameters: JsonSchema::object(properties, /*required*/ None, Some(false.into())),
+            output_schema: Some(spawn_agent_output_schema_v1()),
+        })],
     })
 }
 
@@ -76,7 +86,6 @@ pub fn create_spawn_agent_tool_v2(options: SpawnAgentToolOptions) -> ToolSpec {
                 .to_string(),
         )),
     );
-    properties.extend(spawn_agent_task_metadata_properties());
 
     ToolSpec::Function(ResponsesApiTool {
         name: "spawn_agent".to_string(),
@@ -122,14 +131,18 @@ pub fn create_send_input_tool_v1() -> ToolSpec {
         ),
     ]);
 
-    ToolSpec::Function(ResponsesApiTool {
-        name: "send_input".to_string(),
-        description: "Send a message to an existing agent. Use interrupt=true to redirect work immediately. You should reuse the agent by send_input if you believe your assigned task is highly dependent on the context of a previous task."
-            .to_string(),
-        strict: false,
-        defer_loading: None,
-        parameters: JsonSchema::object(properties, Some(vec!["target".to_string()]), Some(false.into())),
-        output_schema: Some(send_input_output_schema()),
+    ToolSpec::Namespace(ResponsesApiNamespace {
+        name: MULTI_AGENT_V1_NAMESPACE.to_string(),
+        description: MULTI_AGENT_V1_NAMESPACE_DESCRIPTION.to_string(),
+        tools: vec![ResponsesApiNamespaceTool::Function(ResponsesApiTool {
+            name: "send_input".to_string(),
+            description: "Send a message to an existing agent. Use interrupt=true to redirect work immediately. You should reuse the agent by send_input if you believe your assigned task is highly dependent on the context of a previous task."
+                .to_string(),
+            strict: false,
+            defer_loading: None,
+            parameters: JsonSchema::object(properties, Some(vec!["target".to_string()]), Some(false.into())),
+            output_schema: Some(send_input_output_schema()),
+        })],
     })
 }
 
@@ -197,34 +210,42 @@ pub fn create_resume_agent_tool() -> ToolSpec {
         JsonSchema::string(Some("Agent id to resume.".to_string())),
     )]);
 
-    ToolSpec::Function(ResponsesApiTool {
-        name: "resume_agent".to_string(),
-        description:
-            "Resume a previously closed agent by id so it can receive send_input and wait_agent calls."
-                .to_string(),
-        strict: false,
-        defer_loading: None,
-        parameters: JsonSchema::object(properties, Some(vec!["id".to_string()]), Some(false.into())),
-        output_schema: Some(resume_agent_output_schema()),
+    ToolSpec::Namespace(ResponsesApiNamespace {
+        name: MULTI_AGENT_V1_NAMESPACE.to_string(),
+        description: MULTI_AGENT_V1_NAMESPACE_DESCRIPTION.to_string(),
+        tools: vec![ResponsesApiNamespaceTool::Function(ResponsesApiTool {
+            name: "resume_agent".to_string(),
+            description:
+                "Resume a previously closed agent by id so it can receive send_input and wait_agent calls."
+                    .to_string(),
+            strict: false,
+            defer_loading: None,
+            parameters: JsonSchema::object(properties, Some(vec!["id".to_string()]), Some(false.into())),
+            output_schema: Some(resume_agent_output_schema()),
+        })],
     })
 }
 
 pub fn create_wait_agent_tool_v1(options: WaitAgentTimeoutOptions) -> ToolSpec {
-    ToolSpec::Function(ResponsesApiTool {
-        name: "wait_agent".to_string(),
-        description: "Wait for agents to reach a final status. Use wait_agent only when blocked on an agent result or when explicitly checking background progress. Completed statuses may include the agent's final message. Returns empty status when timed out. Once the agent reaches a final status, a notification message will be received containing the same completed status."
-            .to_string(),
-        strict: false,
-        defer_loading: None,
-        parameters: wait_agent_tool_parameters_v1(options),
-        output_schema: Some(wait_output_schema_v1()),
+    ToolSpec::Namespace(ResponsesApiNamespace {
+        name: MULTI_AGENT_V1_NAMESPACE.to_string(),
+        description: MULTI_AGENT_V1_NAMESPACE_DESCRIPTION.to_string(),
+        tools: vec![ResponsesApiNamespaceTool::Function(ResponsesApiTool {
+            name: "wait_agent".to_string(),
+            description: "Wait for agents to reach a final status. Completed statuses may include the agent's final message. Returns empty status when timed out. Once the agent reaches a final status, a notification message will be received containing the same completed status."
+                .to_string(),
+            strict: false,
+            defer_loading: None,
+            parameters: wait_agent_tool_parameters_v1(options),
+            output_schema: Some(wait_output_schema_v1()),
+        })],
     })
 }
 
 pub fn create_wait_agent_tool_v2(options: WaitAgentTimeoutOptions) -> ToolSpec {
     ToolSpec::Function(ResponsesApiTool {
         name: "wait_agent".to_string(),
-        description: "Wait for a mailbox update from any live agent, including queued messages and final-status notifications. Use wait_agent only when blocked on an agent result or when explicitly checking background progress. Does not return the content; returns either a summary of which agents have updates (if any), or a timeout summary if no mailbox update arrives before the deadline."
+        description: "Wait for a mailbox update from any live agent, including queued messages and final-status notifications. Does not return the content; returns either a summary of which agents have updates (if any), or a timeout summary if no mailbox update arrives before the deadline."
             .to_string(),
         strict: false,
         defer_loading: None,
@@ -260,13 +281,17 @@ pub fn create_close_agent_tool_v1() -> ToolSpec {
         JsonSchema::string(Some("Agent id to close (from spawn_agent).".to_string())),
     )]);
 
-    ToolSpec::Function(ResponsesApiTool {
-        name: "close_agent".to_string(),
-        description: "Close an agent and any open descendants when they are no longer needed, and return the target agent's previous status before shutdown was requested. Don't keep agents open for too long if they are not needed anymore.".to_string(),
-        strict: false,
-        defer_loading: None,
-        parameters: JsonSchema::object(properties, Some(vec!["target".to_string()]), Some(false.into())),
-        output_schema: Some(close_agent_output_schema()),
+    ToolSpec::Namespace(ResponsesApiNamespace {
+        name: MULTI_AGENT_V1_NAMESPACE.to_string(),
+        description: MULTI_AGENT_V1_NAMESPACE_DESCRIPTION.to_string(),
+        tools: vec![ResponsesApiNamespaceTool::Function(ResponsesApiTool {
+            name: "close_agent".to_string(),
+            description: "Close an agent and any open descendants when they are no longer needed, and return the target agent's previous status before shutdown was requested. Don't keep agents open for too long if they are not needed anymore.".to_string(),
+            strict: false,
+            defer_loading: None,
+            parameters: JsonSchema::object(properties, Some(vec!["target".to_string()]), Some(false.into())),
+            output_schema: Some(close_agent_output_schema()),
+        })],
     })
 }
 
@@ -362,18 +387,6 @@ fn spawn_agent_output_schema_v2(hide_agent_metadata: bool) -> Value {
             "nickname": {
                 "type": ["string", "null"],
                 "description": "User-facing nickname for the spawned agent when available."
-            },
-            "metadata": {
-                "type": "object",
-                "description": "Optional phase, lane, ownership, output contract, and spawn reason metadata when provided.",
-                "properties": {
-                    "phase": { "type": "string" },
-                    "lane": { "type": "string" },
-                    "ownership": { "type": "string" },
-                    "output_contract": { "type": "string" },
-                    "spawn_reason": { "type": "string" }
-                },
-                "additionalProperties": false
             }
         },
         "required": ["task_name", "nickname"],
@@ -607,46 +620,6 @@ fn spawn_agent_common_properties_v2(agent_type_description: &str) -> BTreeMap<St
     ])
 }
 
-fn spawn_agent_task_metadata_properties() -> BTreeMap<String, JsonSchema> {
-    BTreeMap::from([
-        (
-            "phase".to_string(),
-            JsonSchema::string(Some(
-                "Optional execution phase, for example `exploration`, `implementation`, or `verification`."
-                    .to_string(),
-            )),
-        ),
-        (
-            "lane".to_string(),
-            JsonSchema::string(Some(
-                "Optional independent work lane name. Use this to show how the subagent is orthogonal to the main rollout."
-                    .to_string(),
-            )),
-        ),
-        (
-            "ownership".to_string(),
-            JsonSchema::string(Some(
-                "Optional ownership boundary for this task. Required when `agent_type` is `worker`; describe files/modules or responsibility the worker may edit."
-                    .to_string(),
-            )),
-        ),
-        (
-            "output_contract".to_string(),
-            JsonSchema::string(Some(
-                "Optional expected output shape, such as findings, changed paths, tests run, or a concise final recommendation."
-                    .to_string(),
-            )),
-        ),
-        (
-            "spawn_reason".to_string(),
-            JsonSchema::string(Some(
-                "Optional reason this work should run in a background subagent instead of on the main critical path."
-                    .to_string(),
-            )),
-        ),
-    ])
-}
-
 fn hide_spawn_agent_metadata_options(properties: &mut BTreeMap<String, JsonSchema>) {
     properties.remove("agent_type");
     properties.remove("model");
@@ -680,7 +653,7 @@ fn spawn_agent_tool_description(
     }
     let agent_role_usage_hint = available_models_description
         .map(|_| {
-            "Agent-role guidance helps choose which agent to use after you decide delegation is appropriate."
+            "Agent-role guidance below only helps choose which agent to use after spawning is already authorized; it never authorizes spawning by itself."
         })
         .unwrap_or_default();
     format!(
@@ -688,9 +661,8 @@ fn spawn_agent_tool_description(
         {tool_description}
 This spawn_agent tool provides you access to sub-agents that inherit your current model by default. Do not set the `model` field unless the user explicitly asks for a different model or there is a clear task-specific reason. You should follow the rules and guidelines below to use this tool.
 
-For non-trivial tasks, first decide whether the work has independent axes that can run in parallel.
-Prefer subagents for bounded, useful sidecar work such as read-only exploration, review, test discovery, validation, or disjoint implementation slices.
-spawn_agent starts work in the background; after spawning, continue useful local work instead of immediately polling by default.
+Only use `spawn_agent` if and only if the user explicitly asks for sub-agents, delegation, or parallel agent work.
+Requests for depth, thoroughness, research, investigation, or detailed codebase analysis do not count as permission to spawn.
 {agent_role_usage_hint}
 
 ### When to delegate vs. do the subtask yourself
@@ -748,7 +720,6 @@ The spawned agent will have the same tools as you and the ability to spawn its o
 {SPAWN_AGENT_INHERITED_MODEL_GUIDANCE}
 It will be able to send you and other running agents messages, and its final answer will be provided to you when it finishes.
 The new agent's canonical task name will be provided to it along with the message.
-Use `phase`, `lane`, `ownership`, `output_contract`, and `spawn_reason` to make task management visible without inventing one-off agent profiles. `worker` subagents must include `ownership`.
 {concurrency_guidance}"#
     );
 
@@ -766,8 +737,11 @@ Use `phase`, `lane`, `ownership`, `output_contract`, and `spawn_reason` to make 
 }
 
 fn spawn_agent_models_description(models: &[ModelPreset]) -> String {
-    let visible_models: Vec<&ModelPreset> =
-        models.iter().filter(|model| model.show_in_picker).collect();
+    let visible_models: Vec<&ModelPreset> = models
+        .iter()
+        .filter(|model| model.show_in_picker)
+        .take(MAX_MODEL_OVERRIDES_IN_SPAWN_AGENT_DESCRIPTION)
+        .collect();
     if visible_models.is_empty() {
         return "No picker-visible model overrides are currently loaded.".to_string();
     }
@@ -775,30 +749,40 @@ fn spawn_agent_models_description(models: &[ModelPreset]) -> String {
     let model_descriptions = visible_models
         .into_iter()
         .map(|model| {
+            let default_reasoning_effort = model.default_reasoning_effort;
             let efforts = model
                 .supported_reasoning_efforts
                 .iter()
-                .map(|preset| format!("{} ({})", preset.effort, preset.description))
+                .map(|preset| {
+                    let effort = preset.effort;
+                    if effort == default_reasoning_effort {
+                        format!("{effort} (default)")
+                    } else {
+                        effort.to_string()
+                    }
+                })
                 .collect::<Vec<_>>()
                 .join(", ");
-            let service_tiers = if model.service_tiers.is_empty() {
-                "none".to_string()
+            let reasoning_efforts_suffix = if efforts.is_empty() {
+                String::new()
             } else {
-                model
-                    .service_tiers
-                    .iter()
-                    .map(|tier| format!("{} ({}: {})", tier.id, tier.name, tier.description))
-                    .collect::<Vec<_>>()
-                    .join(", ")
+                format!(" Reasoning efforts: {efforts}.")
             };
+            let service_tiers = model
+                .service_tiers
+                .iter()
+                .map(|tier| tier.id.as_str())
+                .collect::<Vec<_>>()
+                .join(", ");
+            let service_tiers_suffix = if service_tiers.is_empty() {
+                String::new()
+            } else {
+                format!(" Service tiers: {service_tiers}.")
+            };
+            let model_slug = &model.model;
+            let description = &model.description;
             format!(
-                "- {} (`{}`): {} Default reasoning effort: {}. Supported reasoning efforts: {}. Supported service tiers: {}.",
-                model.display_name,
-                model.model,
-                model.description,
-                model.default_reasoning_effort,
-                efforts,
-                service_tiers
+                "- `{model_slug}`: {description}{reasoning_efforts_suffix}{service_tiers_suffix}"
             )
         })
         .collect::<Vec<_>>()

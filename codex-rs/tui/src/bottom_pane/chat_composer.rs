@@ -368,7 +368,6 @@ pub(crate) struct ChatComposer {
     plugins: Option<Vec<PluginCapabilitySummary>>,
     connectors_snapshot: Option<ConnectorsSnapshot>,
     collaboration_modes_enabled: bool,
-    shift_tab_reasoning_speed_toggle_enabled: bool,
     config: ChatComposerConfig,
     connectors_enabled: bool,
     plugins_command_enabled: bool,
@@ -381,14 +380,13 @@ pub(crate) struct ChatComposer {
     audio_device_selection_enabled: bool,
     windows_degraded_sandbox_active: bool,
     side_conversation_active: bool,
+    shift_tab_reasoning_speed_toggle_enabled: bool,
     history_search: Option<HistorySearchSession>,
     submit_keys: Vec<KeyBinding>,
     queue_keys: Vec<KeyBinding>,
     toggle_shortcuts_keys: Vec<KeyBinding>,
     history_search_previous_keys: Vec<KeyBinding>,
     history_search_next_keys: Vec<KeyBinding>,
-    list_move_up_keys: Vec<KeyBinding>,
-    list_move_down_keys: Vec<KeyBinding>,
     editor_keymap: EditorKeymap,
     vim_normal_keymap: VimNormalKeymap,
 }
@@ -535,7 +533,6 @@ impl ChatComposer {
             plugins: None,
             connectors_snapshot: None,
             collaboration_modes_enabled: false,
-            shift_tab_reasoning_speed_toggle_enabled: false,
             config,
             connectors_enabled: false,
             plugins_command_enabled: false,
@@ -548,6 +545,7 @@ impl ChatComposer {
             audio_device_selection_enabled: false,
             windows_degraded_sandbox_active: false,
             side_conversation_active: false,
+            shift_tab_reasoning_speed_toggle_enabled: false,
             history_search: None,
             submit_keys: vec![key_hint::plain(KeyCode::Enter)],
             queue_keys: vec![key_hint::plain(KeyCode::Tab)],
@@ -557,8 +555,6 @@ impl ChatComposer {
             ],
             history_search_previous_keys: default_keymap.composer.history_search_previous.clone(),
             history_search_next_keys: default_keymap.composer.history_search_next.clone(),
-            list_move_up_keys: default_keymap.list.move_up.clone(),
-            list_move_down_keys: default_keymap.list.move_down.clone(),
             editor_keymap: default_editor_keymap,
             vim_normal_keymap: default_vim_normal_keymap,
         };
@@ -664,8 +660,6 @@ impl ChatComposer {
         self.toggle_shortcuts_keys = keymap.composer.toggle_shortcuts.clone();
         self.history_search_previous_keys = keymap.composer.history_search_previous.clone();
         self.history_search_next_keys = keymap.composer.history_search_next.clone();
-        self.list_move_up_keys = keymap.list.move_up.clone();
-        self.list_move_down_keys = keymap.list.move_down.clone();
         self.editor_keymap = keymap.editor.clone();
         self.vim_normal_keymap = keymap.vim_normal.clone();
         self.draft.textarea.set_keymap_bindings(keymap);
@@ -1682,11 +1676,14 @@ impl ChatComposer {
             unreachable!();
         };
 
-        let allow_plain_char_navigation = !key_hint::is_plain_text_key_event(key_event);
-
         match key_event {
             KeyEvent {
                 code: KeyCode::Up, ..
+            }
+            | KeyEvent {
+                code: KeyCode::Char('p'),
+                modifiers: KeyModifiers::CONTROL,
+                ..
             } => {
                 popup.move_up();
                 (InputResult::None, true)
@@ -1694,15 +1691,12 @@ impl ChatComposer {
             KeyEvent {
                 code: KeyCode::Down,
                 ..
+            }
+            | KeyEvent {
+                code: KeyCode::Char('n'),
+                modifiers: KeyModifiers::CONTROL,
+                ..
             } => {
-                popup.move_down();
-                (InputResult::None, true)
-            }
-            _ if allow_plain_char_navigation && self.list_move_up_keys.is_pressed(key_event) => {
-                popup.move_up();
-                (InputResult::None, true)
-            }
-            _ if allow_plain_char_navigation && self.list_move_down_keys.is_pressed(key_event) => {
                 popup.move_down();
                 (InputResult::None, true)
             }
@@ -4149,6 +4143,15 @@ impl ChatComposer {
         }
     }
 
+    pub(crate) fn show_shutdown_in_progress(&mut self) {
+        self.set_input_enabled(/*enabled*/ false, Some("Shutting down...".to_string()));
+        self.footer.quit_shortcut_expires_at = None;
+        self.footer.mode = FooterMode::ComposerEmpty;
+        self.footer.hint_override = Some(Vec::new());
+        self.footer.plan_mode_nudge_visible = false;
+        self.footer.flash = None;
+    }
+
     pub fn set_task_running(&mut self, running: bool) {
         self.is_task_running = running;
     }
@@ -4163,9 +4166,13 @@ impl ChatComposer {
         self.footer.context_window_used_tokens = used_tokens;
     }
 
-    pub(crate) fn set_esc_backtrack_hint(&mut self, _show: bool) {
-        self.footer.esc_backtrack_hint = false;
-        self.footer.mode = reset_mode_after_activity(self.footer.mode);
+    pub(crate) fn set_esc_backtrack_hint(&mut self, show: bool) {
+        self.footer.esc_backtrack_hint = show;
+        if show {
+            self.footer.mode = esc_hint_mode(self.footer.mode, self.is_task_running);
+        } else {
+            self.footer.mode = reset_mode_after_activity(self.footer.mode);
+        }
     }
 
     pub(crate) fn set_status_line(&mut self, status_line: Option<Line<'static>>) -> bool {
@@ -4389,8 +4396,7 @@ impl ChatComposer {
             ActivePopup::None => {
                 let footer_props = self.footer_props();
                 let show_cycle_hint = !footer_props.is_task_running
-                    && self.footer.collaboration_mode_indicator.is_some()
-                    && !self.shift_tab_reasoning_speed_toggle_enabled;
+                    && self.footer.collaboration_mode_indicator.is_some();
                 let show_shortcuts_hint = match footer_props.mode {
                     FooterMode::ComposerEmpty => !self.is_in_paste_burst(),
                     FooterMode::ComposerHasDraft => false,
@@ -4399,7 +4405,14 @@ impl ChatComposer {
                     | FooterMode::ShortcutOverlay
                     | FooterMode::EscHint => false,
                 };
-                let show_queue_hint = false;
+                let show_queue_hint = match footer_props.mode {
+                    FooterMode::ComposerHasDraft => footer_props.is_task_running,
+                    FooterMode::HistorySearch
+                    | FooterMode::QuitShortcutReminder
+                    | FooterMode::ComposerEmpty
+                    | FooterMode::ShortcutOverlay
+                    | FooterMode::EscHint => false,
+                };
                 let custom_height = self.custom_footer_height();
                 let footer_hint_height =
                     custom_height.unwrap_or_else(|| footer_height(&footer_props));
@@ -4639,36 +4652,38 @@ impl ChatComposer {
 
         let mut state = self.draft.textarea_state.borrow_mut();
         let textarea_is_empty = self.draft.textarea.text().is_empty() && !self.draft.is_bash_mode;
-        if let Some(mask_char) = mask_char {
-            self.draft
-                .textarea
-                .render_ref_masked(textarea_rect, buf, &mut state, mask_char);
-        } else {
-            let highlight_ranges = self.history_search_highlight_ranges();
-            if highlight_ranges.is_empty() {
-                StatefulWidgetRef::render_ref(
-                    &(&self.draft.textarea),
-                    textarea_rect,
-                    buf,
-                    &mut state,
-                );
+        if self.draft.input_enabled {
+            if let Some(mask_char) = mask_char {
+                self.draft
+                    .textarea
+                    .render_ref_masked(textarea_rect, buf, &mut state, mask_char);
             } else {
-                let highlight_style =
-                    Style::default().add_modifier(Modifier::REVERSED | Modifier::BOLD);
-                let highlights = highlight_ranges
-                    .into_iter()
-                    .map(|range| (range, highlight_style))
-                    .collect::<Vec<_>>();
-                self.draft.textarea.render_ref_styled_with_highlights(
-                    textarea_rect,
-                    buf,
-                    &mut state,
-                    Style::default(),
-                    &highlights,
-                );
+                let highlight_ranges = self.history_search_highlight_ranges();
+                if highlight_ranges.is_empty() {
+                    StatefulWidgetRef::render_ref(
+                        &(&self.draft.textarea),
+                        textarea_rect,
+                        buf,
+                        &mut state,
+                    );
+                } else {
+                    let highlight_style =
+                        Style::default().add_modifier(Modifier::REVERSED | Modifier::BOLD);
+                    let highlights = highlight_ranges
+                        .into_iter()
+                        .map(|range| (range, highlight_style))
+                        .collect::<Vec<_>>();
+                    self.draft.textarea.render_ref_styled_with_highlights(
+                        textarea_rect,
+                        buf,
+                        &mut state,
+                        Style::default(),
+                        &highlights,
+                    );
+                }
             }
         }
-        if textarea_is_empty {
+        if !self.draft.input_enabled || textarea_is_empty {
             let text = if self.draft.input_enabled {
                 self.placeholder_text.as_str().to_string()
             } else {
@@ -5282,19 +5297,6 @@ mod tests {
                     /*context_percent*/ 100,
                     Some(CollaborationModeIndicator::Plan),
                 );
-            },
-        );
-        snapshot_composer_state_with_width(
-            "footer_collapse_plan_empty_speed_toggle",
-            /*width*/ 120,
-            /*enhanced_keys_supported*/ true,
-            |composer| {
-                setup_collab_footer(
-                    composer,
-                    /*context_percent*/ 100,
-                    Some(CollaborationModeIndicator::Plan),
-                );
-                composer.set_shift_tab_reasoning_speed_toggle_enabled(/*enabled*/ true);
             },
         );
         snapshot_composer_state_with_width(
@@ -7632,150 +7634,6 @@ mod tests {
                 None => panic!("no selected command for '/mo'"),
             },
             _ => panic!("slash popup not active after typing '/mo'"),
-        }
-    }
-
-    #[test]
-    fn slash_popup_ctrl_j_uses_list_move_down() {
-        use super::super::command_popup::CommandItem;
-
-        let (tx, _rx) = unbounded_channel::<AppEvent>();
-        let sender = AppEventSender::new(tx);
-        let mut composer = ChatComposer::new(
-            /*has_input_focus*/ true,
-            sender,
-            /*enhanced_keys_supported*/ false,
-            "Ask Codex to do anything".to_string(),
-            /*disable_paste_burst*/ false,
-        );
-        type_chars_humanlike(&mut composer, &['/']);
-
-        let result =
-            composer.handle_key_event(KeyEvent::new(KeyCode::Char('j'), KeyModifiers::CONTROL));
-        assert_eq!(result, (InputResult::None, true));
-
-        match &composer.popups.active {
-            ActivePopup::Command(popup) => match popup.selected_item() {
-                Some(CommandItem::Builtin(cmd)) => assert_eq!(cmd.command(), "effort"),
-                Some(CommandItem::ServiceTier(command)) => {
-                    panic!("expected effort command, got service tier {command:?}")
-                }
-                None => panic!("no selected command after list move down"),
-            },
-            _ => panic!("slash popup not active after list move down"),
-        }
-    }
-
-    #[test]
-    fn slash_popup_down_arrow_uses_list_move_down() {
-        use super::super::command_popup::CommandItem;
-
-        let (tx, _rx) = unbounded_channel::<AppEvent>();
-        let sender = AppEventSender::new(tx);
-        let mut composer = ChatComposer::new(
-            /*has_input_focus*/ true,
-            sender,
-            /*enhanced_keys_supported*/ false,
-            "Ask Codex to do anything".to_string(),
-            /*disable_paste_burst*/ false,
-        );
-        type_chars_humanlike(&mut composer, &['/']);
-
-        let result = composer.handle_key_event(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
-        assert_eq!(result, (InputResult::None, true));
-
-        match &composer.popups.active {
-            ActivePopup::Command(popup) => match popup.selected_item() {
-                Some(CommandItem::Builtin(cmd)) => assert_eq!(cmd.command(), "effort"),
-                Some(CommandItem::ServiceTier(command)) => {
-                    panic!("expected effort command, got service tier {command:?}")
-                }
-                None => panic!("no selected command after list move down"),
-            },
-            _ => panic!("slash popup not active after list move down"),
-        }
-    }
-
-    #[test]
-    fn slash_popup_opens_immediately_for_bare_slash() {
-        let (tx, _rx) = unbounded_channel::<AppEvent>();
-        let sender = AppEventSender::new(tx);
-        let mut composer = ChatComposer::new(
-            /*has_input_focus*/ true,
-            sender,
-            /*enhanced_keys_supported*/ false,
-            "Ask Codex to do anything".to_string(),
-            /*disable_paste_burst*/ false,
-        );
-
-        let result =
-            composer.handle_key_event(KeyEvent::new(KeyCode::Char('/'), KeyModifiers::NONE));
-        assert_eq!(result, (InputResult::None, true));
-        assert_eq!(composer.current_text(), "/");
-        assert!(!composer.is_in_paste_burst());
-        assert!(
-            matches!(composer.popups.active, ActivePopup::Command(_)),
-            "bare slash should open the slash popup without waiting for paste-burst flush"
-        );
-    }
-
-    #[test]
-    fn slash_popup_down_arrow_works_after_raw_bare_slash() {
-        use super::super::command_popup::CommandItem;
-
-        let (tx, _rx) = unbounded_channel::<AppEvent>();
-        let sender = AppEventSender::new(tx);
-        let mut composer = ChatComposer::new(
-            /*has_input_focus*/ true,
-            sender,
-            /*enhanced_keys_supported*/ false,
-            "Ask Codex to do anything".to_string(),
-            /*disable_paste_burst*/ false,
-        );
-
-        let _ = composer.handle_key_event(KeyEvent::new(KeyCode::Char('/'), KeyModifiers::NONE));
-        let result = composer.handle_key_event(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
-        assert_eq!(result, (InputResult::None, true));
-
-        match &composer.popups.active {
-            ActivePopup::Command(popup) => match popup.selected_item() {
-                Some(CommandItem::Builtin(cmd)) => assert_eq!(cmd.command(), "effort"),
-                Some(CommandItem::ServiceTier(command)) => {
-                    panic!("expected effort command, got service tier {command:?}")
-                }
-                None => panic!("no selected command after list move down"),
-            },
-            _ => panic!("slash popup not active after list move down"),
-        }
-    }
-
-    #[test]
-    fn slash_popup_modified_down_arrow_uses_list_move_down() {
-        use super::super::command_popup::CommandItem;
-
-        let (tx, _rx) = unbounded_channel::<AppEvent>();
-        let sender = AppEventSender::new(tx);
-        let mut composer = ChatComposer::new(
-            /*has_input_focus*/ true,
-            sender,
-            /*enhanced_keys_supported*/ false,
-            "Ask Codex to do anything".to_string(),
-            /*disable_paste_burst*/ false,
-        );
-        type_chars_humanlike(&mut composer, &['/']);
-
-        let result = composer.handle_key_event(KeyEvent::new(KeyCode::Down, KeyModifiers::SHIFT));
-        assert_eq!(result, (InputResult::None, true));
-
-        match &composer.popups.active {
-            ActivePopup::Command(popup) => match popup.selected_item() {
-                Some(CommandItem::Builtin(cmd)) => assert_eq!(cmd.command(), "effort"),
-                Some(CommandItem::ServiceTier(command)) => {
-                    panic!("expected effort command, got service tier {command:?}")
-                }
-                None => panic!("no selected command after list move down"),
-            },
-            _ => panic!("slash popup not active after list move down"),
         }
     }
 
@@ -10884,5 +10742,42 @@ mod tests {
             height: 5,
         };
         assert_eq!(composer.cursor_pos(area), None);
+    }
+
+    #[test]
+    fn shutdown_in_progress_disables_input_and_uses_hint_without_footer() {
+        use ratatui::Terminal;
+        use ratatui::backend::TestBackend;
+
+        let (tx, _rx) = unbounded_channel::<AppEvent>();
+        let sender = AppEventSender::new(tx);
+        let mut composer = ChatComposer::new(
+            /*has_input_focus*/ true,
+            sender,
+            /*enhanced_keys_supported*/ false,
+            "Ask Codex to do anything".to_string(),
+            /*disable_paste_burst*/ false,
+        );
+
+        composer.set_text_content("hello".to_string(), Vec::new(), Vec::new());
+        composer.show_shutdown_in_progress();
+
+        assert!(!composer.input_enabled());
+        assert_eq!(composer.current_text(), "hello");
+        assert_eq!(composer.custom_footer_height(), Some(0));
+
+        let area = Rect {
+            x: 0,
+            y: 0,
+            width: 40,
+            height: 5,
+        };
+        assert_eq!(composer.cursor_pos(area), None);
+
+        let mut terminal = Terminal::new(TestBackend::new(40, 5)).expect("terminal");
+        terminal
+            .draw(|f| composer.render(f.area(), f.buffer_mut()))
+            .unwrap();
+        insta::assert_snapshot!("shutdown_in_progress", terminal.backend());
     }
 }

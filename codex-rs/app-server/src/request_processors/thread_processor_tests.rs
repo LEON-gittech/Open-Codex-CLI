@@ -62,6 +62,9 @@ mod thread_processor_behavior_tests {
     use codex_model_provider_info::ModelProviderInfo;
     use codex_model_provider_info::WireApi;
     use codex_protocol::ThreadId;
+    use codex_protocol::config_types::CollaborationMode;
+    use codex_protocol::config_types::ModeKind;
+    use codex_protocol::config_types::Settings;
     use codex_protocol::models::BUILT_IN_PERMISSION_PROFILE_DANGER_FULL_ACCESS;
     use codex_protocol::models::BUILT_IN_PERMISSION_PROFILE_READ_ONLY;
     use codex_protocol::models::BUILT_IN_PERMISSION_PROFILE_WORKSPACE;
@@ -128,59 +131,6 @@ mod thread_processor_behavior_tests {
             defer_loading: false,
         }];
         validate_dynamic_tools(&tools).expect("valid schema");
-    }
-
-    #[tokio::test]
-    async fn ad_hoc_memory_notes_report_exact_durable_matches() -> Result<()> {
-        let codex_home = TempDir::new()?;
-        let memories_dir = codex_home.path().join("memories");
-        tokio::fs::create_dir_all(memories_dir.join("extensions/ad_hoc/notes")).await?;
-        tokio::fs::write(
-            memories_dir.join("MEMORY.md"),
-            "Durable fact: exact staged memory content.",
-        )
-        .await?;
-        tokio::fs::write(
-            memories_dir.join("extensions/ad_hoc/notes/one.md"),
-            "reason: test reason\n\nexact staged memory content",
-        )
-        .await?;
-
-        let durable_files = read_durable_memory_files(codex_home.path()).await?;
-        let notes = read_ad_hoc_memory_notes(codex_home.path(), &durable_files).await?;
-
-        assert_eq!(notes.len(), 1);
-        assert_eq!(notes[0].reason.as_deref(), Some("test reason"));
-        assert_eq!(notes[0].content, "exact staged memory content");
-        assert_eq!(notes[0].durable_matches, vec!["MEMORY.md".to_string()]);
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn memory_list_returns_summary_index_and_topics() -> Result<()> {
-        let codex_home = TempDir::new()?;
-        let memories_dir = codex_home.path().join("memories");
-        tokio::fs::create_dir_all(memories_dir.join("topics")).await?;
-        tokio::fs::write(memories_dir.join("memory_summary.md"), "# Summary\n\nshort").await?;
-        tokio::fs::write(memories_dir.join("MEMORY.md"), "# Memory Index\n\nindex").await?;
-        tokio::fs::write(
-            memories_dir.join("topics/codex.md"),
-            "# Codex Topic\n\nbody",
-        )
-        .await?;
-
-        let response = read_memory_list(&codex_home.path().to_path_buf().try_into()?).await?;
-
-        assert_eq!(response.files.len(), 3);
-        assert_eq!(response.files[0].kind, MemoryFileKind::Summary);
-        assert_eq!(response.files[0].path, "memory_summary.md");
-        assert_eq!(response.files[0].title, "Summary");
-        assert_eq!(response.files[1].kind, MemoryFileKind::Index);
-        assert_eq!(response.files[1].title, "Memory Index");
-        assert_eq!(response.files[2].kind, MemoryFileKind::Topic);
-        assert_eq!(response.files[2].path, "topics/codex.md");
-        assert_eq!(response.files[2].title, "Codex Topic");
-        Ok(())
     }
 
     #[test]
@@ -267,6 +217,7 @@ mod thread_processor_behavior_tests {
                 images: None,
                 local_images: Vec::new(),
                 text_elements: Vec::new(),
+                ..Default::default()
             },
         ))];
         let active_turn = Turn {
@@ -494,7 +445,7 @@ mod thread_processor_behavior_tests {
                         path: FileSystemPath::GlobPattern {
                             pattern: "/tmp/project/**/*.env".to_string(),
                         },
-                        access: FileSystemAccessMode::None,
+                        access: FileSystemAccessMode::Deny,
                     },
                 ]),
                 NetworkSandboxPolicy::Restricted,
@@ -714,7 +665,16 @@ mod thread_processor_behavior_tests {
             profile_workspace_roots: Vec::new(),
             ephemeral: false,
             reasoning_effort: None,
+            reasoning_summary: None,
             personality: None,
+            collaboration_mode: CollaborationMode {
+                mode: ModeKind::Default,
+                settings: Settings {
+                    model: "gpt-5".to_string(),
+                    reasoning_effort: None,
+                    developer_instructions: None,
+                },
+            },
             session_source: SessionSource::Cli,
             thread_source: None,
         };
@@ -728,7 +688,6 @@ mod thread_processor_behavior_tests {
     fn test_thread_metadata(
         model: Option<&str>,
         reasoning_effort: Option<ReasoningEffort>,
-        service_tier: Option<Option<&str>>,
     ) -> Result<ThreadMetadata> {
         let thread_id = ThreadId::from_string("3f941c35-29b3-493b-b0a4-e25800d9aeb0")?;
         let mut builder = ThreadMetadataBuilder::new(
@@ -741,14 +700,13 @@ mod thread_processor_behavior_tests {
         let mut metadata = builder.build("mock_provider");
         metadata.model = model.map(ToString::to_string);
         metadata.reasoning_effort = reasoning_effort;
-        metadata.service_tier = service_tier.map(|tier| tier.map(ToString::to_string));
         Ok(metadata)
     }
 
     #[test]
     fn summary_from_thread_metadata_formats_protocol_timestamps_as_seconds() -> Result<()> {
         let mut metadata =
-            test_thread_metadata(/*model*/ None, /*reasoning_effort*/ None, None)?;
+            test_thread_metadata(/*model*/ None, /*reasoning_effort*/ None)?;
         metadata.created_at =
             DateTime::parse_from_rfc3339("2025-09-05T16:53:11.123Z")?.with_timezone(&Utc);
         metadata.updated_at =
@@ -767,7 +725,7 @@ mod thread_processor_behavior_tests {
         let mut request_overrides = None;
         let mut typesafe_overrides = ConfigOverrides::default();
         let persisted_metadata =
-            test_thread_metadata(Some("gpt-5.1-codex-max"), Some(ReasoningEffort::High), None)?;
+            test_thread_metadata(Some("gpt-5.1-codex-max"), Some(ReasoningEffort::High))?;
 
         merge_persisted_resume_metadata(
             &mut request_overrides,
@@ -804,7 +762,7 @@ mod thread_processor_behavior_tests {
             ..Default::default()
         };
         let persisted_metadata =
-            test_thread_metadata(Some("gpt-5.1-codex-max"), Some(ReasoningEffort::High), None)?;
+            test_thread_metadata(Some("gpt-5.1-codex-max"), Some(ReasoningEffort::High))?;
 
         merge_persisted_resume_metadata(
             &mut request_overrides,
@@ -833,7 +791,7 @@ mod thread_processor_behavior_tests {
         )]));
         let mut typesafe_overrides = ConfigOverrides::default();
         let persisted_metadata =
-            test_thread_metadata(Some("gpt-5.1-codex-max"), Some(ReasoningEffort::High), None)?;
+            test_thread_metadata(Some("gpt-5.1-codex-max"), Some(ReasoningEffort::High))?;
 
         merge_persisted_resume_metadata(
             &mut request_overrides,
@@ -854,7 +812,7 @@ mod thread_processor_behavior_tests {
     }
 
     #[test]
-    fn merge_persisted_resume_metadata_uses_persisted_values_when_only_provider_is_present()
+    fn merge_persisted_resume_metadata_skips_persisted_values_when_provider_overridden()
     -> Result<()> {
         let mut request_overrides = None;
         let mut typesafe_overrides = ConfigOverrides {
@@ -862,7 +820,7 @@ mod thread_processor_behavior_tests {
             ..Default::default()
         };
         let persisted_metadata =
-            test_thread_metadata(Some("gpt-5.1-codex-max"), Some(ReasoningEffort::High), None)?;
+            test_thread_metadata(Some("gpt-5.1-codex-max"), Some(ReasoningEffort::High))?;
 
         merge_persisted_resume_metadata(
             &mut request_overrides,
@@ -870,21 +828,9 @@ mod thread_processor_behavior_tests {
             &persisted_metadata,
         );
 
-        assert_eq!(
-            typesafe_overrides.model,
-            Some("gpt-5.1-codex-max".to_string())
-        );
-        assert_eq!(
-            typesafe_overrides.model_provider,
-            Some("mock_provider".to_string())
-        );
-        assert_eq!(
-            request_overrides,
-            Some(HashMap::from([(
-                "model_reasoning_effort".to_string(),
-                serde_json::Value::String("high".to_string()),
-            )]))
-        );
+        assert_eq!(typesafe_overrides.model, None);
+        assert_eq!(typesafe_overrides.model_provider, Some("oss".to_string()));
+        assert_eq!(request_overrides, None);
         Ok(())
     }
 
@@ -897,7 +843,7 @@ mod thread_processor_behavior_tests {
         )]));
         let mut typesafe_overrides = ConfigOverrides::default();
         let persisted_metadata =
-            test_thread_metadata(Some("gpt-5.1-codex-max"), Some(ReasoningEffort::High), None)?;
+            test_thread_metadata(Some("gpt-5.1-codex-max"), Some(ReasoningEffort::High))?;
 
         merge_persisted_resume_metadata(
             &mut request_overrides,
@@ -922,7 +868,7 @@ mod thread_processor_behavior_tests {
         let mut request_overrides = None;
         let mut typesafe_overrides = ConfigOverrides::default();
         let persisted_metadata =
-            test_thread_metadata(/*model*/ None, /*reasoning_effort*/ None, None)?;
+            test_thread_metadata(/*model*/ None, /*reasoning_effort*/ None)?;
 
         merge_persisted_resume_metadata(
             &mut request_overrides,
@@ -936,64 +882,6 @@ mod thread_processor_behavior_tests {
             Some("mock_provider".to_string())
         );
         assert_eq!(request_overrides, None);
-        Ok(())
-    }
-
-    #[test]
-    fn merge_persisted_resume_metadata_restores_persisted_fast_service_tier() -> Result<()> {
-        let mut request_overrides = None;
-        let mut typesafe_overrides = ConfigOverrides::default();
-        let persisted_metadata = test_thread_metadata(
-            Some("gpt-5.1-codex-max"),
-            Some(ReasoningEffort::High),
-            Some(Some("priority")),
-        )?;
-
-        merge_persisted_resume_metadata(
-            &mut request_overrides,
-            &mut typesafe_overrides,
-            &persisted_metadata,
-        );
-
-        assert_eq!(
-            typesafe_overrides.service_tier,
-            Some(Some("priority".to_string()))
-        );
-        Ok(())
-    }
-
-    #[test]
-    fn merge_persisted_resume_metadata_restores_persisted_standard_service_tier() -> Result<()> {
-        let mut request_overrides = None;
-        let mut typesafe_overrides = ConfigOverrides {
-            service_tier: Some(Some("priority".to_string())),
-            ..Default::default()
-        };
-        let persisted_metadata = test_thread_metadata(
-            Some("gpt-5.1-codex-max"),
-            Some(ReasoningEffort::High),
-            Some(None),
-        )?;
-
-        merge_persisted_resume_metadata(
-            &mut request_overrides,
-            &mut typesafe_overrides,
-            &persisted_metadata,
-        );
-
-        assert_eq!(
-            typesafe_overrides.service_tier,
-            Some(Some("priority".to_string())),
-            "explicit request service tier should still win"
-        );
-
-        let mut typesafe_overrides = ConfigOverrides::default();
-        merge_persisted_resume_metadata(
-            &mut request_overrides,
-            &mut typesafe_overrides,
-            &persisted_metadata,
-        );
-        assert_eq!(typesafe_overrides.service_tier, Some(None));
         Ok(())
     }
 

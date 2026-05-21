@@ -861,7 +861,7 @@ async fn down_enter_background_terminal_opens_shell_detail_without_core_op() {
         key: "proc-1".to_string(),
         call_id: "call-1".to_string(),
         command_display: command.to_string(),
-        recent_chunks: vec!["tick 02".to_string()],
+        recent_chunks: vec!["tick 01".to_string(), "tick 02".to_string()],
     });
     chat.sync_unified_exec_footer();
 
@@ -1143,6 +1143,22 @@ async fn multiple_backgrounded_execs_complete_independently() {
 }
 
 #[tokio::test]
+async fn unified_exec_empty_poll_for_finished_process_does_not_show_waiting_status() {
+    let (mut chat, _rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.on_task_started();
+
+    terminal_interaction(&mut chat, "call-finished", "proc-finished", "");
+
+    assert_eq!(chat.status_state.current_status.header, "Working");
+    let status = chat
+        .bottom_pane
+        .status_widget()
+        .expect("task status indicator should remain visible");
+    assert_eq!(status.header(), "Working");
+    assert!(chat.unified_exec_wait_streak.is_none());
+}
+
+#[tokio::test]
 async fn unified_exec_waiting_multiple_empty_snapshots() {
     let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
     chat.on_task_started();
@@ -1178,8 +1194,8 @@ async fn unified_exec_background_terminal_does_not_render_persistent_footer_snap
 
     let rendered = render_bottom_popup(&chat, /*width*/ 48);
     assert!(
-        !rendered.contains("background terminal"),
-        "background terminals should be listed through Down or /ps, not persistent footer: {rendered}"
+        rendered.contains("background terminal"),
+        "background terminal footer should be rendered when processes are backgrounded: {rendered}"
     );
     assert_chatwidget_snapshot!(
         "unified_exec_background_terminal_does_not_render_persistent_footer",

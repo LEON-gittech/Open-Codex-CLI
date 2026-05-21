@@ -38,6 +38,7 @@ use codex_model_provider_info::ModelProviderInfo;
 use codex_model_provider_info::OLLAMA_CHAT_PROVIDER_REMOVED_ERROR;
 use codex_model_provider_info::OLLAMA_OSS_PROVIDER_ID;
 use codex_model_provider_info::OPENAI_PROVIDER_ID;
+use codex_protocol::config_types::AutoCompactTokenLimitScope;
 use codex_protocol::config_types::ForcedLoginMethod;
 use codex_protocol::config_types::Personality;
 use codex_protocol::config_types::ReasoningSummary;
@@ -156,6 +157,10 @@ pub struct ConfigToml {
     /// Token usage threshold triggering auto-compaction of conversation history.
     pub model_auto_compact_token_limit: Option<i64>,
 
+    /// Controls whether the auto-compaction limit applies to the full context or
+    /// only to tokens after the carried prefix in the current compaction window.
+    pub model_auto_compact_token_limit_scope: Option<AutoCompactTokenLimitScope>,
+
     /// Default approval policy for executing commands.
     pub approval_policy: Option<AskForApproval>,
 
@@ -228,14 +233,6 @@ pub struct ConfigToml {
 
     /// Compact prompt used for history compaction.
     pub compact_prompt: Option<String>,
-
-    /// Optional commit attribution text for commit message co-author trailers.
-    /// This top-level setting only takes effect when `[features].codex_git_commit`
-    /// is enabled.
-    ///
-    /// When enabled and unset, Codex uses `Open Codex <hff582580@gmail.com>`.
-    /// Set to an empty string to disable automatic commit attribution.
-    pub commit_attribution: Option<String>,
 
     /// When set, restricts ChatGPT login to one or more workspace identifiers.
     #[serde(default)]

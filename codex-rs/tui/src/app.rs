@@ -3,6 +3,7 @@
 //! This module owns the `App` struct, shared imports, and the high-level run loop that coordinates
 //! the focused app submodules.
 
+use crate::AppServerTarget;
 use crate::app_backtrack::BacktrackState;
 use crate::app_command::AppCommand;
 use crate::app_event::AppEvent;
@@ -47,6 +48,7 @@ use crate::keymap::RuntimeKeymap;
 use crate::legacy_core::config::Config;
 use crate::legacy_core::config::ConfigBuilder;
 use crate::legacy_core::config::ConfigOverrides;
+use crate::legacy_core::config::PermissionProfileSnapshot;
 use crate::legacy_core::config::edit::ConfigEdit;
 use crate::legacy_core::config::edit::ConfigEditsBuilder;
 #[cfg(target_os = "windows")]
@@ -140,6 +142,8 @@ use codex_protocol::ThreadId;
 use codex_protocol::config_types::Personality;
 #[cfg(target_os = "windows")]
 use codex_protocol::config_types::WindowsSandboxLevel;
+use codex_protocol::models::ActivePermissionProfile;
+use codex_protocol::models::BUILT_IN_PERMISSION_PROFILE_WORKSPACE;
 use codex_protocol::models::PermissionProfile;
 use codex_protocol::openai_models::ModelAvailabilityNux;
 use codex_protocol::openai_models::ModelPreset;
@@ -150,6 +154,7 @@ use codex_protocol::permissions::FileSystemSandboxKind;
 use codex_rollout::StateDbHandle;
 use codex_terminal_detection::user_agent;
 use codex_utils_absolute_path::AbsolutePathBuf;
+use codex_utils_approval_presets::builtin_permission_profile_for_active_permission_profile;
 use color_eyre::eyre::Result;
 use color_eyre::eyre::WrapErr;
 use crossterm::event::KeyCode;
@@ -328,7 +333,7 @@ fn default_exec_approval_decisions(
 struct AutoReviewMode {
     approval_policy: AskForApproval,
     approvals_reviewer: ApprovalsReviewer,
-    permission_profile: PermissionProfile,
+    active_permission_profile: ActivePermissionProfile,
 }
 
 /// Enabling the Auto-review experiment in the TUI should also switch the
@@ -339,7 +344,17 @@ fn auto_review_mode() -> AutoReviewMode {
     AutoReviewMode {
         approval_policy: AskForApproval::OnRequest,
         approvals_reviewer: ApprovalsReviewer::AutoReview,
-        permission_profile: PermissionProfile::workspace_write(),
+        active_permission_profile: ActivePermissionProfile::new(
+            BUILT_IN_PERMISSION_PROFILE_WORKSPACE,
+        ),
+    }
+}
+
+#[cfg(test)]
+impl AutoReviewMode {
+    fn permission_profile(&self) -> PermissionProfile {
+        builtin_permission_profile_for_active_permission_profile(&self.active_permission_profile)
+            .expect("auto-review mode should use a built-in permission profile")
     }
 }
 
@@ -397,17 +412,18 @@ fn session_summary(
     rollout_path: Option<&Path>,
 ) -> Option<SessionSummary> {
     let usage_line = (!token_usage.is_zero()).then(|| token_usage.to_string());
-    let thread_id =
-        resumable_thread(thread_id, thread_name, rollout_path).map(|thread| thread.thread_id);
-    let resume_command = codex_utils_cli::resume_command(/*thread_name*/ None, thread_id);
+    let resumable_thread = resumable_thread(thread_id, thread_name, rollout_path);
+    let resume_hint = resumable_thread.as_ref().and_then(|thread| {
+        codex_utils_cli::resume_hint(thread.thread_name.as_deref(), Some(thread.thread_id))
+    });
 
-    if usage_line.is_none() && resume_command.is_none() {
+    if usage_line.is_none() && resume_hint.is_none() {
         return None;
     }
 
     Some(SessionSummary {
         usage_line,
-        resume_command,
+        resume_hint,
     })
 }
 
@@ -446,7 +462,7 @@ fn errors_for_cwd(cwd: &Path, response: &SkillsListResponse) -> Vec<SkillErrorIn
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct SessionSummary {
     usage_line: Option<String>,
-    resume_command: Option<String>,
+    resume_hint: Option<String>,
 }
 
 #[derive(Debug, Default)]
@@ -502,7 +518,7 @@ pub(crate) struct App {
     pub(crate) feedback: codex_feedback::CodexFeedback,
     feedback_audience: FeedbackAudience,
     environment_manager: Arc<EnvironmentManager>,
-    remote_app_server_endpoint: Option<RemoteAppServerEndpoint>,
+    app_server_target: AppServerTarget,
     /// Set when the user confirms an update; propagated on exit.
     pub(crate) pending_update_action: Option<UpdateAction>,
 
@@ -609,7 +625,6 @@ impl App {
     ) -> crate::chatwidget::ChatWidgetInit {
         crate::chatwidget::ChatWidgetInit {
             config: cfg,
-            environment_manager: self.environment_manager.clone(),
             frame_requester: tui.frame_requester(),
             app_event_tx: self.app_event_tx.clone(),
             workspace_command_runner: self.workspace_command_runner.clone(),
@@ -649,12 +664,13 @@ impl App {
         is_first_run: bool,
         entered_trust_nux: bool,
         should_prompt_windows_sandbox_nux_at_startup: bool,
-        remote_app_server_endpoint: Option<RemoteAppServerEndpoint>,
+        app_server_target: AppServerTarget,
         state_db: Option<StateDbHandle>,
         environment_manager: Arc<EnvironmentManager>,
         startup_hooks_browser: Option<HooksListEntry>,
     ) -> Result<AppExitInfo> {
         use tokio_stream::StreamExt;
+        let startup_started_at = Instant::now();
         let (app_event_tx, mut app_event_rx) = unbounded_channel();
         let app_event_tx = AppEventSender::new(app_event_tx);
         emit_project_config_warnings(&app_event_tx, &config);
@@ -698,7 +714,9 @@ impl App {
                 });
             }
         };
+        let bootstrap_started_at = Instant::now();
         let bootstrap = app_server.bootstrap(&config).await?;
+        let bootstrap_ms = bootstrap_started_at.elapsed().as_millis();
         let mut model = bootstrap.default_model;
         let available_models = bootstrap.available_models;
         let exit_info = handle_model_migration_prompt_if_needed(
@@ -755,8 +773,10 @@ impl App {
         let workspace_command_runner: WorkspaceCommandRunner = Arc::new(
             AppServerWorkspaceCommandRunner::new(app_server.request_handle()),
         );
+        let runtime_model_provider_started_at = Instant::now();
         let runtime_model_provider_base_url =
             resolve_runtime_model_provider_base_url(&config.model_provider).await;
+        let runtime_model_provider_ms = runtime_model_provider_started_at.elapsed().as_millis();
 
         let enhanced_keys_supported = tui.enhanced_keys_supported();
         let wait_for_initial_session_configured =
@@ -767,6 +787,7 @@ impl App {
                 &initial_prompt,
                 &initial_images,
             );
+        let thread_and_widget_started_at = Instant::now();
         let (mut chat_widget, initial_started_thread) = match session_selection {
             SessionSelection::StartFresh | SessionSelection::Exit => {
                 let started = app_server.start_thread(&config).await?;
@@ -776,7 +797,6 @@ impl App {
                         .await;
                 let init = crate::chatwidget::ChatWidgetInit {
                     config: config.clone(),
-                    environment_manager: environment_manager.clone(),
                     frame_requester: tui.frame_requester(),
                     app_event_tx: app_event_tx.clone(),
                     workspace_command_runner: Some(workspace_command_runner.clone()),
@@ -813,7 +833,6 @@ impl App {
                     })?;
                 let init = crate::chatwidget::ChatWidgetInit {
                     config: config.clone(),
-                    environment_manager: environment_manager.clone(),
                     frame_requester: tui.frame_requester(),
                     app_event_tx: app_event_tx.clone(),
                     workspace_command_runner: Some(workspace_command_runner.clone()),
@@ -855,7 +874,6 @@ impl App {
                     })?;
                 let init = crate::chatwidget::ChatWidgetInit {
                     config: config.clone(),
-                    environment_manager: environment_manager.clone(),
                     frame_requester: tui.frame_requester(),
                     app_event_tx: app_event_tx.clone(),
                     workspace_command_runner: Some(workspace_command_runner.clone()),
@@ -883,6 +901,7 @@ impl App {
                 (ChatWidget::new_with_app_event(init), Some(forked))
             }
         };
+        let thread_and_widget_ms = thread_and_widget_started_at.elapsed().as_millis();
         if let Some(message) = external_agent_config_migration_message {
             chat_widget.add_info_message(message, /*hint*/ None);
         }
@@ -932,7 +951,7 @@ See the Codex keymap documentation for supported actions and examples."
             feedback: feedback.clone(),
             feedback_audience,
             environment_manager,
-            remote_app_server_endpoint,
+            app_server_target,
             pending_update_action: None,
             pending_shutdown_exit_thread_id: None,
             windows_sandbox: WindowsSandboxState::default(),
@@ -954,6 +973,7 @@ See the Codex keymap documentation for supported actions and examples."
         if let Some(entry) = startup_hooks_browser {
             app.chat_widget.open_hooks_browser(entry);
         }
+        let initial_session_started_at = Instant::now();
         if let Some(started) = initial_started_thread {
             let thread_id = started.session.thread_id;
             app.enqueue_primary_thread_session(started.session, started.turns)
@@ -963,6 +983,7 @@ See the Codex keymap documentation for supported actions and examples."
                     .await;
             }
         }
+        let initial_session_ms = initial_session_started_at.elapsed().as_millis();
 
         // On startup, if a managed filesystem sandbox is active, warn about
         // world-writable dirs on Windows.
@@ -992,10 +1013,20 @@ See the Codex keymap documentation for supported actions and examples."
             }
         }
 
+        let event_stream_started_at = Instant::now();
         let tui_events = tui.event_stream();
         tokio::pin!(tui_events);
 
         tui.frame_requester().schedule_frame();
+        tracing::info!(
+            duration_ms = %startup_started_at.elapsed().as_millis(),
+            bootstrap_ms = %bootstrap_ms,
+            runtime_model_provider_ms = %runtime_model_provider_ms,
+            thread_and_widget_ms = %thread_and_widget_ms,
+            initial_session_ms = %initial_session_ms,
+            event_stream_ms = %event_stream_started_at.elapsed().as_millis(),
+            "tui startup initial frame scheduled"
+        );
         app.refresh_startup_skills(&app_server);
         // Kick off a non-blocking rate-limit prefetch so the first `/status`
         // already has data, without delaying the initial frame render.
@@ -1176,30 +1207,8 @@ See the Codex keymap documentation for supported actions and examples."
                     }
                     // Allow widgets to process any pending timers before rendering.
                     self.chat_widget.pre_draw_tick();
-                    let desired_height =
-                        self.chat_widget.desired_height(tui.terminal.size()?.width);
-                    let mut rendered_area = Rect::default();
-                    if terminal_resize_reflow_enabled {
-                        tui.draw_with_resize_reflow(desired_height, |frame| {
-                            let area = frame.area();
-                            rendered_area = area;
-                            self.chat_widget.render(area, frame.buffer);
-                            if let Some((x, y)) = self.chat_widget.cursor_pos(area) {
-                                frame.set_cursor_style(self.chat_widget.cursor_style(area));
-                                frame.set_cursor_position((x, y));
-                            }
-                        })?;
-                    } else {
-                        tui.draw(desired_height, |frame| {
-                            let area = frame.area();
-                            rendered_area = area;
-                            self.chat_widget.render(area, frame.buffer);
-                            if let Some((x, y)) = self.chat_widget.cursor_pos(area) {
-                                frame.set_cursor_style(self.chat_widget.cursor_style(area));
-                                frame.set_cursor_position((x, y));
-                            }
-                        })?;
-                    }
+                    let rendered_area =
+                        self.render_chat_widget_frame(tui, terminal_resize_reflow_enabled)?;
                     if self.chat_widget.ambient_pet_image_enabled() {
                         let terminal_size = tui.terminal.size()?;
                         let ambient_pet_area = Rect::new(
@@ -1233,6 +1242,49 @@ See the Codex keymap documentation for supported actions and examples."
             }
         }
         Ok(AppRunControl::Continue)
+    }
+
+    pub(super) fn show_shutdown_feedback(&mut self, tui: &mut tui::Tui) -> Result<()> {
+        self.disable_ambient_pet_before_shutdown(tui)?;
+        self.chat_widget.show_shutdown_in_progress();
+        let terminal_resize_reflow_enabled = self.terminal_resize_reflow_enabled();
+        if terminal_resize_reflow_enabled {
+            self.handle_draw_pre_render(tui)?;
+        }
+        self.chat_widget.pre_draw_tick();
+        self.render_chat_widget_frame(tui, terminal_resize_reflow_enabled)?;
+        Ok(())
+    }
+
+    fn render_chat_widget_frame(
+        &mut self,
+        tui: &mut tui::Tui,
+        terminal_resize_reflow_enabled: bool,
+    ) -> Result<Rect> {
+        let desired_height = self.chat_widget.desired_height(tui.terminal.size()?.width);
+        let mut rendered_area = Rect::default();
+        if terminal_resize_reflow_enabled {
+            tui.draw_with_resize_reflow(desired_height, |frame| {
+                let area = frame.area();
+                rendered_area = area;
+                self.chat_widget.render(area, frame.buffer);
+                if let Some((x, y)) = self.chat_widget.cursor_pos(area) {
+                    frame.set_cursor_style(self.chat_widget.cursor_style(area));
+                    frame.set_cursor_position((x, y));
+                }
+            })?;
+        } else {
+            tui.draw(desired_height, |frame| {
+                let area = frame.area();
+                rendered_area = area;
+                self.chat_widget.render(area, frame.buffer);
+                if let Some((x, y)) = self.chat_widget.cursor_pos(area) {
+                    frame.set_cursor_style(self.chat_widget.cursor_style(area));
+                    frame.set_cursor_position((x, y));
+                }
+            })?;
+        }
+        Ok(rendered_area)
     }
 }
 

@@ -188,6 +188,22 @@ impl ChatWidget {
         self.refresh_status_surfaces();
     }
 
+    /// Stores async workspace-changes lookup results for the current status-line cwd.
+    pub(crate) fn set_status_line_workspace_changes(
+        &mut self,
+        cwd: PathBuf,
+        stats: Option<GitWorkspaceDiffStats>,
+    ) {
+        if self.status_line_workspace_changes_cwd.as_ref() != Some(&cwd) {
+            self.status_line_workspace_changes_pending = false;
+            return;
+        }
+        self.status_line_workspace_changes = stats;
+        self.status_line_workspace_changes_pending = false;
+        self.status_line_workspace_changes_lookup_complete = true;
+        self.refresh_status_surfaces();
+    }
+
     pub(crate) fn add_status_output(
         &mut self,
         refreshing_rate_limits: bool,
@@ -298,10 +314,25 @@ impl ChatWidget {
     }
 
     pub(super) fn status_surface_preview_data(&mut self) -> StatusSurfacePreviewData {
-        StatusSurfacePreviewData::from_iter(StatusSurfacePreviewItem::iter().filter_map(|item| {
-            self.status_surface_preview_value_for_item(item)
-                .map(|value| (item, value))
-        }))
+        let mut preview_data = StatusSurfacePreviewData::from_iter(
+            StatusSurfacePreviewItem::iter().filter_map(|item| {
+                self.status_surface_preview_value_for_item(item)
+                    .map(|value| (item, value))
+            }),
+        );
+
+        if self.rate_limit_snapshots_by_limit_id.contains_key("codex") {
+            for item in [
+                StatusSurfacePreviewItem::FiveHourLimit,
+                StatusSurfacePreviewItem::WeeklyLimit,
+            ] {
+                if self.status_surface_preview_value_for_item(item).is_none() {
+                    preview_data.suppress_placeholder(item);
+                }
+            }
+        }
+
+        preview_data
     }
 
     pub(super) fn terminal_title_preview_data(&mut self) -> StatusSurfacePreviewData {

@@ -39,7 +39,9 @@ use codex_core::config::ConfigBuilder;
 use codex_core::config::ConfigOverrides;
 use codex_core::config::find_codex_home;
 use codex_features::FEATURES;
+use codex_install_context::CodexPackageLayout;
 use codex_install_context::InstallContext;
+use codex_install_context::InstallMethod;
 use codex_install_context::StandalonePlatform;
 use codex_login::AuthDotJson;
 use codex_login::AuthManager;
@@ -105,6 +107,10 @@ const COLOR_ENV_VARS: &[&str] = &[
 const TERMINAL_DIMENSION_ENV_VARS: &[&str] = &["COLUMNS", "LINES"];
 const TERMINFO_ENV_VARS: &[&str] = &["TERMINFO", "TERMINFO_DIRS"];
 const LOCALE_ENV_VARS: &[&str] = &["LC_ALL", "LC_CTYPE", "LANG"];
+#[cfg(windows)]
+const NPM_COMMAND: &str = "npm.cmd";
+#[cfg(not(windows))]
+const NPM_COMMAND: &str = "npm";
 const REMOTE_TERMINAL_ENV_VARS: &[&str] = &[
     "SSH_TTY",
     "SSH_CONNECTION",
@@ -770,8 +776,8 @@ fn installation_check(show_details: bool) -> DoctorCheck {
                 npm_package_root,
             } => {
                 status = CheckStatus::Fail;
-                summary = "npm install -g @leonw24/open-codex would update a different install"
-                    .to_string();
+                summary =
+                    "npm install -g @openai/codex would update a different install".to_string();
                 remediation = Some(format!(
                     "Fix PATH or npm prefix so the running package root ({}) matches the npm global package root ({}).",
                     running_package_root.display(),
@@ -808,7 +814,10 @@ fn installation_check(show_details: bool) -> DoctorCheck {
 
 fn doctor_install_context(current_exe: Option<&Path>) -> InstallContext {
     if inherited_managed_env_for_cargo_binary(current_exe) {
-        InstallContext::Other
+        InstallContext {
+            method: InstallMethod::Other,
+            package_layout: None,
+        }
     } else {
         InstallContext::current().clone()
     }
@@ -839,8 +848,8 @@ fn inherited_managed_env_for_cargo_binary(current_exe: Option<&Path>) -> bool {
 }
 
 fn describe_install_context(context: &InstallContext) -> String {
-    match context {
-        InstallContext::Standalone {
+    match &context.method {
+        InstallMethod::Standalone {
             release_dir,
             resources_dir,
             platform,
@@ -849,20 +858,61 @@ fn describe_install_context(context: &InstallContext) -> String {
                 StandalonePlatform::Unix => "unix",
                 StandalonePlatform::Windows => "windows",
             };
-            let resources = resources_dir
-                .as_ref()
-                .map(|path| path.display().to_string())
-                .unwrap_or_else(|| "none".to_string());
+            match &context.package_layout {
+                Some(package_layout) => {
+                    let resources = display_optional_path(package_layout.resources_dir.as_deref());
+                    let path = display_optional_path(package_layout.path_dir.as_deref());
+                    format!(
+                        "standalone ({platform}, package {}, bin {}, resources {resources}, path {path})",
+                        package_layout.package_dir.display(),
+                        package_layout.bin_dir.display()
+                    )
+                }
+                None => {
+                    let resources = display_optional_path(resources_dir.as_deref());
+                    format!(
+                        "standalone ({platform}, release {}, resources {resources})",
+                        release_dir.display()
+                    )
+                }
+            }
+        }
+        InstallMethod::Npm => {
+            describe_method_with_package_layout("npm", context.package_layout.as_ref())
+        }
+        InstallMethod::Bun => {
+            describe_method_with_package_layout("bun", context.package_layout.as_ref())
+        }
+        InstallMethod::Brew => {
+            describe_method_with_package_layout("brew", context.package_layout.as_ref())
+        }
+        InstallMethod::Other => {
+            describe_method_with_package_layout("other", context.package_layout.as_ref())
+        }
+    }
+}
+
+fn describe_method_with_package_layout(
+    method: &str,
+    package_layout: Option<&CodexPackageLayout>,
+) -> String {
+    match package_layout {
+        Some(package_layout) => {
+            let resources = display_optional_path(package_layout.resources_dir.as_deref());
+            let path = display_optional_path(package_layout.path_dir.as_deref());
             format!(
-                "standalone ({platform}, release {}, resources {resources})",
-                release_dir.display()
+                "{method} (package {}, bin {}, resources {resources}, path {path})",
+                package_layout.package_dir.display(),
+                package_layout.bin_dir.display()
             )
         }
-        InstallContext::Npm => "npm".to_string(),
-        InstallContext::Bun => "bun".to_string(),
-        InstallContext::Brew => "brew".to_string(),
-        InstallContext::Other => "other".to_string(),
+        None => method.to_string(),
     }
+}
+
+fn display_optional_path(path: Option<&Path>) -> String {
+    path.map(|path| path.display().to_string())
+        .unwrap_or_else(|| "none".to_string())
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -884,7 +934,7 @@ fn npm_global_root_check() -> NpmRootCheck {
         return NpmRootCheck::MissingPackageRoot;
     };
 
-    let output = match run_command("npm", ["root", "-g"]) {
+    let output = match run_command(NPM_COMMAND, ["root", "-g"]) {
         Ok(output) => output,
         Err(err) => return NpmRootCheck::NpmUnavailable(err),
     };
@@ -896,7 +946,7 @@ fn npm_global_root_check() -> NpmRootCheck {
 }
 
 fn compare_npm_package_roots(running_package_root: &Path, npm_root: &Path) -> NpmRootCheck {
-    let npm_package_root = npm_root.join("@leonw24").join("open-codex");
+    let npm_package_root = npm_root.join("@openai").join("codex");
     let running = normalize_path_for_compare(running_package_root);
     let target = normalize_path_for_compare(&npm_package_root);
     if running == target {
@@ -1939,13 +1989,11 @@ async fn state_check(config: &Config) -> DoctorCheck {
     path_readiness(&mut details, "CODEX_HOME", &config.codex_home);
     path_readiness(&mut details, "log dir", &config.log_dir);
     path_readiness(&mut details, "sqlite home", &config.sqlite_home);
-    let state_db = codex_state::state_db_path(&config.sqlite_home);
-    let log_db = codex_state::logs_db_path(&config.sqlite_home);
-    path_readiness(&mut details, "state DB", &state_db);
-    path_readiness(&mut details, "log DB", &log_db);
     let mut integrity_failures = Vec::new();
-    sqlite_integrity_detail(&mut details, &mut integrity_failures, "state DB", &state_db).await;
-    sqlite_integrity_detail(&mut details, &mut integrity_failures, "log DB", &log_db).await;
+    for db in codex_state::runtime_db_paths(&config.sqlite_home) {
+        path_readiness(&mut details, db.label, &db.path);
+        sqlite_integrity_detail(&mut details, &mut integrity_failures, db.label, &db.path).await;
+    }
     rollout_stats_details(&mut details, &config.codex_home);
     standalone_release_cache_details(&mut details);
 
@@ -2789,13 +2837,14 @@ fn path_readiness(details: &mut Vec<String>, label: &str, path: &Path) {
 }
 
 fn standalone_release_cache_details(details: &mut Vec<String>) {
-    let InstallContext::Standalone { release_dir, .. } = InstallContext::current() else {
+    let context = InstallContext::current();
+    let InstallMethod::Standalone { release_dir, .. } = &context.method else {
         return;
     };
     let Some(releases_dir) = release_dir.parent() else {
         return;
     };
-    let Ok(entries) = std::fs::read_dir(releases_dir) else {
+    let Ok(entries) = std::fs::read_dir(&releases_dir) else {
         return;
     };
     let release_count = entries.filter_map(Result::ok).count();
@@ -2959,25 +3008,25 @@ mod tests {
 
     #[test]
     fn compare_npm_package_roots_detects_match() {
-        let running = PathBuf::from("/prefix/lib/node_modules/@leonw24/open-codex");
+        let running = PathBuf::from("/prefix/lib/node_modules/@openai/codex");
         let npm_root = PathBuf::from("/prefix/lib/node_modules");
         assert_eq!(
             compare_npm_package_roots(&running, &npm_root),
             NpmRootCheck::Match {
-                package_root: npm_root.join("@leonw24").join("open-codex")
+                package_root: npm_root.join("@openai").join("codex")
             }
         );
     }
 
     #[test]
     fn compare_npm_package_roots_detects_mismatch() {
-        let running = PathBuf::from("/old/lib/node_modules/@leonw24/open-codex");
+        let running = PathBuf::from("/old/lib/node_modules/@openai/codex");
         let npm_root = PathBuf::from("/new/lib/node_modules");
         assert_eq!(
             compare_npm_package_roots(&running, &npm_root),
             NpmRootCheck::Mismatch {
                 running_package_root: running,
-                npm_package_root: npm_root.join("@leonw24").join("open-codex"),
+                npm_package_root: npm_root.join("@openai").join("codex"),
             }
         );
     }

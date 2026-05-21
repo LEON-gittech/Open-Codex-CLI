@@ -270,7 +270,10 @@ async fn steer_rejection_queues_review_follow_up_before_existing_queued_messages
         other => panic!("expected merged rejected-steer follow-up submit, got {other:?}"),
     }
 
-    handle_turn_completed(&mut chat, "turn-1", /*duration_ms*/ None);
+    // A TurnStarted is needed so the next TurnCompleted is accepted (otherwise
+    // user_turn_pending_start causes should_accept_live_turn_output to reject it).
+    handle_turn_started(&mut chat, "turn-2");
+    handle_turn_completed(&mut chat, "turn-2", /*duration_ms*/ None);
 
     match next_submit_op(&mut op_rx) {
         Op::UserTurn { items, .. } => assert_eq!(
@@ -597,6 +600,7 @@ async fn item_completed_pops_pending_steer_with_local_image_and_text_elements() 
         vec![
             UserInput::Image {
                 url: "data:image/png;base64,placeholder".to_string(),
+                detail: None,
             },
             UserInput::Text {
                 text,

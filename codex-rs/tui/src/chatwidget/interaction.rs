@@ -103,6 +103,7 @@ impl ChatWidget {
             && matches!(key_event.kind, KeyEventKind::Press | KeyEventKind::Repeat)
             && (!self.input_queue.pending_steers.is_empty() || self.has_queued_follow_up_messages())
             && self.bottom_pane.no_modal_or_popup_active()
+            && !self.should_handle_vim_insert_escape(key_event)
         {
             if self.should_interrupt_before_submitting_pending_input() {
                 self.input_queue.submit_pending_steers_after_interrupt = true;
@@ -153,6 +154,19 @@ impl ChatWidget {
             return;
         }
 
+        if matches!(
+            key_event,
+            KeyEvent {
+                code: KeyCode::Down,
+                kind: KeyEventKind::Press | KeyEventKind::Repeat,
+                ..
+            }
+        ) && self.bottom_pane.no_modal_or_popup_active()
+            && self.show_background_activity_summary()
+        {
+            return;
+        }
+
         match key_event {
             KeyEvent {
                 code: KeyCode::Char(c),
@@ -161,15 +175,6 @@ impl ChatWidget {
                 ..
             } if modifiers.contains(KeyModifiers::CONTROL) && c.eq_ignore_ascii_case(&'b') => {
                 if self.background_current_activity() {
-                    return;
-                }
-            }
-            KeyEvent {
-                code: KeyCode::Down,
-                kind: KeyEventKind::Press | KeyEventKind::Repeat,
-                ..
-            } => {
-                if self.show_background_activity_summary() {
                     return;
                 }
             }
@@ -418,6 +423,7 @@ impl ChatWidget {
                 self.quit_shortcut_key = None;
                 self.bottom_pane.clear_quit_shortcut_hint();
                 self.submit_op(AppCommand::interrupt());
+                self.pause_active_goal_on_interrupt();
             } else {
                 self.request_quit_without_confirmation();
             }
@@ -435,6 +441,7 @@ impl ChatWidget {
 
         if self.is_cancellable_work_active() {
             self.submit_op(AppCommand::interrupt());
+            self.pause_active_goal_on_interrupt();
         }
     }
 
@@ -493,6 +500,18 @@ impl ChatWidget {
     // Review mode counts as cancellable work so Ctrl+C interrupts instead of quitting.
     fn is_cancellable_work_active(&self) -> bool {
         self.bottom_pane.is_task_running() || self.review.is_review_mode
+    }
+
+    fn pause_active_goal_on_interrupt(&mut self) {
+        if let Some(goal_status) = &self.current_goal_status
+            && goal_status.is_active()
+            && let Some(thread_id) = self.thread_id
+        {
+            self.app_event_tx.send(AppEvent::SetThreadGoalStatus {
+                thread_id,
+                status: AppThreadGoalStatus::Paused,
+            });
+        }
     }
 
     fn should_interrupt_before_submitting_pending_input(&self) -> bool {

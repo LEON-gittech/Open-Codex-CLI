@@ -1,21 +1,12 @@
 use super::*;
-use codex_app_server_protocol::FileSystemAccessMode;
-use codex_app_server_protocol::FileSystemPath;
-use codex_app_server_protocol::FileSystemSandboxEntry;
-use codex_app_server_protocol::FileSystemSpecialPath;
-use codex_app_server_protocol::PermissionProfile as AppServerPermissionProfile;
-use codex_app_server_protocol::PermissionProfileFileSystemPermissions;
-use codex_app_server_protocol::PermissionProfileNetworkPermissions;
+use codex_protocol::models::ManagedFileSystemPermissions;
+use codex_protocol::permissions::FileSystemAccessMode;
+use codex_protocol::permissions::FileSystemPath;
+use codex_protocol::permissions::FileSystemSandboxEntry;
+use codex_protocol::permissions::FileSystemSpecialPath;
+use codex_protocol::permissions::NetworkSandboxPolicy;
 use pretty_assertions::assert_eq;
 use std::collections::VecDeque;
-
-#[test]
-fn xhigh_reasoning_marker_matches_standalone_aliases() {
-    assert!(text_requests_xhigh_reasoning("ulw"));
-    assert!(text_requests_xhigh_reasoning("use ultra reasoning"));
-    assert!(text_requests_xhigh_reasoning("please run xhigh"));
-    assert!(!text_requests_xhigh_reasoning("ultramarine"));
-}
 
 #[tokio::test]
 async fn submission_preserves_text_elements_and_local_images() {
@@ -66,7 +57,8 @@ async fn submission_preserves_text_elements_and_local_images() {
     assert_eq!(
         items[0],
         UserInput::LocalImage {
-            path: local_images[0].clone()
+            path: local_images[0].clone(),
+            detail: None,
         }
     );
     assert_eq!(
@@ -101,120 +93,14 @@ async fn submission_preserves_text_elements_and_local_images() {
 }
 
 #[tokio::test]
-async fn submission_ultra_marker_uses_xhigh_for_current_turn_only() {
-    let (mut chat, _rx, mut op_rx) = make_chatwidget_manual(Some("gpt-5.3-codex")).await;
-    chat.thread_id = Some(ThreadId::new());
-    set_chatgpt_auth(&mut chat);
-    chat.set_reasoning_effort(Some(ReasoningEffortConfig::Low));
-
-    chat.bottom_pane.set_composer_text(
-        "Use ultra reasoning for this query".to_string(),
-        Vec::new(),
-        Vec::new(),
-    );
-    chat.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
-
-    match next_submit_op(&mut op_rx) {
-        Op::UserTurn {
-            effort,
-            collaboration_mode,
-            ..
-        } => {
-            assert_eq!(effort, Some(ReasoningEffortConfig::XHigh));
-            assert_eq!(
-                collaboration_mode.and_then(|mode| mode.reasoning_effort()),
-                Some(ReasoningEffortConfig::XHigh)
-            );
-        }
-        other => panic!("expected Op::UserTurn, got {other:?}"),
-    }
-    assert_eq!(
-        chat.current_reasoning_effort(),
-        Some(ReasoningEffortConfig::Low)
-    );
-}
-
-#[tokio::test]
-async fn submission_xhigh_marker_is_visible_in_status_line_while_turn_runs() {
-    let (mut chat, _rx, mut op_rx) = make_chatwidget_manual(Some("gpt-5.3-codex")).await;
-    chat.thread_id = Some(ThreadId::new());
-    set_chatgpt_auth(&mut chat);
-    chat.config.tui_status_line = Some(vec!["model-with-reasoning".to_string()]);
-    chat.set_reasoning_effort(Some(ReasoningEffortConfig::High));
-    chat.refresh_status_line();
-    assert_eq!(
-        status_line_text(&chat),
-        Some("gpt-5.3-codex high".to_string())
-    );
-
-    chat.bottom_pane.set_composer_text(
-        "新bug, 目前保存的发票信息可以看到了，但是点击编辑抬头之后的format是空format，这不符合预期 xhigh"
-            .to_string(),
-        Vec::new(),
-        Vec::new(),
-    );
-    chat.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
-
-    match next_submit_op(&mut op_rx) {
-        Op::UserTurn { effort, .. } => {
-            assert_eq!(effort, Some(ReasoningEffortConfig::XHigh));
-        }
-        other => panic!("expected Op::UserTurn, got {other:?}"),
-    }
-    handle_turn_started(&mut chat, "turn-1");
-
-    assert_eq!(
-        status_line_text(&chat),
-        Some("gpt-5.3-codex xhigh".to_string())
-    );
-
-    handle_turn_completed(&mut chat, "turn-1", /*duration_ms*/ None);
-
-    assert_eq!(
-        status_line_text(&chat),
-        Some("gpt-5.3-codex high".to_string())
-    );
-}
-
-#[tokio::test]
-async fn submission_xhigh_marker_requires_standalone_token() {
-    let (mut chat, _rx, mut op_rx) = make_chatwidget_manual(Some("gpt-5.3-codex")).await;
-    chat.thread_id = Some(ThreadId::new());
-    set_chatgpt_auth(&mut chat);
-    chat.set_reasoning_effort(Some(ReasoningEffortConfig::Low));
-
-    chat.bottom_pane.set_composer_text(
-        "Use ultramarine as the color name".to_string(),
-        Vec::new(),
-        Vec::new(),
-    );
-    chat.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
-
-    match next_submit_op(&mut op_rx) {
-        Op::UserTurn {
-            effort,
-            collaboration_mode,
-            ..
-        } => {
-            assert_eq!(effort, Some(ReasoningEffortConfig::Low));
-            assert_eq!(
-                collaboration_mode.and_then(|mode| mode.reasoning_effort()),
-                Some(ReasoningEffortConfig::Low)
-            );
-        }
-        other => panic!("expected Op::UserTurn, got {other:?}"),
-    }
-}
-
-#[tokio::test]
-async fn submission_includes_configured_permission_profile() {
+async fn submission_includes_configured_active_permission_profile() {
     let (mut chat, mut rx, mut op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
 
     let thread_id = ThreadId::new();
     let rollout_file = NamedTempFile::new().unwrap();
-    let expected_permission_profile: PermissionProfile = AppServerPermissionProfile::Managed {
-        network: PermissionProfileNetworkPermissions { enabled: false },
-        file_system: PermissionProfileFileSystemPermissions::Restricted {
+    let expected_permission_profile: PermissionProfile = PermissionProfile::Managed {
+        network: NetworkSandboxPolicy::Restricted,
+        file_system: ManagedFileSystemPermissions::Restricted {
             entries: vec![
                 FileSystemSandboxEntry {
                     path: FileSystemPath::Special {
@@ -226,13 +112,13 @@ async fn submission_includes_configured_permission_profile() {
                     path: FileSystemPath::GlobPattern {
                         pattern: "/home/user/project/secrets/**".to_string(),
                     },
-                    access: FileSystemAccessMode::None,
+                    access: FileSystemAccessMode::Deny,
                 },
             ],
             glob_scan_max_depth: None,
         },
-    }
-    .into();
+    };
+    let expected_active_permission_profile = ActivePermissionProfile::new("custom");
     let configured = crate::session_state::ThreadSessionState {
         thread_id,
         forked_from_id: None,
@@ -243,8 +129,8 @@ async fn submission_includes_configured_permission_profile() {
         service_tier: None,
         approval_policy: AskForApproval::Never,
         approvals_reviewer: ApprovalsReviewer::User,
-        permission_profile: expected_permission_profile.clone(),
-        active_permission_profile: None,
+        permission_profile: expected_permission_profile,
+        active_permission_profile: Some(expected_active_permission_profile.clone()),
         cwd: test_path_buf("/home/user/project").abs(),
         runtime_workspace_roots: Vec::new(),
         instruction_source_paths: Vec::new(),
@@ -263,26 +149,29 @@ async fn submission_includes_configured_permission_profile() {
     );
     chat.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
 
-    let permission_profile = match next_submit_op(&mut op_rx) {
+    let active_permission_profile = match next_submit_op(&mut op_rx) {
         Op::UserTurn {
-            permission_profile, ..
-        } => permission_profile,
+            active_permission_profile,
+            ..
+        } => active_permission_profile,
         other => panic!("expected Op::UserTurn, got {other:?}"),
     };
-    assert_eq!(permission_profile, expected_permission_profile);
+    assert_eq!(
+        active_permission_profile,
+        Some(expected_active_permission_profile)
+    );
 }
 
 #[tokio::test]
-async fn submission_keeps_profile_when_legacy_projection_is_external() {
+async fn submission_omits_active_permission_profile_for_legacy_snapshot() {
     let (mut chat, mut rx, mut op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
 
     let thread_id = ThreadId::new();
     let rollout_file = NamedTempFile::new().unwrap();
-    let expected_permission_profile: PermissionProfile = AppServerPermissionProfile::Managed {
-        network: PermissionProfileNetworkPermissions { enabled: false },
-        file_system: PermissionProfileFileSystemPermissions::Unrestricted,
-    }
-    .into();
+    let expected_permission_profile: PermissionProfile = PermissionProfile::Managed {
+        network: NetworkSandboxPolicy::Restricted,
+        file_system: ManagedFileSystemPermissions::Unrestricted,
+    };
     let configured = crate::session_state::ThreadSessionState {
         thread_id,
         forked_from_id: None,
@@ -293,7 +182,7 @@ async fn submission_keeps_profile_when_legacy_projection_is_external() {
         service_tier: None,
         approval_policy: AskForApproval::Never,
         approvals_reviewer: ApprovalsReviewer::User,
-        permission_profile: expected_permission_profile.clone(),
+        permission_profile: expected_permission_profile,
         active_permission_profile: None,
         cwd: test_path_buf("/home/user/project").abs(),
         runtime_workspace_roots: Vec::new(),
@@ -310,13 +199,14 @@ async fn submission_keeps_profile_when_legacy_projection_is_external() {
         .set_composer_text("submit".to_string(), Vec::new(), Vec::new());
     chat.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
 
-    let permission_profile = match next_submit_op(&mut op_rx) {
+    let active_permission_profile = match next_submit_op(&mut op_rx) {
         Op::UserTurn {
-            permission_profile, ..
-        } => permission_profile,
+            active_permission_profile,
+            ..
+        } => active_permission_profile,
         other => panic!("expected Op::UserTurn, got {other:?}"),
     };
-    assert_eq!(permission_profile, expected_permission_profile);
+    assert_eq!(active_permission_profile, None);
 }
 
 #[tokio::test]
@@ -373,12 +263,14 @@ async fn submission_with_remote_and_local_images_keeps_local_placeholder_numberi
         items[0],
         UserInput::Image {
             url: remote_url.clone(),
+            detail: None,
         }
     );
     assert_eq!(
         items[1],
         UserInput::LocalImage {
             path: local_images[0].clone(),
+            detail: None,
         }
     );
     assert_eq!(
@@ -456,6 +348,7 @@ async fn enter_with_only_remote_images_submits_user_turn() {
         items,
         vec![UserInput::Image {
             url: remote_url.clone(),
+            detail: None,
         }]
     );
     assert_eq!(summary, None);
@@ -1003,7 +896,7 @@ async fn empty_enter_during_task_does_not_queue() {
     let (mut chat, _rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
 
     // Simulate running task so submissions would normally be queued.
-    chat.on_task_started();
+    chat.bottom_pane.set_task_running(/*running*/ true);
 
     // Press Enter with an empty composer.
     chat.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
@@ -1013,11 +906,11 @@ async fn empty_enter_during_task_does_not_queue() {
 }
 
 #[tokio::test]
-async fn pending_steer_esc_interrupts_before_vim_insert_escape() {
+async fn pending_steer_esc_does_not_steal_vim_insert_escape() {
     let (mut chat, _rx, mut op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
     let esc = KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE);
 
-    chat.on_task_started();
+    chat.bottom_pane.set_task_running(/*running*/ true);
     chat.input_queue
         .pending_steers
         .push_back(pending_steer("queued steer"));
@@ -1027,29 +920,10 @@ async fn pending_steer_esc_interrupts_before_vim_insert_escape() {
     assert!(chat.should_handle_vim_insert_escape(esc));
     chat.handle_key_event(esc);
 
-    match op_rx.try_recv() {
-        Ok(Op::Interrupt) => {}
-        other => panic!("expected Op::Interrupt, got {other:?}"),
-    }
-    assert!(chat.input_queue.submit_pending_steers_after_interrupt);
+    assert!(!chat.should_handle_vim_insert_escape(esc));
     assert_eq!(chat.input_queue.pending_steers.len(), 1);
-    assert!(chat.should_handle_vim_insert_escape(esc));
-}
-
-#[tokio::test]
-async fn pending_steer_esc_interrupts_backgrounded_agent_turn() {
-    let (mut chat, _rx, mut op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
-    let esc = KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE);
-
-    chat.on_task_started();
-    chat.bottom_pane.set_task_running(/*running*/ false);
-    chat.input_queue
-        .pending_steers
-        .push_back(pending_steer("queued steer"));
-    chat.refresh_pending_input_preview();
-
-    assert!(chat.turn_lifecycle.agent_turn_running);
-    assert!(!chat.bottom_pane.is_task_running());
+    assert!(!chat.input_queue.submit_pending_steers_after_interrupt);
+    assert!(op_rx.try_recv().is_err());
 
     chat.handle_key_event(esc);
 
@@ -1058,7 +932,6 @@ async fn pending_steer_esc_interrupts_backgrounded_agent_turn() {
         other => panic!("expected Op::Interrupt, got {other:?}"),
     }
     assert!(chat.input_queue.submit_pending_steers_after_interrupt);
-    assert_eq!(chat.input_queue.pending_steers.len(), 1);
 }
 
 #[tokio::test]
@@ -1078,8 +951,8 @@ async fn restore_thread_input_state_syncs_sleep_inhibitor_state() {
         user_turn_pending_start: false,
         current_collaboration_mode: chat.current_collaboration_mode.clone(),
         active_collaboration_mask: chat.active_collaboration_mask.clone(),
-        agent_turn_running: true,
         task_running: true,
+        agent_turn_running: true,
     }));
 
     assert!(chat.turn_lifecycle.agent_turn_running);
@@ -1291,9 +1164,11 @@ fn user_message_display_from_inputs_matches_flattened_user_message_shape() {
         },
         UserInput::Image {
             url: "https://example.com/remote.png".to_string(),
+            detail: None,
         },
         UserInput::LocalImage {
             path: local_image.clone(),
+            detail: None,
         },
         UserInput::Skill {
             name: "demo".to_string(),
@@ -1366,6 +1241,7 @@ async fn committed_user_message_with_hidden_prompt_context_renders_local_images(
             },
             UserInput::LocalImage {
                 path: local_image.clone(),
+                detail: None,
             },
         ],
     );

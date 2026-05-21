@@ -73,9 +73,11 @@ impl HistoryCell for FinalMessageSeparator {
     }
 }
 
-/// A visual boundary inserted when a session is rewound to mark the split point.
+/// Creates a visual boundary cell inserted when a session is rewound and resumed.
 pub(crate) fn new_session_rewind_boundary() -> PlainHistoryCell {
-    PlainHistoryCell::new(vec![Line::from("── session restored ──".dim())])
+    PlainHistoryCell {
+        lines: vec![Line::from("── session rewound ──".dim())],
+    }
 }
 
 pub(crate) fn runtime_metrics_label(summary: RuntimeMetricsSummary) -> Option<String> {

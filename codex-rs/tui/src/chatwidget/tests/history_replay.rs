@@ -1,165 +1,13 @@
 use super::*;
-use codex_app_server_protocol::FileSystemAccessMode;
-use codex_app_server_protocol::FileSystemPath;
-use codex_app_server_protocol::FileSystemSandboxEntry;
-use codex_app_server_protocol::FileSystemSpecialPath;
 use codex_app_server_protocol::NetworkAccess;
-use codex_app_server_protocol::PermissionProfile as AppServerPermissionProfile;
-use codex_app_server_protocol::PermissionProfileFileSystemPermissions;
-use codex_app_server_protocol::PermissionProfileNetworkPermissions;
 use codex_app_server_protocol::SandboxPolicy;
+use codex_protocol::models::ManagedFileSystemPermissions;
+use codex_protocol::permissions::FileSystemAccessMode;
+use codex_protocol::permissions::FileSystemPath;
+use codex_protocol::permissions::FileSystemSandboxEntry;
+use codex_protocol::permissions::FileSystemSpecialPath;
+use codex_protocol::permissions::NetworkSandboxPolicy;
 use pretty_assertions::assert_eq;
-
-#[tokio::test]
-async fn stale_agent_delta_is_ignored_after_new_turn_starts() {
-    let (mut chat, mut rx, _ops) = make_chatwidget_manual(/*model_override*/ None).await;
-
-    handle_turn_started(&mut chat, "turn-1");
-    handle_turn_started(&mut chat, "turn-2");
-    drain_insert_history(&mut rx);
-
-    chat.handle_server_notification(
-        ServerNotification::AgentMessageDelta(
-            codex_app_server_protocol::AgentMessageDeltaNotification {
-                thread_id: chat.thread_id.map(|id| id.to_string()).unwrap_or_default(),
-                turn_id: "turn-1".to_string(),
-                item_id: "msg-1".to_string(),
-                delta: "stale output".to_string(),
-            },
-        ),
-        /*replay_kind*/ None,
-    );
-
-    assert!(
-        drain_insert_history(&mut rx).is_empty(),
-        "stale delta should not emit history cells"
-    );
-}
-
-#[tokio::test]
-async fn stale_agent_delta_is_ignored_after_new_turn_is_submitted_before_turn_started() {
-    let (mut chat, mut rx, _ops) = make_chatwidget_manual(/*model_override*/ None).await;
-    chat.thread_id = Some(ThreadId::new());
-
-    handle_turn_started(&mut chat, "turn-1");
-    handle_turn_completed(&mut chat, "turn-1", /*duration_ms*/ None);
-    drain_insert_history(&mut rx);
-
-    chat.submit_user_message(UserMessage::from("new query"));
-    assert!(
-        chat.input_queue.user_turn_pending_start,
-        "new user turn should be pending before TurnStarted arrives"
-    );
-    drain_insert_history(&mut rx);
-
-    chat.handle_server_notification(
-        ServerNotification::AgentMessageDelta(
-            codex_app_server_protocol::AgentMessageDeltaNotification {
-                thread_id: chat.thread_id.map(|id| id.to_string()).unwrap_or_default(),
-                turn_id: "turn-1".to_string(),
-                item_id: "msg-1".to_string(),
-                delta: "late stale output".to_string(),
-            },
-        ),
-        /*replay_kind*/ None,
-    );
-
-    assert!(
-        drain_insert_history(&mut rx).is_empty(),
-        "late stale delta should not emit history cells after a new turn is submitted"
-    );
-}
-
-#[tokio::test]
-async fn stale_plan_and_reasoning_deltas_are_ignored_after_new_turn_starts() {
-    let (mut chat, mut rx, _ops) = make_chatwidget_manual(/*model_override*/ None).await;
-
-    handle_turn_started(&mut chat, "turn-1");
-    handle_turn_started(&mut chat, "turn-2");
-    drain_insert_history(&mut rx);
-
-    let thread_id = chat.thread_id.map(|id| id.to_string()).unwrap_or_default();
-    chat.handle_server_notification(
-        ServerNotification::PlanDelta(codex_app_server_protocol::PlanDeltaNotification {
-            thread_id: thread_id.clone(),
-            turn_id: "turn-1".to_string(),
-            item_id: "plan-1".to_string(),
-            delta: "- stale plan".to_string(),
-        }),
-        /*replay_kind*/ None,
-    );
-    chat.handle_server_notification(
-        ServerNotification::ReasoningSummaryTextDelta(ReasoningSummaryTextDeltaNotification {
-            thread_id,
-            turn_id: "turn-1".to_string(),
-            item_id: "reasoning-1".to_string(),
-            delta: "**stale reasoning**".to_string(),
-            summary_index: 0,
-        }),
-        /*replay_kind*/ None,
-    );
-
-    assert!(
-        drain_insert_history(&mut rx).is_empty(),
-        "stale deltas should not emit history cells"
-    );
-    assert!(
-        chat.transcript.plan_delta_buffer.is_empty(),
-        "stale plan delta should be ignored"
-    );
-    assert!(
-        chat.reasoning_buffer.is_empty(),
-        "stale reasoning delta should be ignored"
-    );
-}
-
-#[tokio::test]
-async fn stale_turn_completion_does_not_end_current_turn() {
-    let (mut chat, _rx, _ops) = make_chatwidget_manual(/*model_override*/ None).await;
-
-    handle_turn_started(&mut chat, "turn-1");
-    handle_turn_started(&mut chat, "turn-2");
-    handle_turn_completed(&mut chat, "turn-1", /*duration_ms*/ None);
-
-    assert!(
-        chat.turn_lifecycle.agent_turn_running,
-        "stale completion should not end the current turn"
-    );
-    assert_eq!(chat.turn_lifecycle.last_turn_id.as_deref(), Some("turn-2"));
-}
-
-#[tokio::test]
-async fn stale_completed_agent_item_is_ignored_after_new_turn_starts() {
-    let (mut chat, mut rx, _ops) = make_chatwidget_manual(/*model_override*/ None).await;
-
-    handle_turn_started(&mut chat, "turn-1");
-    handle_turn_started(&mut chat, "turn-2");
-    drain_insert_history(&mut rx);
-
-    chat.handle_server_notification(
-        ServerNotification::ItemCompleted(ItemCompletedNotification {
-            thread_id: chat.thread_id.map(|id| id.to_string()).unwrap_or_default(),
-            turn_id: "turn-1".to_string(),
-            completed_at_ms: 0,
-            item: AppServerThreadItem::AgentMessage {
-                id: "agent-msg-1".to_string(),
-                text: "stale completed item".to_string(),
-                phase: None,
-                memory_citation: None,
-            },
-        }),
-        /*replay_kind*/ None,
-    );
-
-    assert!(
-        drain_insert_history(&mut rx).is_empty(),
-        "stale completed item should not emit history cells"
-    );
-    assert!(
-        chat.last_agent_markdown_text().is_none(),
-        "stale completed item should not overwrite copy source"
-    );
-}
 
 #[tokio::test]
 async fn resumed_initial_messages_render_history() {
@@ -270,6 +118,7 @@ async fn replayed_user_message_preserves_text_elements_and_local_images() {
             },
             AppServerUserInput::LocalImage {
                 path: local_images[0].clone(),
+                detail: None,
             },
         ],
         ReplayKind::ResumeInitialMessages,
@@ -339,6 +188,7 @@ async fn replayed_user_message_preserves_remote_image_urls() {
             },
             AppServerUserInput::Image {
                 url: remote_image_urls[0].clone(),
+                detail: None,
             },
         ],
         ReplayKind::ResumeInitialMessages,
@@ -381,9 +231,9 @@ async fn session_configured_syncs_widget_config_permissions_and_cwd() {
     chat.config.cwd = test_path_buf("/home/user/main").abs();
 
     let expected_cwd = test_path_buf("/home/user/sub-agent").abs();
-    let expected_app_server_permission_profile = AppServerPermissionProfile::Managed {
-        network: PermissionProfileNetworkPermissions { enabled: false },
-        file_system: PermissionProfileFileSystemPermissions::Restricted {
+    let expected_app_server_permission_profile = PermissionProfile::Managed {
+        network: NetworkSandboxPolicy::Restricted,
+        file_system: ManagedFileSystemPermissions::Restricted {
             entries: vec![
                 FileSystemSandboxEntry {
                     path: FileSystemPath::Special {
@@ -395,14 +245,13 @@ async fn session_configured_syncs_widget_config_permissions_and_cwd() {
                     path: FileSystemPath::GlobPattern {
                         pattern: "**/.secret".to_string(),
                     },
-                    access: FileSystemAccessMode::None,
+                    access: FileSystemAccessMode::Deny,
                 },
             ],
             glob_scan_max_depth: None,
         },
     };
-    let expected_permission_profile: PermissionProfile =
-        expected_app_server_permission_profile.clone().into();
+    let expected_permission_profile = expected_app_server_permission_profile.clone();
     let expected_core_sandbox = expected_permission_profile
         .to_legacy_sandbox_policy(expected_cwd.as_path())
         .expect("permission profile should project to legacy sandbox policy");
@@ -437,16 +286,16 @@ async fn session_configured_syncs_widget_config_permissions_and_cwd() {
     let actual_sandbox = SandboxPolicy::from(chat.config_ref().legacy_sandbox_policy());
     assert_eq!(&actual_sandbox, &expected_sandbox);
     assert_eq!(
-        AppServerPermissionProfile::from(
-            chat.config_ref().permissions.effective_permission_profile()
-        ),
+        chat.config_ref().permissions.effective_permission_profile(),
         expected_app_server_permission_profile
     );
     assert_eq!(&chat.config_ref().cwd, &expected_cwd);
 
     let updated_profile = PermissionProfile::workspace_write();
-    chat.set_permission_profile(updated_profile.clone())
-        .expect("set permission profile");
+    chat.set_permission_profile_from_session_snapshot(PermissionProfileSnapshot::legacy(
+        updated_profile.clone(),
+    ))
+    .expect("set permission profile");
     assert_eq!(
         chat.config_ref().permissions.permission_profile(),
         &updated_profile,
@@ -516,11 +365,10 @@ async fn session_configured_preserves_profile_workspace_roots() {
 async fn session_configured_external_sandbox_keeps_external_runtime_policy() {
     let (mut chat, _rx, _ops) = make_chatwidget_manual(/*model_override*/ None).await;
 
-    let expected_app_server_permission_profile = AppServerPermissionProfile::External {
-        network: PermissionProfileNetworkPermissions { enabled: false },
+    let expected_app_server_permission_profile = PermissionProfile::External {
+        network: NetworkSandboxPolicy::Restricted,
     };
-    let expected_permission_profile: PermissionProfile =
-        expected_app_server_permission_profile.clone().into();
+    let expected_permission_profile = expected_app_server_permission_profile.clone();
     let expected_sandbox = SandboxPolicy::ExternalSandbox {
         network_access: NetworkAccess::Restricted,
     };
@@ -550,9 +398,7 @@ async fn session_configured_external_sandbox_keeps_external_runtime_policy() {
     let actual_sandbox = SandboxPolicy::from(chat.config_ref().legacy_sandbox_policy());
     assert_eq!(&actual_sandbox, &expected_sandbox);
     assert_eq!(
-        AppServerPermissionProfile::from(
-            chat.config_ref().permissions.effective_permission_profile()
-        ),
+        chat.config_ref().permissions.effective_permission_profile(),
         expected_app_server_permission_profile
     );
 }
@@ -592,6 +438,7 @@ async fn replayed_user_message_with_only_remote_images_renders_history_cell() {
         "user-1",
         vec![AppServerUserInput::Image {
             url: remote_image_urls[0].clone(),
+            detail: None,
         }],
         ReplayKind::ResumeInitialMessages,
     );
@@ -647,6 +494,7 @@ async fn replayed_user_message_with_only_local_images_renders_history_cell() {
         "user-1",
         vec![AppServerUserInput::LocalImage {
             path: local_images[0].clone(),
+            detail: None,
         }],
         ReplayKind::ResumeInitialMessages,
     );
@@ -976,6 +824,33 @@ async fn replayed_reasoning_item_shows_raw_reasoning_when_enabled() {
         other => panic!("expected InsertHistoryCell, got {other:?}"),
     };
     assert!(rendered.contains("Raw reasoning"));
+}
+
+#[tokio::test]
+async fn replayed_in_progress_mcp_tool_call_stays_active() {
+    let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    let _ = drain_insert_history(&mut rx);
+
+    chat.replay_thread_item(
+        AppServerThreadItem::McpToolCall {
+            id: "mcp-1".to_string(),
+            server: "copilot-bridge".to_string(),
+            tool: "copilot".to_string(),
+            status: codex_app_server_protocol::McpToolCallStatus::InProgress,
+            arguments: json!({"action": "wait"}),
+            mcp_app_resource_uri: None,
+            result: None,
+            error: None,
+            duration_ms: None,
+        },
+        "turn-1".to_string(),
+        ReplayKind::ThreadSnapshot,
+    );
+
+    assert!(drain_insert_history(&mut rx).is_empty());
+    let active = active_blob(&chat);
+    assert!(active.contains("Calling"));
+    assert!(!active.contains("MCP tool call completed without a result"));
 }
 
 #[tokio::test]

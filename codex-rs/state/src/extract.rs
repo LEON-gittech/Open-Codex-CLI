@@ -76,9 +76,6 @@ fn apply_turn_context(metadata: &mut ThreadMetadata, turn_ctx: &TurnContextItem)
     }
     metadata.model = Some(turn_ctx.model.clone());
     metadata.reasoning_effort = turn_ctx.effort;
-    if let Some(service_tier) = &turn_ctx.service_tier {
-        metadata.service_tier = Some(service_tier.clone());
-    }
     metadata.sandbox_policy = enum_to_string(&turn_ctx.sandbox_policy);
     metadata.approval_mode = enum_to_string(&turn_ctx.approval_policy);
 }
@@ -159,7 +156,6 @@ mod tests {
     use chrono::DateTime;
     use chrono::Utc;
     use codex_protocol::ThreadId;
-    use codex_protocol::config_types::ReasoningSummary;
     use codex_protocol::models::ContentItem;
     use codex_protocol::models::ResponseItem;
     use codex_protocol::openai_models::ReasoningEffort;
@@ -208,6 +204,7 @@ mod tests {
             images: Some(vec![]),
             local_images: vec![],
             text_elements: vec![],
+            ..Default::default()
         }));
 
         apply_rollout_item(&mut metadata, &item, "test-provider");
@@ -228,6 +225,7 @@ mod tests {
             images: Some(vec!["https://example.com/image.png".to_string()]),
             local_images: vec![],
             text_elements: vec![],
+            ..Default::default()
         }));
 
         apply_rollout_item(&mut metadata, &item, "test-provider");
@@ -251,6 +249,7 @@ mod tests {
             images: Some(vec![]),
             local_images: vec![],
             text_elements: vec![],
+            ..Default::default()
         }));
 
         apply_rollout_item(&mut metadata, &item, "test-provider");
@@ -290,6 +289,7 @@ mod tests {
             images: Some(vec![]),
             local_images: vec![],
             text_elements: vec![],
+            ..Default::default()
         }));
 
         apply_rollout_item(&mut metadata, &user_item, "test-provider");
@@ -338,7 +338,6 @@ mod tests {
             &mut metadata,
             &RolloutItem::TurnContext(TurnContextItem {
                 turn_id: Some("turn-1".to_string()),
-                trace_id: None,
                 cwd: PathBuf::from("/parent/workspace"),
                 current_date: None,
                 timezone: None,
@@ -353,11 +352,7 @@ mod tests {
                 realtime_active: None,
                 service_tier: None,
                 effort: None,
-                summary: ReasoningSummary::Auto,
-                user_instructions: None,
-                developer_instructions: None,
-                final_output_json_schema: None,
-                truncation_policy: None,
+                summary: codex_protocol::config_types::ReasoningSummary::Auto,
             }),
             "test-provider",
         );
@@ -379,7 +374,6 @@ mod tests {
             &mut metadata,
             &RolloutItem::TurnContext(TurnContextItem {
                 turn_id: Some("turn-1".to_string()),
-                trace_id: None,
                 cwd: PathBuf::from("/fallback/workspace"),
                 current_date: None,
                 timezone: None,
@@ -394,11 +388,7 @@ mod tests {
                 realtime_active: None,
                 service_tier: None,
                 effort: Some(ReasoningEffort::High),
-                summary: ReasoningSummary::Auto,
-                user_instructions: None,
-                developer_instructions: None,
-                final_output_json_schema: None,
-                truncation_policy: None,
+                summary: codex_protocol::config_types::ReasoningSummary::Auto,
             }),
             "test-provider",
         );
@@ -414,7 +404,6 @@ mod tests {
             &mut metadata,
             &RolloutItem::TurnContext(TurnContextItem {
                 turn_id: Some("turn-1".to_string()),
-                trace_id: None,
                 cwd: PathBuf::from("/fallback/workspace"),
                 current_date: None,
                 timezone: None,
@@ -429,11 +418,7 @@ mod tests {
                 realtime_active: None,
                 service_tier: Some(Some("priority".to_string())),
                 effort: Some(ReasoningEffort::High),
-                summary: ReasoningSummary::Auto,
-                user_instructions: None,
-                developer_instructions: None,
-                final_output_json_schema: None,
-                truncation_policy: None,
+                summary: codex_protocol::config_types::ReasoningSummary::Auto,
             }),
             "test-provider",
         );

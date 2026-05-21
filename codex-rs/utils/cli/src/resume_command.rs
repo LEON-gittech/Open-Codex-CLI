@@ -10,6 +10,17 @@ pub fn resume_command(thread_name: Option<&str>, thread_id: Option<ThreadId>) ->
     resume_command_for_program(&resume_command_name(), thread_name, thread_id)
 }
 
+pub fn resume_hint(thread_name: Option<&str>, thread_id: Option<ThreadId>) -> Option<String> {
+    let thread_id = thread_id?;
+    let program = resume_command_name();
+    match thread_name.filter(|name| !name.is_empty()) {
+        Some(thread_name) => Some(format!(
+            "{program} resume, then select {thread_name} ({thread_id})"
+        )),
+        None => resume_command_for_program(&program, /*thread_name*/ None, Some(thread_id)),
+    }
+}
+
 fn resume_command_name() -> String {
     std::env::var(RESUME_COMMAND_NAME_ENV_VAR)
         .ok()

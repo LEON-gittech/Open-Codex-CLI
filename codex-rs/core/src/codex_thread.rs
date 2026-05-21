@@ -63,7 +63,9 @@ pub struct ThreadConfigSnapshot {
     pub profile_workspace_roots: Vec<AbsolutePathBuf>,
     pub ephemeral: bool,
     pub reasoning_effort: Option<ReasoningEffort>,
+    pub reasoning_summary: Option<ReasoningSummary>,
     pub personality: Option<Personality>,
+    pub collaboration_mode: CollaborationMode,
     pub session_source: SessionSource,
     pub thread_source: Option<ThreadSource>,
 }
@@ -87,9 +89,9 @@ impl ThreadConfigSnapshot {
     }
 }
 
-/// Turn context overrides that app-server validates before starting a turn.
+/// Thread settings overrides that app-server validates before starting a turn.
 #[derive(Clone, Default)]
-pub struct CodexThreadTurnContextOverrides {
+pub struct CodexThreadSettingsOverrides {
     pub cwd: Option<PathBuf>,
     pub workspace_roots: Option<Vec<AbsolutePathBuf>>,
     pub profile_workspace_roots: Option<Vec<AbsolutePathBuf>>,
@@ -151,7 +153,7 @@ impl CodexThread {
         self.codex.session_loop_termination.clone().await;
     }
 
-    pub(crate) fn emit_thread_resume_lifecycle(&self) {
+    pub(crate) async fn emit_thread_resume_lifecycle(&self) {
         for contributor in self
             .codex
             .session
@@ -159,10 +161,12 @@ impl CodexThread {
             .extensions
             .thread_lifecycle_contributors()
         {
-            contributor.on_thread_resume(codex_extension_api::ThreadResumeInput {
-                session_store: &self.codex.session.services.session_extension_data,
-                thread_store: &self.codex.session.services.thread_extension_data,
-            });
+            contributor
+                .on_thread_resume(codex_extension_api::ThreadResumeInput {
+                    session_store: &self.codex.session.services.session_extension_data,
+                    thread_store: &self.codex.session.services.thread_extension_data,
+                })
+                .await;
         }
     }
 
@@ -277,12 +281,20 @@ impl CodexThread {
             .await
     }
 
-    /// Validate persistent turn context overrides without committing them.
-    pub async fn validate_turn_context_overrides(
+    /// Preview persistent thread settings overrides without committing them.
+    pub async fn preview_thread_settings_overrides(
         &self,
-        overrides: CodexThreadTurnContextOverrides,
-    ) -> ConstraintResult<()> {
-        let CodexThreadTurnContextOverrides {
+        overrides: CodexThreadSettingsOverrides,
+    ) -> ConstraintResult<ThreadConfigSnapshot> {
+        let updates = self.thread_settings_update(overrides).await;
+        self.codex.session.preview_settings(&updates).await
+    }
+
+    async fn thread_settings_update(
+        &self,
+        overrides: CodexThreadSettingsOverrides,
+    ) -> SessionSettingsUpdate {
+        let CodexThreadSettingsOverrides {
             cwd,
             workspace_roots,
             profile_workspace_roots,
@@ -309,7 +321,7 @@ impl CodexThread {
                 .with_updates(model, effort, /*developer_instructions*/ None)
         };
 
-        let updates = SessionSettingsUpdate {
+        SessionSettingsUpdate {
             cwd,
             workspace_roots,
             profile_workspace_roots,
@@ -324,8 +336,7 @@ impl CodexThread {
             service_tier,
             personality,
             ..Default::default()
-        };
-        self.codex.session.validate_settings(&updates).await
+        }
     }
 
     /// Use sparingly: this is intended to be removed soon.
@@ -403,6 +414,7 @@ impl CodexThread {
         {
             self.codex
                 .session
+                .input_queue
                 .queue_response_items_for_next_turn(items)
                 .await;
             self.codex.session.maybe_start_turn_for_pending_work().await;

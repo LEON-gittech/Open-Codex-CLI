@@ -90,6 +90,9 @@ impl ChatWidget {
             .iter()
             .find(|process| process.key == process_id)
             .map(|process| process.command_display.clone());
+        if stdin.is_empty() && command_display.is_none() {
+            return;
+        }
         if stdin.is_empty() {
             // Empty stdin means we are polling for background output.
             // Background the current turn so the user can continue composing.

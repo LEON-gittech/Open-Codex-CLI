@@ -10,6 +10,7 @@ use codex_extension_api::ThreadLifecycleContributor;
 use codex_extension_api::ThreadStartInput;
 use codex_extension_api::ToolContributor;
 use codex_features::Feature;
+use codex_memories_read::build_memory_tool_developer_instructions;
 use codex_utils_absolute_path::AbsolutePathBuf;
 
 use crate::local::LocalMemoriesBackend;
@@ -48,13 +49,18 @@ impl ContextContributor for MemoriesExtension {
                 return Vec::new();
             }
 
-            Vec::new()
+            build_memory_tool_developer_instructions(&config.codex_home)
+                .await
+                .map(PromptFragment::developer_policy)
+                .into_iter()
+                .collect()
         })
     }
 }
 
+#[async_trait::async_trait]
 impl ThreadLifecycleContributor<Config> for MemoriesExtension {
-    fn on_thread_start(&self, input: ThreadStartInput<'_, Config>) {
+    async fn on_thread_start(&self, input: ThreadStartInput<'_, Config>) {
         input
             .thread_store
             .insert(MemoriesExtensionConfig::from_config(input.config));

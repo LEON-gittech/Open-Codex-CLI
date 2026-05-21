@@ -600,8 +600,8 @@ impl ChatWidget {
                         )
                     }),
                 ),
-                UserInput::Image { url } => remote_image_urls.push(url.clone()),
-                UserInput::LocalImage { path } => local_images.push(path.clone()),
+                UserInput::Image { url, .. } => remote_image_urls.push(url.clone()),
+                UserInput::LocalImage { path, .. } => local_images.push(path.clone()),
                 UserInput::Skill { .. } | UserInput::Mention { .. } => {}
             }
         }
