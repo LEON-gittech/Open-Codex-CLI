@@ -53,6 +53,7 @@ pub(crate) const SESSION_BROWSER_VIEW_ID: &str = "session_browser";
 const DELETE_CONFIRM_WINDOW: std::time::Duration = std::time::Duration::from_secs(2);
 const HEADER_HEIGHT: u16 = 3;
 const FOOTER_HEIGHT: u16 = 2;
+const COMPOSER_HEIGHT: u16 = 3;
 const PEEK_DEFAULT_LIMIT: usize = 80;
 
 #[derive(Debug)]
@@ -67,6 +68,10 @@ pub(crate) struct SessionBrowserView {
     status_message: Option<(String, Instant)>,
     pending_delete: Option<(usize, Instant)>,
     peek: PeekState,
+    /// Free-form text the user has typed into the inline composer at the
+    /// bottom of the agent view. When non-empty, Enter sends it to the
+    /// selected (resume) or fresh session.
+    compose: String,
 }
 
 #[derive(Debug)]
@@ -97,6 +102,7 @@ impl SessionBrowserView {
             status_message: None,
             pending_delete: None,
             peek: PeekState::Closed,
+            compose: String::new(),
         }
     }
 
@@ -162,18 +168,33 @@ impl SessionBrowserView {
     }
 
     fn activate_selected(&mut self) {
-        let Some(summary) = self.selected_summary() else {
-            return;
-        };
-        let Some(thread_id) = summary.thread_id.as_deref() else {
+        let thread_id_opt = self
+            .selected_summary()
+            .and_then(|s| s.thread_id.clone());
+        let Some(thread_id) = thread_id_opt else {
             self.set_status("Selected session has no thread id");
             return;
         };
+        let initial_prompt = self.take_compose_text();
         self.app_event_tx
             .send(AppEvent::ResumeThreadFromBrowser {
-                thread_id: thread_id.to_string(),
+                thread_id,
+                initial_prompt,
             });
         self.completion = Some(ViewCompletion::Accepted);
+    }
+
+    fn start_new_session(&mut self) {
+        let initial_prompt = self.take_compose_text();
+        self.app_event_tx
+            .send(AppEvent::StartNewSessionFromBrowser { initial_prompt });
+        self.completion = Some(ViewCompletion::Accepted);
+    }
+
+    fn take_compose_text(&mut self) -> Option<String> {
+        let trimmed = self.compose.trim().to_string();
+        self.compose.clear();
+        if trimmed.is_empty() { None } else { Some(trimmed) }
     }
 
     fn open_peek(&mut self) {
@@ -290,8 +311,11 @@ impl SessionBrowserView {
 
     fn render_footer(&self, area: Rect, buf: &mut Buffer) {
         let hint = match (&self.state, &self.peek) {
+            (_, PeekState::Closed) if !self.compose.is_empty() => {
+                "Enter send · Ctrl+N new session · Backspace delete · Esc clear"
+            }
             (BrowserState::Loaded(list), PeekState::Closed) if !list.is_empty() => {
-                "↑/↓ select · Space peek · Enter/→ resume · Ctrl+X delete · Esc/← close"
+                "↑/↓ select · Space peek · Enter/→ resume · type to send · Ctrl+N new · Ctrl+X delete · Esc/← close"
             }
             (_, PeekState::Closed) => "Esc/← close",
             _ => "Esc/Space close peek",
@@ -305,6 +329,54 @@ impl SessionBrowserView {
         }
         let para = Paragraph::new(lines).wrap(Wrap { trim: true });
         para.render(area, buf);
+    }
+
+    fn render_composer(&self, area: Rect, buf: &mut Buffer) {
+        if area.height == 0 {
+            return;
+        }
+        let selected_label = self
+            .selected_summary()
+            .map(|s| {
+                let title = s.title.chars().take(40).collect::<String>();
+                if s.title.chars().count() > 40 {
+                    format!("{title}…")
+                } else {
+                    title
+                }
+            })
+            .unwrap_or_else(|| "no session selected".to_string());
+        let title = format!(" Reply to: {selected_label} ");
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(if self.compose.is_empty() {
+                Color::DarkGray
+            } else {
+                Color::Cyan
+            }))
+            .title(Span::styled(
+                title,
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            ));
+        let inner = block.inner(area);
+        block.render(area, buf);
+        let body = if self.compose.is_empty() {
+            Line::from(Span::styled(
+                "Type a prompt and press Enter to resume with that prompt (or Ctrl+N for a fresh session).",
+                Style::default()
+                    .fg(Color::DarkGray)
+                    .add_modifier(Modifier::ITALIC),
+            ))
+        } else {
+            Line::from(vec![
+                Span::styled("› ", Style::default().fg(Color::Cyan)),
+                Span::raw(self.compose.clone()),
+                Span::styled("▌", Style::default().fg(Color::Cyan)),
+            ])
+        };
+        Paragraph::new(body).render(inner, buf);
     }
 
     fn render_list(&self, area: Rect, buf: &mut Buffer) {
@@ -446,7 +518,7 @@ impl BottomPaneView for SessionBrowserView {
             return;
         }
 
-        // Ctrl-X delete (with double-press confirm).
+        // Ctrl+X delete (with double-press confirm).
         if key_event.modifiers.contains(KeyModifiers::CONTROL)
             && matches!(key_event.code, KeyCode::Char('x') | KeyCode::Char('X'))
         {
@@ -454,9 +526,22 @@ impl BottomPaneView for SessionBrowserView {
             return;
         }
 
+        // Ctrl+N start fresh session (carries any composer text as prompt).
+        if key_event.modifiers.contains(KeyModifiers::CONTROL)
+            && matches!(key_event.code, KeyCode::Char('n') | KeyCode::Char('N'))
+        {
+            self.start_new_session();
+            return;
+        }
+
+        let composing = !self.compose.is_empty();
+
         match key_event.code {
-            KeyCode::Up | KeyCode::Char('k') => self.move_selection(-1),
-            KeyCode::Down | KeyCode::Char('j') => self.move_selection(1),
+            // Navigation keys: always honoured even while composing — agent
+            // view should let users keep moving through the list while a draft
+            // is in flight.
+            KeyCode::Up => self.move_selection(-1),
+            KeyCode::Down => self.move_selection(1),
             KeyCode::PageUp => {
                 let step = self.last_visible_height.get().max(1) as isize;
                 self.move_selection(-step);
@@ -465,22 +550,61 @@ impl BottomPaneView for SessionBrowserView {
                 let step = self.last_visible_height.get().max(1) as isize;
                 self.move_selection(step);
             }
-            KeyCode::Home | KeyCode::Char('g') => {
+            KeyCode::Home => {
                 self.selected_index = 0;
                 self.pending_delete = None;
                 self.ensure_visible();
             }
-            KeyCode::End | KeyCode::Char('G') => {
+            KeyCode::End => {
                 if let Some(list) = self.sessions() {
                     self.selected_index = list.len().saturating_sub(1);
                 }
                 self.pending_delete = None;
                 self.ensure_visible();
             }
-            KeyCode::Char(' ') => self.open_peek(),
-            KeyCode::Enter | KeyCode::Right => self.activate_selected(),
-            KeyCode::Esc | KeyCode::Left | KeyCode::Char('q') => {
+            // Vim-style nav: only when not composing (so `j`, `k`, `g`, `G`,
+            // `q` don't fight the composer).
+            KeyCode::Char('k') if !composing => self.move_selection(-1),
+            KeyCode::Char('j') if !composing => self.move_selection(1),
+            KeyCode::Char('g') if !composing => {
+                self.selected_index = 0;
+                self.pending_delete = None;
+                self.ensure_visible();
+            }
+            KeyCode::Char('G') if !composing => {
+                if let Some(list) = self.sessions() {
+                    self.selected_index = list.len().saturating_sub(1);
+                }
+                self.pending_delete = None;
+                self.ensure_visible();
+            }
+            KeyCode::Char('q') if !composing => {
                 self.completion = Some(ViewCompletion::Cancelled);
+            }
+            // Space: peek when not composing, otherwise insert a literal space.
+            KeyCode::Char(' ') if !composing => self.open_peek(),
+            // Enter and Right always activate the selection (with the composer
+            // text becoming the initial prompt of the resumed session).
+            KeyCode::Enter | KeyCode::Right => self.activate_selected(),
+            // Esc clears the draft first; a second Esc closes the view.
+            KeyCode::Esc => {
+                if composing {
+                    self.compose.clear();
+                } else {
+                    self.completion = Some(ViewCompletion::Cancelled);
+                }
+            }
+            // Left closes only when no draft is in flight (otherwise reserved
+            // for future cursor movement).
+            KeyCode::Left if !composing => {
+                self.completion = Some(ViewCompletion::Cancelled);
+            }
+            // Composer editing.
+            KeyCode::Backspace => {
+                self.compose.pop();
+            }
+            KeyCode::Char(ch) if !key_event.modifiers.contains(KeyModifiers::CONTROL) => {
+                self.compose.push(ch);
             }
             _ => {}
         }
@@ -556,13 +680,15 @@ impl Renderable for SessionBrowserView {
             .constraints([
                 Constraint::Length(HEADER_HEIGHT),
                 Constraint::Min(1),
+                Constraint::Length(COMPOSER_HEIGHT),
                 Constraint::Length(FOOTER_HEIGHT + status_extra_height(self.status_text())),
             ])
             .split(area);
 
         self.render_header(chunks[0], buf);
         self.render_list(chunks[1], buf);
-        self.render_footer(chunks[2], buf);
+        self.render_composer(chunks[2], buf);
+        self.render_footer(chunks[3], buf);
 
         if matches!(
             self.peek,

@@ -490,6 +490,49 @@ impl App {
         tui.frame_requester().schedule_frame();
     }
 
+    /// In-process attach to a session selected from the agent view. Calls
+    /// `app_server.resume_thread` and reuses
+    /// [`Self::replace_chat_widget_with_app_server_thread`] so the swap happens
+    /// without exiting the App loop or re-launching the binary — much smoother
+    /// than the previous re-exec path.
+    pub(crate) async fn attach_resumed_thread_from_browser(
+        &mut self,
+        tui: &mut tui::Tui,
+        app_server: &mut AppServerSession,
+        thread_id_str: String,
+        initial_prompt: Option<String>,
+    ) -> Result<()> {
+        use codex_protocol::ThreadId;
+        let thread_id = match ThreadId::from_string(&thread_id_str) {
+            Ok(id) => id,
+            Err(err) => {
+                self.chat_widget
+                    .add_error_message(format!("Invalid thread id `{thread_id_str}`: {err}"));
+                return Ok(());
+            }
+        };
+        let started = match app_server.resume_thread(self.config.clone(), thread_id).await {
+            Ok(started) => started,
+            Err(err) => {
+                self.chat_widget
+                    .add_error_message(format!("Failed to resume session: {err:#}"));
+                return Ok(());
+            }
+        };
+        let initial_user_message = crate::chatwidget::create_initial_user_message(
+            initial_prompt,
+            Vec::new(),
+            Vec::new(),
+        );
+        self.replace_chat_widget_with_app_server_thread(
+            tui,
+            app_server,
+            started,
+            initial_user_message,
+        )
+        .await
+    }
+
     pub(super) async fn replace_chat_widget_with_app_server_thread(
         &mut self,
         tui: &mut tui::Tui,

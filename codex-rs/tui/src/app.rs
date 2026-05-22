@@ -382,6 +382,12 @@ pub struct AppExitInfo {
     /// When set, the outer CLI loop should re-launch the TUI in resume mode
     /// targeting this thread id. Populated by the session browser overlay.
     pub resume_thread_id: Option<String>,
+    /// Initial prompt text to inject into the next launch. Populated by the
+    /// agent view's inline composer.
+    pub resume_initial_prompt: Option<String>,
+    /// When true, the outer CLI should launch a fresh session (ignoring any
+    /// `resume_thread_id`). Triggered by `Ctrl+N` in the agent view.
+    pub start_new_session: bool,
 }
 
 impl AppExitInfo {
@@ -393,6 +399,8 @@ impl AppExitInfo {
             update_action: None,
             exit_reason: ExitReason::Fatal(message.into()),
             resume_thread_id: None,
+            resume_initial_prompt: None,
+            start_new_session: false,
         }
     }
 }
@@ -540,6 +548,12 @@ pub(crate) struct App {
     /// this thread id after the current TUI exits. Triggered by the session
     /// browser overlay.
     pub(crate) pending_resume_thread_id: Option<String>,
+    /// Initial prompt to inject into the resumed (or fresh) session created
+    /// after this TUI exits. Comes from the agent view's inline composer.
+    pub(crate) pending_resume_prompt: Option<String>,
+    /// When true, the outer CLI should launch a brand-new session instead of
+    /// resuming. `pending_resume_thread_id` is ignored when this is set.
+    pub(crate) pending_start_new_session: bool,
 
     windows_sandbox: WindowsSandboxState,
 
@@ -721,6 +735,8 @@ impl App {
                     update_action: None,
                     exit_reason: ExitReason::UserRequested,
                     resume_thread_id: None,
+                    resume_initial_prompt: None,
+                    start_new_session: false,
                 });
             }
         };
@@ -965,6 +981,8 @@ See the Codex keymap documentation for supported actions and examples."
             pending_update_action: None,
             pending_shutdown_exit_thread_id: None,
             pending_resume_thread_id: None,
+            pending_resume_prompt: None,
+            pending_start_new_session: false,
             windows_sandbox: WindowsSandboxState::default(),
             thread_event_channels: HashMap::new(),
             thread_event_listener_tasks: HashMap::new(),
@@ -1167,6 +1185,8 @@ See the Codex keymap documentation for supported actions and examples."
             update_action: app.pending_update_action,
             exit_reason,
             resume_thread_id: app.pending_resume_thread_id.take(),
+            resume_initial_prompt: app.pending_resume_prompt.take(),
+            start_new_session: std::mem::take(&mut app.pending_start_new_session),
         })
     }
 

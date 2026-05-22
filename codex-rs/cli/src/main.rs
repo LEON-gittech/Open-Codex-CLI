@@ -2076,12 +2076,24 @@ async fn run_interactive_tui(
         );
         let err = match attempt.await {
             Ok(exit_info) => {
-                // If the session browser overlay asked us to resume into a
-                // different thread, re-launch the TUI in place so the user
-                // perceives an in-app "attach".
+                // The session browser overlay can ask the outer loop to
+                // relaunch. Two cases:
+                //   * `start_new_session` — Ctrl+N: bring up a fresh codex
+                //     session, optionally with a typed prompt.
+                //   * `resume_thread_id` — kept as a fallback for
+                //     non-in-process paths (most resumes are now handled
+                //     in-process by `attach_resumed_thread_from_browser`).
+                if exit_info.start_new_session {
+                    interactive.resume_picker = false;
+                    interactive.resume_session_id = None;
+                    interactive.prompt = exit_info.resume_initial_prompt.clone();
+                    attempted_repair = false;
+                    continue;
+                }
                 if let Some(thread_id) = exit_info.resume_thread_id.clone() {
                     interactive.resume_picker = false;
                     interactive.resume_session_id = Some(thread_id);
+                    interactive.prompt = exit_info.resume_initial_prompt.clone();
                     attempted_repair = false;
                     continue;
                 }

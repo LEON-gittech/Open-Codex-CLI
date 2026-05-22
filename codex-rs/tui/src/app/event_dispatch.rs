@@ -1723,8 +1723,22 @@ impl App {
             AppEvent::SessionBrowserLoaded(sessions) => {
                 self.chat_widget.update_session_browser_sessions(sessions);
             }
-            AppEvent::ResumeThreadFromBrowser { thread_id } => {
-                self.pending_resume_thread_id = Some(thread_id);
+            AppEvent::ResumeThreadFromBrowser {
+                thread_id,
+                initial_prompt,
+            } => {
+                self.attach_resumed_thread_from_browser(
+                    tui,
+                    app_server,
+                    thread_id,
+                    initial_prompt,
+                )
+                .await?;
+            }
+            AppEvent::StartNewSessionFromBrowser { initial_prompt } => {
+                self.pending_start_new_session = true;
+                self.pending_resume_thread_id = None;
+                self.pending_resume_prompt = initial_prompt;
                 return Ok(self
                     .handle_exit_mode(app_server, ExitMode::ShutdownFirst)
                     .await);

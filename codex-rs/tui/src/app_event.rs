@@ -148,9 +148,17 @@ pub(crate) enum AppEvent {
     /// async I/O thread.
     SessionBrowserLoaded(Vec<codex_agent_view::SessionSummary>),
     /// User picked a session row in the browser; ask the outer loop to exit
-    /// and re-launch into resume mode for the given thread id.
+    /// and re-launch into resume mode for the given thread id. When the
+    /// composer at the bottom of the browser is non-empty, that text is
+    /// forwarded as the initial prompt for the resumed session.
     ResumeThreadFromBrowser {
         thread_id: String,
+        initial_prompt: Option<String>,
+    },
+    /// User pressed `Ctrl+N` in the browser. Exit and re-launch a brand-new
+    /// session using the typed text (if any) as the initial prompt.
+    StartNewSessionFromBrowser {
+        initial_prompt: Option<String>,
     },
     /// Peek panel finished loading rollout items for the highlighted session.
     SessionBrowserPeekLoaded(Box<codex_agent_view::PeekContent>),

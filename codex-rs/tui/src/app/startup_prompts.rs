@@ -307,6 +307,8 @@ pub(super) async fn handle_model_migration_prompt_if_needed(
                     update_action: None,
                     exit_reason: ExitReason::UserRequested,
                     resume_thread_id: None,
+                resume_initial_prompt: None,
+                start_new_session: false,
                 });
             }
         }
