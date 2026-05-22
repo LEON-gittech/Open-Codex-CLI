@@ -1811,6 +1811,32 @@ dependencies = [
 ]
 
 [[package]]
+name = "codex-agent-view"
+version = "0.131.5"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "clap",
+ "codex-app-server-protocol",
+ "codex-protocol",
+ "codex-rollout",
+ "codex-utils-cli",
+ "codex-utils-home-dir",
+ "crossterm",
+ "pretty_assertions",
+ "ratatui",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "time",
+ "tokio",
+ "tokio-stream",
+ "tracing",
+ "tracing-subscriber",
+ "unicode-width 0.2.1",
+]
+
+[[package]]
 name = "codex-analytics"
 version = "0.131.5"
 dependencies = [
@@ -2222,6 +2248,7 @@ dependencies = [
  "assert_matches",
  "clap",
  "clap_complete",
+ "codex-agent-view",
  "codex-api",
  "codex-app-server",
  "codex-app-server-daemon",
