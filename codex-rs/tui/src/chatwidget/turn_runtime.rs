@@ -203,6 +203,7 @@ impl ChatWidget {
         }
         self.task_backgrounded = self.should_mark_current_turn_backgrounded();
         self.update_task_running_state();
+        self.refresh_status_line();
         self.running_commands.clear();
         self.suppressed_exec_calls.clear();
         self.last_unified_wait = None;

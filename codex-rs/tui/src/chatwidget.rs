@@ -1424,6 +1424,7 @@ impl ChatWidget {
         self.submit_op(AppCommand::clean_background_terminals());
         self.unified_exec_processes.clear();
         self.sync_unified_exec_footer();
+        self.refresh_status_line();
         self.add_info_message(
             "Stopping all background terminals.".to_string(),
             /*hint*/ None,
@@ -1851,6 +1852,7 @@ impl ChatWidget {
                 task: None,
             });
             self.bump_active_cell_revision();
+            self.refresh_status_line();
         }
         self.task_backgrounded = true;
         self.update_task_running_state();

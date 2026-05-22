@@ -972,25 +972,41 @@ async fn open_background_task_panel_refreshes_when_terminal_state_changes() {
         command_display: "sleep 300".to_string(),
         recent_chunks: vec!["tick 01".to_string()],
     });
+    chat.unified_exec_processes.push(UnifiedExecProcessSummary {
+        key: "proc-2".to_string(),
+        call_id: "call-2".to_string(),
+        command_display: "python long_job.py".to_string(),
+        recent_chunks: vec!["tick 02".to_string()],
+    });
     chat.sync_unified_exec_footer();
+    chat.refresh_status_line();
+
+    assert!(
+        status_line_text(&chat).is_some_and(|line| line.contains("bg 2 terminals")),
+        "status line should show both terminals before one exits"
+    );
 
     chat.handle_key_event(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
     let initial = render_bottom_popup(&chat, /*width*/ 96);
     assert!(
-        initial.contains("Terminals (1)"),
+        initial.contains("Terminals (2)"),
         "initial panel: {initial}"
     );
 
     chat.track_unified_exec_process_end("call-1", Some("proc-1"));
 
+    assert!(
+        status_line_text(&chat).is_some_and(|line| line.contains("bg 1 terminal")),
+        "status line should refresh after one terminal exits"
+    );
     let refreshed = render_bottom_popup(&chat, /*width*/ 96);
     assert!(
-        refreshed.contains("Terminals (0)"),
+        refreshed.contains("Terminals (1)"),
         "open panel should refresh after terminal state changes: {refreshed}"
     );
     assert!(
-        refreshed.contains("No background terminals."),
-        "open panel should render the empty terminal state: {refreshed}"
+        refreshed.contains("python long_job.py") && !refreshed.contains("sleep 300"),
+        "open panel should list only the still-running terminal: {refreshed}"
     );
 }
 

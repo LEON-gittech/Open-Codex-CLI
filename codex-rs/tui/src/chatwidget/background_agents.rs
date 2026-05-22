@@ -55,6 +55,7 @@ pub(super) fn sync_collab_agent_background_activity(chat: &mut ChatWidget, item:
     if changed {
         refresh_task_backgrounded_from_activity_state(chat);
         chat.refresh_background_tasks_view_if_open();
+        chat.refresh_status_line();
         chat.request_redraw();
     }
 }

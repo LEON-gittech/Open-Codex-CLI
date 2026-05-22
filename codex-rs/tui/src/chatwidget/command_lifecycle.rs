@@ -191,6 +191,7 @@ impl ChatWidget {
             });
         }
         self.sync_unified_exec_footer();
+        self.refresh_status_line();
     }
 
     pub(super) fn track_unified_exec_process_end(
@@ -205,6 +206,7 @@ impl ChatWidget {
         if self.unified_exec_processes.len() != before {
             self.sync_unified_exec_footer();
             self.refresh_background_tasks_view_if_open();
+            self.refresh_status_line();
         }
     }
 
@@ -475,6 +477,7 @@ impl ChatWidget {
                         .send(AppEvent::InsertHistoryCell(activity.cell));
                 }
                 self.refresh_background_tasks_view_if_open();
+                self.refresh_status_line();
                 self.request_redraw();
             }
             ExecEndTarget::NewCell => {
