@@ -53,6 +53,7 @@ mod action_required_title;
 mod app_link_view;
 mod approval_overlay;
 mod background_tasks_view;
+mod session_browser_view;
 mod btw_view;
 mod mcp_server_elicitation;
 mod multi_select_picker;
@@ -76,6 +77,8 @@ pub(crate) use background_tasks_view::BackgroundTaskKind;
 pub(crate) use background_tasks_view::BackgroundTasksView;
 pub(crate) use background_tasks_view::BackgroundTasksViewParams;
 pub(crate) use background_tasks_view::PlanTaskItem;
+pub(crate) use session_browser_view::SESSION_BROWSER_VIEW_ID;
+pub(crate) use session_browser_view::SessionBrowserView;
 use btw_view::BtwView;
 pub(crate) use mcp_server_elicitation::McpServerElicitationFormRequest;
 pub(crate) use mcp_server_elicitation::McpServerElicitationOverlay;
@@ -1302,6 +1305,45 @@ impl BottomPane {
             thread_id.or(self.thread_id),
             self.app_event_tx.clone(),
         )));
+    }
+
+    pub(crate) fn show_session_browser_view(&mut self) {
+        self.push_view(Box::new(SessionBrowserView::new_loading(
+            self.app_event_tx.clone(),
+        )));
+    }
+
+    pub(crate) fn update_session_browser_sessions(
+        &mut self,
+        sessions: Vec<codex_agent_view::SessionSummary>,
+    ) -> bool {
+        let Some(view) = self.view_stack.last_mut() else {
+            return false;
+        };
+        if view.view_id() != Some(SESSION_BROWSER_VIEW_ID) {
+            return false;
+        }
+        if view.update_session_browser_sessions(sessions) {
+            self.request_redraw();
+            self.schedule_active_view_frame();
+            return true;
+        }
+        false
+    }
+
+    pub(crate) fn update_session_browser_error(&mut self, message: String) -> bool {
+        let Some(view) = self.view_stack.last_mut() else {
+            return false;
+        };
+        if view.view_id() != Some(SESSION_BROWSER_VIEW_ID) {
+            return false;
+        }
+        if view.update_session_browser_error(message) {
+            self.request_redraw();
+            self.schedule_active_view_frame();
+            return true;
+        }
+        false
     }
 
     pub(crate) fn update_background_tasks_view_if_active(

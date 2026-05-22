@@ -42,7 +42,9 @@ codex-features = { workspace = true }
 codex-feedback = { workspace = true }
 codex-file-search = { workspace = true }
 codex-git-utils = { workspace = true }
+codex-agent-view = { workspace = true }
 codex-login = { workspace = true }
+time = { workspace = true, features = ["formatting", "parsing"] }
 codex-message-history = { workspace = true }
 codex-model-provider = { workspace = true }
 codex-model-provider-info = { workspace = true }

@@ -167,6 +167,23 @@ impl ChatWidget {
             return;
         }
 
+        // Left arrow on an empty composer opens the agent view (session
+        // browser), matching Claude Code's left-arrow-to-agents shortcut.
+        if matches!(
+            key_event,
+            KeyEvent {
+                code: KeyCode::Left,
+                modifiers: KeyModifiers::NONE,
+                kind: KeyEventKind::Press | KeyEventKind::Repeat,
+                ..
+            }
+        ) && self.bottom_pane.no_modal_or_popup_active()
+            && self.bottom_pane.composer_is_empty()
+            && self.open_session_browser()
+        {
+            return;
+        }
+
         match key_event {
             KeyEvent {
                 code: KeyCode::Char(c),

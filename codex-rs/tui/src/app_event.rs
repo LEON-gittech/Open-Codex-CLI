@@ -141,6 +141,17 @@ pub(crate) enum AppEvent {
 
     /// Open the agent picker for switching active threads.
     OpenAgentPicker,
+    /// Open the full-screen session browser (agent view) that lists past
+    /// top-level sessions from `$CODEX_HOME/sessions/`.
+    OpenSessionBrowser,
+    /// Populate or update the session browser view with the list loaded off the
+    /// async I/O thread.
+    SessionBrowserLoaded(Vec<codex_agent_view::SessionSummary>),
+    /// User picked a session row in the browser; ask the outer loop to exit
+    /// and re-launch into resume mode for the given thread id.
+    ResumeThreadFromBrowser {
+        thread_id: String,
+    },
     /// Stop a spawned subagent from the background task panel.
     StopBackgroundSubagent {
         thread_id: ThreadId,

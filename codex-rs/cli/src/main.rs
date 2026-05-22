@@ -2066,18 +2066,27 @@ async fn run_interactive_tui(
         };
         *slot = Some(auth_token);
     }
-    let start_tui = || {
-        codex_tui::run_main(
+    let mut attempted_repair = false;
+    loop {
+        let attempt = codex_tui::run_main(
             interactive.clone(),
             arg0_paths.clone(),
             codex_config::LoaderOverrides::default(),
             remote_endpoint.clone(),
-        )
-    };
-    let mut attempted_repair = false;
-    loop {
-        let err = match start_tui().await {
-            Ok(exit_info) => return Ok(exit_info),
+        );
+        let err = match attempt.await {
+            Ok(exit_info) => {
+                // If the session browser overlay asked us to resume into a
+                // different thread, re-launch the TUI in place so the user
+                // perceives an in-app "attach".
+                if let Some(thread_id) = exit_info.resume_thread_id.clone() {
+                    interactive.resume_picker = false;
+                    interactive.resume_session_id = Some(thread_id);
+                    attempted_repair = false;
+                    continue;
+                }
+                return Ok(exit_info);
+            }
             Err(err) => err,
         };
         let Some(startup_error) = local_state_db::startup_error(&err) else {

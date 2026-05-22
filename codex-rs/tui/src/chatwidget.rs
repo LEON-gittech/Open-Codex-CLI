@@ -1661,6 +1661,48 @@ impl ChatWidget {
     }
 
     /// Show the background activity summary panel (triggered by Down arrow).
+    /// Update the open session browser view with a freshly loaded list.
+    pub(crate) fn update_session_browser_sessions(
+        &mut self,
+        sessions: Vec<codex_agent_view::SessionSummary>,
+    ) -> bool {
+        self.bottom_pane.update_session_browser_sessions(sessions)
+    }
+
+    /// Open the full-screen session browser (agent view) overlay. Returns
+    /// `true` if the view was shown, `false` if a modal/popup is blocking it.
+    pub(crate) fn open_session_browser(&mut self) -> bool {
+        if !self.bottom_pane.no_modal_or_popup_active() {
+            return false;
+        }
+        self.bottom_pane.show_session_browser_view();
+
+        let app_event_tx = self.app_event_tx.clone();
+        tokio::spawn(async move {
+            let codex_home = match codex_utils_home_dir::find_codex_home() {
+                Ok(path) => std::path::PathBuf::from(path),
+                Err(err) => {
+                    app_event_tx.send(crate::app_event::AppEvent::SessionBrowserLoaded(
+                        Vec::new(),
+                    ));
+                    let _ = err;
+                    return;
+                }
+            };
+            match codex_agent_view::list_sessions(&codex_home, 100).await {
+                Ok(sessions) => {
+                    app_event_tx
+                        .send(crate::app_event::AppEvent::SessionBrowserLoaded(sessions));
+                }
+                Err(_err) => {
+                    app_event_tx
+                        .send(crate::app_event::AppEvent::SessionBrowserLoaded(Vec::new()));
+                }
+            }
+        });
+        true
+    }
+
     pub(crate) fn show_background_activity_summary(&mut self) -> bool {
         if !self.bottom_pane.no_modal_or_popup_active() {
             return false;

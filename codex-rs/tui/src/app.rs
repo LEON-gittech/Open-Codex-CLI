@@ -379,6 +379,9 @@ pub struct AppExitInfo {
     pub thread_name: Option<String>,
     pub update_action: Option<UpdateAction>,
     pub exit_reason: ExitReason,
+    /// When set, the outer CLI loop should re-launch the TUI in resume mode
+    /// targeting this thread id. Populated by the session browser overlay.
+    pub resume_thread_id: Option<String>,
 }
 
 impl AppExitInfo {
@@ -389,6 +392,7 @@ impl AppExitInfo {
             thread_name: None,
             update_action: None,
             exit_reason: ExitReason::Fatal(message.into()),
+            resume_thread_id: None,
         }
     }
 }
@@ -531,6 +535,11 @@ pub(crate) struct App {
     /// This is thread-scoped state (`Option<ThreadId>`) instead of a global bool
     /// so shutdown events from other threads still take the normal failover path.
     pending_shutdown_exit_thread_id: Option<ThreadId>,
+
+    /// When set, the outer CLI should re-launch into resume mode targeting
+    /// this thread id after the current TUI exits. Triggered by the session
+    /// browser overlay.
+    pub(crate) pending_resume_thread_id: Option<String>,
 
     windows_sandbox: WindowsSandboxState,
 
@@ -711,6 +720,7 @@ impl App {
                     thread_name: None,
                     update_action: None,
                     exit_reason: ExitReason::UserRequested,
+                    resume_thread_id: None,
                 });
             }
         };
@@ -954,6 +964,7 @@ See the Codex keymap documentation for supported actions and examples."
             app_server_target,
             pending_update_action: None,
             pending_shutdown_exit_thread_id: None,
+            pending_resume_thread_id: None,
             windows_sandbox: WindowsSandboxState::default(),
             thread_event_channels: HashMap::new(),
             thread_event_listener_tasks: HashMap::new(),
@@ -1155,6 +1166,7 @@ See the Codex keymap documentation for supported actions and examples."
             thread_name: resumable_thread.and_then(|thread| thread.thread_name),
             update_action: app.pending_update_action,
             exit_reason,
+            resume_thread_id: app.pending_resume_thread_id.take(),
         })
     }
 

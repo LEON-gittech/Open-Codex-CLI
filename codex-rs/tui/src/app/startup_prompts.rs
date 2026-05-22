@@ -306,6 +306,7 @@ pub(super) async fn handle_model_migration_prompt_if_needed(
                     thread_name: None,
                     update_action: None,
                     exit_reason: ExitReason::UserRequested,
+                    resume_thread_id: None,
                 });
             }
         }

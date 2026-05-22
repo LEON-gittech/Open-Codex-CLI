@@ -55,6 +55,20 @@ pub(crate) trait BottomPaneView: Renderable {
         false
     }
 
+    /// Refresh the session-browser view with a freshly loaded session list.
+    /// Default returns false; only [`SessionBrowserView`] handles this.
+    fn update_session_browser_sessions(
+        &mut self,
+        _sessions: Vec<codex_agent_view::SessionSummary>,
+    ) -> bool {
+        false
+    }
+
+    /// Surface an error in the session-browser view.
+    fn update_session_browser_error(&mut self, _message: String) -> bool {
+        false
+    }
+
     /// Active tab id for tabbed list-based views.
     #[allow(dead_code)]
     fn active_tab_id(&self) -> Option<&str> {

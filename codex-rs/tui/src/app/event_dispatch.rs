@@ -1717,6 +1717,18 @@ impl App {
             AppEvent::OpenAgentPicker => {
                 self.open_agent_picker(app_server).await;
             }
+            AppEvent::OpenSessionBrowser => {
+                self.chat_widget.open_session_browser();
+            }
+            AppEvent::SessionBrowserLoaded(sessions) => {
+                self.chat_widget.update_session_browser_sessions(sessions);
+            }
+            AppEvent::ResumeThreadFromBrowser { thread_id } => {
+                self.pending_resume_thread_id = Some(thread_id);
+                return Ok(self
+                    .handle_exit_mode(app_server, ExitMode::ShutdownFirst)
+                    .await);
+            }
             AppEvent::StopBackgroundSubagent { thread_id } => {
                 self.stop_background_subagent(app_server, thread_id).await;
             }
