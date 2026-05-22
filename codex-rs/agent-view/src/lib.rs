@@ -17,6 +17,7 @@ mod view;
 
 pub use cli::Cli;
 pub use peek::PeekContent;
+pub use peek::PeekLine;
 pub use peek::load_peek;
 pub use scanner::SessionStatus;
 pub use scanner::SessionSummary;

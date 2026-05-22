@@ -4,6 +4,16 @@ use super::*;
 
 impl ChatWidget {
     pub(super) fn as_renderable(&self) -> RenderableItem<'_> {
+        // When the session browser overlay is active, give it the whole frame
+        // so it can render as a real full-screen "agent view" instead of a
+        // bottom-pane popup.
+        if self.is_session_browser_active() {
+            return RenderableItem::Owned(Box::new(BottomPaneComposerReserveRenderable {
+                bottom_pane: &self.bottom_pane,
+                right_reserve: 0,
+            }));
+        }
+
         let active_cell_right_reserve = self.ambient_pet_wrap_reserved_cols();
         let active_cell_renderable = match &self.transcript.active_cell {
             Some(cell) => RenderableItem::Owned(Box::new(TranscriptAreaRenderable {

@@ -1669,6 +1669,29 @@ impl ChatWidget {
         self.bottom_pane.update_session_browser_sessions(sessions)
     }
 
+    pub(crate) fn set_session_browser_peek(
+        &mut self,
+        content: codex_agent_view::PeekContent,
+    ) -> bool {
+        self.bottom_pane.set_session_browser_peek(content)
+    }
+
+    pub(crate) fn set_session_browser_peek_error(&mut self, message: String) -> bool {
+        self.bottom_pane.set_session_browser_peek_error(message)
+    }
+
+    pub(crate) fn after_session_browser_delete(
+        &mut self,
+        path: &std::path::Path,
+        error: Option<String>,
+    ) -> bool {
+        self.bottom_pane.after_session_browser_delete(path, error)
+    }
+
+    pub(crate) fn is_session_browser_active(&self) -> bool {
+        self.bottom_pane.is_session_browser_active()
+    }
+
     /// Open the full-screen session browser (agent view) overlay. Returns
     /// `true` if the view was shown, `false` if a modal/popup is blocking it.
     pub(crate) fn open_session_browser(&mut self) -> bool {

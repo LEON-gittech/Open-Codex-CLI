@@ -1,25 +1,44 @@
 //! Full-screen "agent view" overlay listing past Codex sessions discovered on
-//! disk. Modelled after [`BackgroundTasksView`] but specialised for top-level
-//! session rollouts loaded via `codex_agent_view::list_sessions`.
+//! disk. Modelled after Claude Code's `claude agents` screen — it takes over
+//! the entire frame, groups sessions by recency, and supports peek/resume/
+//! delete from the same surface.
 //!
 //! Interaction:
-//! - `↑`/`↓` (and `k`/`j`) move the selection.
-//! - `Enter` (or `→`) emits `AppEvent::ResumeThreadFromBrowser` for the
-//!   selected session so the outer loop can re-launch into resume mode.
+//! - `↑`/`↓` (and `k`/`j`) move the selection. Page Up/Down jumps a screen.
+//! - `Space` opens an inline peek of the selected rollout.
+//! - `Enter` / `→` emits `AppEvent::ResumeThreadFromBrowser` so the outer loop
+//!   re-launches into resume mode for that thread.
+//! - `Ctrl+X` deletes the selected rollout file (double-press confirms).
 //! - `Esc`, `Left`, or `q` close the view.
 
+use std::path::PathBuf;
+use std::time::Instant;
+
+use codex_agent_view::PeekContent;
+use codex_agent_view::PeekLine;
 use codex_agent_view::SessionStatus;
 use codex_agent_view::SessionSummary;
 use crossterm::event::KeyCode;
 use crossterm::event::KeyEvent;
 use crossterm::event::KeyEventKind;
+use crossterm::event::KeyModifiers;
 use ratatui::buffer::Buffer;
+use ratatui::layout::Constraint;
+use ratatui::layout::Direction;
+use ratatui::layout::Layout;
 use ratatui::layout::Rect;
+use ratatui::style::Color;
+use ratatui::style::Modifier;
+use ratatui::style::Style;
 use ratatui::style::Stylize;
 use ratatui::text::Line;
 use ratatui::text::Span;
+use ratatui::widgets::Block;
+use ratatui::widgets::Borders;
+use ratatui::widgets::Clear;
 use ratatui::widgets::Paragraph;
 use ratatui::widgets::Widget;
+use ratatui::widgets::Wrap;
 use time::OffsetDateTime;
 
 use crate::app_event::AppEvent;
@@ -29,18 +48,25 @@ use crate::bottom_pane::bottom_pane_view::ViewCompletion;
 use crate::render::renderable::Renderable;
 
 use super::CancellationEvent;
-use super::selection_popup_common;
 
 pub(crate) const SESSION_BROWSER_VIEW_ID: &str = "session_browser";
-const MENU_SURFACE_HORIZONTAL_PADDING: u16 = 4;
+const DELETE_CONFIRM_WINDOW: std::time::Duration = std::time::Duration::from_secs(2);
+const HEADER_HEIGHT: u16 = 3;
+const FOOTER_HEIGHT: u16 = 2;
+const PEEK_DEFAULT_LIMIT: usize = 80;
 
 #[derive(Debug)]
 pub(crate) struct SessionBrowserView {
     state: BrowserState,
     selected_index: usize,
+    view_offset: usize,
+    last_visible_height: std::cell::Cell<usize>,
+    last_screen_size: std::cell::Cell<(u16, u16)>,
     app_event_tx: AppEventSender,
     completion: Option<ViewCompletion>,
-    status_message: Option<String>,
+    status_message: Option<(String, Instant)>,
+    pending_delete: Option<(usize, Instant)>,
+    peek: PeekState,
 }
 
 #[derive(Debug)]
@@ -50,14 +76,27 @@ enum BrowserState {
     Failed(String),
 }
 
+#[derive(Debug)]
+enum PeekState {
+    Closed,
+    Loading { path: PathBuf },
+    Ready(PeekContent),
+    Failed(String),
+}
+
 impl SessionBrowserView {
     pub(crate) fn new_loading(app_event_tx: AppEventSender) -> Self {
         Self {
             state: BrowserState::Loading,
             selected_index: 0,
+            view_offset: 0,
+            last_visible_height: std::cell::Cell::new(0),
+            last_screen_size: std::cell::Cell::new((0, 0)),
             app_event_tx,
             completion: None,
             status_message: None,
+            pending_delete: None,
+            peek: PeekState::Closed,
         }
     }
 
@@ -68,10 +107,23 @@ impl SessionBrowserView {
         {
             self.selected_index = list.len().saturating_sub(1);
         }
+        self.ensure_visible();
     }
 
     pub(crate) fn set_error(&mut self, message: String) {
         self.state = BrowserState::Failed(message);
+    }
+
+    pub(crate) fn set_peek_loading(&mut self, path: PathBuf) {
+        self.peek = PeekState::Loading { path };
+    }
+
+    pub(crate) fn set_peek(&mut self, content: PeekContent) {
+        self.peek = PeekState::Ready(content);
+    }
+
+    pub(crate) fn set_peek_error(&mut self, message: String) {
+        self.peek = PeekState::Failed(message);
     }
 
     fn sessions(&self) -> Option<&[SessionSummary]> {
@@ -79,6 +131,10 @@ impl SessionBrowserView {
             BrowserState::Loaded(list) => Some(list),
             _ => None,
         }
+    }
+
+    fn selected_summary(&self) -> Option<&SessionSummary> {
+        self.sessions().and_then(|list| list.get(self.selected_index))
     }
 
     fn move_selection(&mut self, delta: isize) {
@@ -92,17 +148,25 @@ impl SessionBrowserView {
         }
         let next = (self.selected_index as isize + delta).rem_euclid(count as isize);
         self.selected_index = next as usize;
+        self.pending_delete = None;
+        self.ensure_visible();
+    }
+
+    fn ensure_visible(&mut self) {
+        let visible = self.last_visible_height.get().max(1);
+        if self.selected_index < self.view_offset {
+            self.view_offset = self.selected_index;
+        } else if self.selected_index >= self.view_offset + visible {
+            self.view_offset = self.selected_index + 1 - visible;
+        }
     }
 
     fn activate_selected(&mut self) {
-        let Some(list) = self.sessions() else {
-            return;
-        };
-        let Some(summary) = list.get(self.selected_index) else {
+        let Some(summary) = self.selected_summary() else {
             return;
         };
         let Some(thread_id) = summary.thread_id.as_deref() else {
-            self.status_message = Some("selected session has no thread id".to_string());
+            self.set_status("Selected session has no thread id");
             return;
         };
         self.app_event_tx
@@ -112,56 +176,254 @@ impl SessionBrowserView {
         self.completion = Some(ViewCompletion::Accepted);
     }
 
-    fn render_lines(&self, width: u16) -> Vec<Line<'static>> {
-        let mut lines: Vec<Line<'static>> = Vec::new();
-        lines.push(header_line(self.sessions().map(<[SessionSummary]>::len)));
-        lines.push("".into());
+    fn open_peek(&mut self) {
+        let Some(summary) = self.selected_summary() else {
+            return;
+        };
+        let path = summary.path.clone();
+        let tx = self.app_event_tx.clone();
+        self.set_peek_loading(path.clone());
+        tokio::spawn(async move {
+            match codex_agent_view::load_peek(&path, PEEK_DEFAULT_LIMIT).await {
+                Ok(content) => tx.send(AppEvent::SessionBrowserPeekLoaded(Box::new(content))),
+                Err(err) => tx.send(AppEvent::SessionBrowserPeekFailed(format!("{err:#}"))),
+            }
+        });
+    }
 
+    fn close_peek(&mut self) {
+        self.peek = PeekState::Closed;
+    }
+
+    fn request_delete(&mut self) {
+        let Some(summary) = self.selected_summary() else {
+            return;
+        };
+        let path = summary.path.clone();
+        let now = Instant::now();
+        match self.pending_delete {
+            Some((idx, when))
+                if idx == self.selected_index && now.duration_since(when) <= DELETE_CONFIRM_WINDOW =>
+            {
+                let tx = self.app_event_tx.clone();
+                tokio::spawn(async move {
+                    match tokio::fs::remove_file(&path).await {
+                        Ok(()) => tx.send(AppEvent::SessionBrowserDeleted {
+                            path: path.clone(),
+                            error: None,
+                        }),
+                        Err(err) => tx.send(AppEvent::SessionBrowserDeleted {
+                            path: path.clone(),
+                            error: Some(format!("{err:#}")),
+                        }),
+                    }
+                });
+                self.pending_delete = None;
+                self.set_status("Deleting…");
+            }
+            _ => {
+                self.pending_delete = Some((self.selected_index, now));
+                self.set_status("Press Ctrl+X again within 2s to delete this session.");
+            }
+        }
+    }
+
+    pub(crate) fn after_delete(&mut self, path: &std::path::Path, error: Option<String>) {
+        if let Some(err) = error {
+            self.set_status(&format!("Delete failed: {err}"));
+            return;
+        }
+        let new_selected = if let BrowserState::Loaded(list) = &mut self.state {
+            list.retain(|s| s.path != path);
+            self.selected_index.min(list.len().saturating_sub(1))
+        } else {
+            0
+        };
+        self.selected_index = new_selected;
+        self.set_status("Session deleted.");
+        self.ensure_visible();
+    }
+
+    fn set_status(&mut self, message: impl Into<String>) {
+        self.status_message = Some((message.into(), Instant::now()));
+    }
+
+    fn status_text(&self) -> Option<String> {
+        self.status_message
+            .as_ref()
+            .filter(|(_, when)| when.elapsed() < std::time::Duration::from_secs(5))
+            .map(|(text, _)| text.clone())
+    }
+
+    fn render_header(&self, area: Rect, buf: &mut Buffer) {
+        let counts = self.sessions().map(group_counts).unwrap_or_default();
+        let total = self.sessions().map(<[SessionSummary]>::len).unwrap_or(0);
+        let title = Line::from(vec![
+            Span::styled(
+                "Open Codex · agent view",
+                Style::default().add_modifier(Modifier::BOLD).fg(Color::Cyan),
+            ),
+            Span::raw("  "),
+            Span::styled(format!("({total} sessions)"), Style::default().fg(Color::DarkGray)),
+        ]);
+        let mut summary_parts: Vec<Span<'static>> = Vec::new();
+        for (label, count, color) in [
+            ("active", counts.active, Color::Green),
+            ("idle", counts.idle, Color::Yellow),
+            ("unknown", counts.unknown, Color::DarkGray),
+        ] {
+            if count == 0 {
+                continue;
+            }
+            if !summary_parts.is_empty() {
+                summary_parts.push(Span::raw(" · "));
+            }
+            summary_parts.push(Span::styled(
+                format!("{count} {label}"),
+                Style::default().fg(color),
+            ));
+        }
+        let summary = Line::from(summary_parts);
+        Paragraph::new(vec![title, summary, Line::raw("")])
+            .render(area, buf);
+    }
+
+    fn render_footer(&self, area: Rect, buf: &mut Buffer) {
+        let hint = match (&self.state, &self.peek) {
+            (BrowserState::Loaded(list), PeekState::Closed) if !list.is_empty() => {
+                "↑/↓ select · Space peek · Enter/→ resume · Ctrl+X delete · Esc/← close"
+            }
+            (_, PeekState::Closed) => "Esc/← close",
+            _ => "Esc/Space close peek",
+        };
+        let mut lines = vec![
+            Line::raw(""),
+            Line::from(Span::styled(hint, Style::default().fg(Color::DarkGray))),
+        ];
+        if let Some(msg) = self.status_text() {
+            lines.push(Line::from(Span::styled(msg, Style::default().fg(Color::Yellow))));
+        }
+        let para = Paragraph::new(lines).wrap(Wrap { trim: true });
+        para.render(area, buf);
+    }
+
+    fn render_list(&self, area: Rect, buf: &mut Buffer) {
+        if area.height == 0 {
+            return;
+        }
         match &self.state {
             BrowserState::Loading => {
-                lines.push("Loading sessions from $CODEX_HOME/sessions/…".italic().into());
+                let p = Paragraph::new(Line::from(Span::styled(
+                    "Loading sessions from $CODEX_HOME/sessions/…",
+                    Style::default().fg(Color::DarkGray).add_modifier(Modifier::ITALIC),
+                )));
+                p.render(area, buf);
+                return;
             }
             BrowserState::Failed(err) => {
-                lines.push(Line::from(vec![
+                let p = Paragraph::new(Line::from(vec![
                     "Failed to load sessions: ".red().bold(),
                     err.clone().into(),
-                ]));
+                ]))
+                .wrap(Wrap { trim: true });
+                p.render(area, buf);
+                return;
             }
             BrowserState::Loaded(list) if list.is_empty() => {
-                lines.push(
-                    "No sessions found. Start one with `codex` to populate this view."
-                        .italic()
-                        .into(),
-                );
+                let p = Paragraph::new(Line::from(Span::styled(
+                    "No sessions found. Start one with `codex` to populate this view.",
+                    Style::default().fg(Color::DarkGray).add_modifier(Modifier::ITALIC),
+                )))
+                .wrap(Wrap { trim: true });
+                p.render(area, buf);
+                return;
             }
-            BrowserState::Loaded(list) => {
-                let now = OffsetDateTime::now_utc();
-                let mut current_status: Option<SessionStatus> = None;
-                for (idx, summary) in list.iter().enumerate() {
-                    if current_status != Some(summary.status) {
-                        if current_status.is_some() {
-                            lines.push("".into());
-                        }
-                        lines.push(section_header(summary.status, count_with_status(list, summary.status)));
-                        current_status = Some(summary.status);
-                    }
-                    lines.push(format_row(summary, idx == self.selected_index, now, width));
-                }
-            }
+            BrowserState::Loaded(_) => {}
         }
 
-        lines.push("".into());
-        if let Some(message) = &self.status_message {
-            lines.push(Line::from(vec![message.clone().yellow()]));
-        }
-        let footer = match &self.state {
-            BrowserState::Loaded(list) if !list.is_empty() => {
-                "↑/↓ select · Enter/→ resume · Esc/← close"
-            }
-            _ => "Esc/← close",
+        let Some(list) = self.sessions() else {
+            return;
         };
-        lines.push(footer.dim().into());
-        lines
+        let visible_height = area.height as usize;
+        self.last_visible_height.set(visible_height);
+        let end = (self.view_offset + visible_height).min(list.len());
+        let window = &list[self.view_offset..end];
+        let now = OffsetDateTime::now_utc();
+
+        let mut lines: Vec<Line<'static>> = Vec::with_capacity(window.len());
+        let mut current_status: Option<SessionStatus> = None;
+        for (visible_idx, summary) in window.iter().enumerate() {
+            let absolute_idx = self.view_offset + visible_idx;
+            if current_status != Some(summary.status) {
+                lines.push(section_header(summary.status, count_with_status(list, summary.status)));
+                current_status = Some(summary.status);
+            }
+            let pending_delete = self
+                .pending_delete
+                .is_some_and(|(idx, _)| idx == absolute_idx);
+            lines.push(format_row(
+                summary,
+                absolute_idx == self.selected_index,
+                pending_delete,
+                now,
+                area.width,
+                absolute_idx + 1,
+            ));
+        }
+
+        Paragraph::new(lines).render(area, buf);
+    }
+
+    fn render_peek(&self, area: Rect, buf: &mut Buffer) {
+        let inset = 4u16;
+        let width = area.width.saturating_sub(inset * 2).clamp(40, 140);
+        let height = area.height.saturating_sub(inset).max(8);
+        let x = area.x + (area.width.saturating_sub(width)) / 2;
+        let y = area.y + (area.height.saturating_sub(height)) / 2;
+        let overlay = Rect::new(x, y, width, height);
+        Clear.render(overlay, buf);
+
+        let title_text = match &self.peek {
+            PeekState::Closed => return,
+            PeekState::Loading { path } => format!("Loading peek — {}", path.display()),
+            PeekState::Ready(content) => {
+                let trunc = if content.truncated { " (head truncated)" } else { "" };
+                format!("Peek — {}{trunc}", content.path.display())
+            }
+            PeekState::Failed(err) => format!("Peek failed: {err}"),
+        };
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(Color::Cyan))
+            .title(Span::styled(
+                title_text,
+                Style::default().add_modifier(Modifier::BOLD),
+            ));
+        let inner = block.inner(overlay);
+        block.render(overlay, buf);
+
+        let lines: Vec<Line<'static>> = match &self.peek {
+            PeekState::Closed => return,
+            PeekState::Loading { .. } => vec![Line::from(Span::styled(
+                "Loading…",
+                Style::default().fg(Color::DarkGray),
+            ))],
+            PeekState::Failed(_) => vec![Line::from(Span::styled(
+                "Press Esc or Space to close.",
+                Style::default().fg(Color::DarkGray),
+            ))],
+            PeekState::Ready(content) => peek_lines(&content.rendered),
+        };
+        let scroll_y = if let PeekState::Ready(content) = &self.peek {
+            let visible = inner.height as usize;
+            content.rendered.len().saturating_sub(visible).min(u16::MAX as usize) as u16
+        } else {
+            0
+        };
+        Paragraph::new(lines)
+            .wrap(Wrap { trim: false })
+            .scroll((scroll_y, 0))
+            .render(inner, buf);
     }
 }
 
@@ -171,10 +433,52 @@ impl BottomPaneView for SessionBrowserView {
             return;
         }
 
+        // If a peek is open, route keys to it first.
+        if matches!(
+            self.peek,
+            PeekState::Loading { .. } | PeekState::Ready(_) | PeekState::Failed(_)
+        ) {
+            match key_event.code {
+                KeyCode::Esc | KeyCode::Char(' ') | KeyCode::Char('q') => self.close_peek(),
+                KeyCode::Enter => self.close_peek(),
+                _ => {}
+            }
+            return;
+        }
+
+        // Ctrl-X delete (with double-press confirm).
+        if key_event.modifiers.contains(KeyModifiers::CONTROL)
+            && matches!(key_event.code, KeyCode::Char('x') | KeyCode::Char('X'))
+        {
+            self.request_delete();
+            return;
+        }
+
         match key_event.code {
             KeyCode::Up | KeyCode::Char('k') => self.move_selection(-1),
             KeyCode::Down | KeyCode::Char('j') => self.move_selection(1),
-            KeyCode::Enter | KeyCode::Right | KeyCode::Char(' ') => self.activate_selected(),
+            KeyCode::PageUp => {
+                let step = self.last_visible_height.get().max(1) as isize;
+                self.move_selection(-step);
+            }
+            KeyCode::PageDown => {
+                let step = self.last_visible_height.get().max(1) as isize;
+                self.move_selection(step);
+            }
+            KeyCode::Home | KeyCode::Char('g') => {
+                self.selected_index = 0;
+                self.pending_delete = None;
+                self.ensure_visible();
+            }
+            KeyCode::End | KeyCode::Char('G') => {
+                if let Some(list) = self.sessions() {
+                    self.selected_index = list.len().saturating_sub(1);
+                }
+                self.pending_delete = None;
+                self.ensure_visible();
+            }
+            KeyCode::Char(' ') => self.open_peek(),
+            KeyCode::Enter | KeyCode::Right => self.activate_selected(),
             KeyCode::Esc | KeyCode::Left | KeyCode::Char('q') => {
                 self.completion = Some(ViewCompletion::Cancelled);
             }
@@ -208,6 +512,25 @@ impl BottomPaneView for SessionBrowserView {
         true
     }
 
+    fn set_session_browser_peek(&mut self, content: PeekContent) -> bool {
+        self.set_peek(content);
+        true
+    }
+
+    fn set_session_browser_peek_error(&mut self, message: String) -> bool {
+        self.set_peek_error(message);
+        true
+    }
+
+    fn after_session_browser_delete(
+        &mut self,
+        path: &std::path::Path,
+        error: Option<String>,
+    ) -> bool {
+        self.after_delete(path, error);
+        true
+    }
+
     fn on_ctrl_c(&mut self) -> CancellationEvent {
         self.completion = Some(ViewCompletion::Cancelled);
         CancellationEvent::Handled
@@ -220,35 +543,71 @@ impl BottomPaneView for SessionBrowserView {
 
 impl Renderable for SessionBrowserView {
     fn render(&self, area: Rect, buf: &mut Buffer) {
-        let content_area = selection_popup_common::render_menu_surface(area, buf);
-        Paragraph::new(self.render_lines(content_area.width)).render(content_area, buf);
+        if area.is_empty() {
+            return;
+        }
+        self.last_screen_size.set((area.width, area.height));
+
+        // Paint a clean background.
+        Clear.render(area, buf);
+
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Length(HEADER_HEIGHT),
+                Constraint::Min(1),
+                Constraint::Length(FOOTER_HEIGHT + status_extra_height(self.status_text())),
+            ])
+            .split(area);
+
+        self.render_header(chunks[0], buf);
+        self.render_list(chunks[1], buf);
+        self.render_footer(chunks[2], buf);
+
+        if matches!(
+            self.peek,
+            PeekState::Loading { .. } | PeekState::Ready(_) | PeekState::Failed(_)
+        ) {
+            self.render_peek(area, buf);
+        }
     }
 
-    fn desired_height(&self, width: u16) -> u16 {
-        self.render_lines(width.saturating_sub(MENU_SURFACE_HORIZONTAL_PADDING))
-            .len()
-            .try_into()
-            .unwrap_or(u16::MAX)
-            .saturating_add(selection_popup_common::menu_surface_padding_height())
+    fn desired_height(&self, _width: u16) -> u16 {
+        // Always claim the entire available height so the bottom pane gives us
+        // the full frame (Claude Code-style full-screen agent view).
+        u16::MAX
     }
 }
 
-fn header_line(count: Option<usize>) -> Line<'static> {
-    let mut spans: Vec<Span<'static>> = vec!["Agent view · past sessions".bold()];
-    if let Some(n) = count {
-        spans.push("  ".into());
-        spans.push(format!("({n})").dim());
+#[derive(Default)]
+struct StatusCounts {
+    active: usize,
+    idle: usize,
+    unknown: usize,
+}
+
+fn group_counts(sessions: &[SessionSummary]) -> StatusCounts {
+    let mut counts = StatusCounts::default();
+    for s in sessions {
+        match s.status {
+            SessionStatus::Active => counts.active += 1,
+            SessionStatus::Idle => counts.idle += 1,
+            SessionStatus::Unknown => counts.unknown += 1,
+        }
     }
-    Line::from(spans)
+    counts
 }
 
 fn section_header(status: SessionStatus, count: usize) -> Line<'static> {
     let (label, color) = match status {
-        SessionStatus::Active => ("Active", ratatui::style::Color::Green),
-        SessionStatus::Idle => ("Idle", ratatui::style::Color::Yellow),
-        SessionStatus::Unknown => ("Unknown", ratatui::style::Color::DarkGray),
+        SessionStatus::Active => ("Active", Color::Green),
+        SessionStatus::Idle => ("Idle", Color::Yellow),
+        SessionStatus::Unknown => ("Unknown", Color::DarkGray),
     };
-    Line::from(vec![format!("{label} ({count})").fg(color).bold()])
+    Line::from(vec![Span::styled(
+        format!("{label} ({count})"),
+        Style::default().fg(color).add_modifier(Modifier::BOLD),
+    )])
 }
 
 fn count_with_status(list: &[SessionSummary], status: SessionStatus) -> usize {
@@ -258,20 +617,31 @@ fn count_with_status(list: &[SessionSummary], status: SessionStatus) -> usize {
 fn format_row(
     summary: &SessionSummary,
     selected: bool,
+    pending_delete: bool,
     now: OffsetDateTime,
     width: u16,
+    ordinal: usize,
 ) -> Line<'static> {
-    let caret = if selected { "› ".cyan() } else { "  ".into() };
-    let title_span = if selected {
-        summary.title.clone().bold()
+    let caret = if selected {
+        Span::styled("›", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))
     } else {
-        summary.title.clone().into()
+        Span::raw(" ")
     };
+    let ord_span = Span::styled(
+        format!(" {ordinal:>3}. "),
+        Style::default().fg(Color::DarkGray),
+    );
+    let title_style = if selected {
+        Style::default().add_modifier(Modifier::BOLD)
+    } else {
+        Style::default()
+    };
+    let title_span = Span::styled(summary.title.clone(), title_style);
     let elapsed = elapsed_label(summary.updated_at_offset(), now);
     let cwd = summary
         .cwd
         .as_ref()
-        .map(|p| compact_path(p, 32))
+        .map(|p| compact_path(p, 36))
         .unwrap_or_else(|| "(no cwd)".to_string());
     let mut tail_parts = vec![cwd];
     if let Some(role) = &summary.agent_role {
@@ -281,18 +651,72 @@ fn format_row(
         tail_parts.push(format!("⎇ {branch}"));
     }
     tail_parts.push(elapsed);
+    if pending_delete {
+        tail_parts.push("⚠ confirm".to_string());
+    }
     let tail = tail_parts.join(" · ");
 
-    let used_caret = 2usize;
+    let used_caret = 1usize;
+    let used_ord = 6usize;
     let used_title = summary.title.chars().count();
-    let available = (width as usize).saturating_sub(used_caret + used_title + 4);
-    let tail_text = if tail.chars().count() > available {
-        truncate_to_chars(&tail, available)
+    let target = (width as usize).saturating_sub(used_caret + used_ord + 2);
+    let space_for_title = target.saturating_sub(tail.chars().count() + 2);
+    let (title_text, available) = if used_title > space_for_title {
+        (truncate_to_chars(&summary.title, space_for_title), 1)
     } else {
-        let pad = available.saturating_sub(tail.chars().count());
-        format!("{}{tail}", " ".repeat(pad))
+        (summary.title.clone(), target.saturating_sub(used_title))
     };
-    Line::from(vec![caret, title_span, "  ".into(), tail_text.dim()])
+    let final_title_span = Span::styled(title_text, title_style);
+    let tail_pad = available.saturating_sub(tail.chars().count());
+    let tail_text = format!("{}{tail}", " ".repeat(tail_pad));
+    let tail_style = if pending_delete {
+        Style::default().fg(Color::Red)
+    } else {
+        Style::default().fg(Color::DarkGray)
+    };
+
+    let _ = title_span;
+    Line::from(vec![
+        caret,
+        ord_span,
+        final_title_span,
+        Span::raw("  "),
+        Span::styled(tail_text, tail_style),
+    ])
+}
+
+fn peek_lines(rendered: &[PeekLine]) -> Vec<Line<'static>> {
+    if rendered.is_empty() {
+        return vec![Line::from(Span::styled(
+            "(rollout has no recognised items)",
+            Style::default().fg(Color::DarkGray),
+        ))];
+    }
+    rendered
+        .iter()
+        .map(|line| {
+            Line::from(vec![
+                Span::styled(
+                    format!("{:<9}", line.kind),
+                    Style::default()
+                        .fg(kind_color(&line.kind))
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::raw(line.text.clone()),
+            ])
+        })
+        .collect()
+}
+
+fn kind_color(kind: &str) -> Color {
+    match kind {
+        "user" => Color::Cyan,
+        "agent" => Color::Green,
+        "exec" => Color::Yellow,
+        "edit" => Color::Magenta,
+        "reasoning" => Color::DarkGray,
+        _ => Color::Blue,
+    }
 }
 
 fn elapsed_label(ts: Option<OffsetDateTime>, now: OffsetDateTime) -> String {
@@ -345,4 +769,8 @@ fn truncate_to_chars(text: &str, max: usize) -> String {
         taken += 1;
     }
     out
+}
+
+fn status_extra_height(status: Option<String>) -> u16 {
+    if status.is_some() { 1 } else { 0 }
 }

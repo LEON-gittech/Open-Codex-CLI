@@ -1286,7 +1286,14 @@ async fn run_ratatui_app(
     environment_manager: Arc<EnvironmentManager>,
 ) -> color_eyre::Result<AppExitInfo> {
     let uses_remote_workspace = app_server_target.uses_remote_workspace();
-    color_eyre::install()?;
+    // `color_eyre::install` is global and only succeeds once per process.
+    // When `run_main` is re-entered (e.g. the session browser asks the outer
+    // CLI to relaunch into resume mode), the second call errors with
+    // `color_spantrace::set_theme` already set. Treat that as a no-op.
+    static COLOR_EYRE_INSTALLED: std::sync::Once = std::sync::Once::new();
+    COLOR_EYRE_INSTALLED.call_once(|| {
+        let _ = color_eyre::install();
+    });
 
     tooltips::announcement::prewarm();
 

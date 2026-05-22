@@ -1346,6 +1346,65 @@ impl BottomPane {
         false
     }
 
+    pub(crate) fn set_session_browser_peek(
+        &mut self,
+        content: codex_agent_view::PeekContent,
+    ) -> bool {
+        let Some(view) = self.view_stack.last_mut() else {
+            return false;
+        };
+        if view.view_id() != Some(SESSION_BROWSER_VIEW_ID) {
+            return false;
+        }
+        if view.set_session_browser_peek(content) {
+            self.request_redraw();
+            self.schedule_active_view_frame();
+            return true;
+        }
+        false
+    }
+
+    pub(crate) fn set_session_browser_peek_error(&mut self, message: String) -> bool {
+        let Some(view) = self.view_stack.last_mut() else {
+            return false;
+        };
+        if view.view_id() != Some(SESSION_BROWSER_VIEW_ID) {
+            return false;
+        }
+        if view.set_session_browser_peek_error(message) {
+            self.request_redraw();
+            self.schedule_active_view_frame();
+            return true;
+        }
+        false
+    }
+
+    pub(crate) fn after_session_browser_delete(
+        &mut self,
+        path: &std::path::Path,
+        error: Option<String>,
+    ) -> bool {
+        let Some(view) = self.view_stack.last_mut() else {
+            return false;
+        };
+        if view.view_id() != Some(SESSION_BROWSER_VIEW_ID) {
+            return false;
+        }
+        if view.after_session_browser_delete(path, error) {
+            self.request_redraw();
+            self.schedule_active_view_frame();
+            return true;
+        }
+        false
+    }
+
+    pub(crate) fn is_session_browser_active(&self) -> bool {
+        self.view_stack
+            .last()
+            .and_then(|view| view.view_id())
+            .is_some_and(|id| id == SESSION_BROWSER_VIEW_ID)
+    }
+
     pub(crate) fn update_background_tasks_view_if_active(
         &mut self,
         params: BackgroundTasksViewParams,

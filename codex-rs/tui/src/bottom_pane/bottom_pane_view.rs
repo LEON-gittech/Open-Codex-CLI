@@ -69,6 +69,28 @@ pub(crate) trait BottomPaneView: Renderable {
         false
     }
 
+    /// Forward a successfully loaded peek payload to the session browser.
+    fn set_session_browser_peek(
+        &mut self,
+        _content: codex_agent_view::PeekContent,
+    ) -> bool {
+        false
+    }
+
+    /// Forward a peek-load failure to the session browser.
+    fn set_session_browser_peek_error(&mut self, _message: String) -> bool {
+        false
+    }
+
+    /// Notify the session browser that a delete completed.
+    fn after_session_browser_delete(
+        &mut self,
+        _path: &std::path::Path,
+        _error: Option<String>,
+    ) -> bool {
+        false
+    }
+
     /// Active tab id for tabbed list-based views.
     #[allow(dead_code)]
     fn active_tab_id(&self) -> Option<&str> {

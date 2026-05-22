@@ -152,6 +152,16 @@ pub(crate) enum AppEvent {
     ResumeThreadFromBrowser {
         thread_id: String,
     },
+    /// Peek panel finished loading rollout items for the highlighted session.
+    SessionBrowserPeekLoaded(Box<codex_agent_view::PeekContent>),
+    /// Peek panel could not parse the rollout file.
+    SessionBrowserPeekFailed(String),
+    /// Delete request for a rollout file completed; `error` is `None` on
+    /// success.
+    SessionBrowserDeleted {
+        path: std::path::PathBuf,
+        error: Option<String>,
+    },
     /// Stop a spawned subagent from the background task panel.
     StopBackgroundSubagent {
         thread_id: ThreadId,

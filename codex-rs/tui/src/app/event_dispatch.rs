@@ -1729,6 +1729,15 @@ impl App {
                     .handle_exit_mode(app_server, ExitMode::ShutdownFirst)
                     .await);
             }
+            AppEvent::SessionBrowserPeekLoaded(content) => {
+                self.chat_widget.set_session_browser_peek(*content);
+            }
+            AppEvent::SessionBrowserPeekFailed(message) => {
+                self.chat_widget.set_session_browser_peek_error(message);
+            }
+            AppEvent::SessionBrowserDeleted { path, error } => {
+                self.chat_widget.after_session_browser_delete(&path, error);
+            }
             AppEvent::StopBackgroundSubagent { thread_id } => {
                 self.stop_background_subagent(app_server, thread_id).await;
             }
