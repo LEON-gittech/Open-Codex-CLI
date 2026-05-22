@@ -33,6 +33,7 @@ use ratatui::crossterm::terminal::enable_raw_mode;
 use ratatui::layout::Offset;
 use ratatui::layout::Position;
 use ratatui::layout::Rect;
+use ratatui::layout::Size;
 use ratatui::text::Line;
 use tokio::sync::broadcast;
 use tokio_stream::Stream;
@@ -505,6 +506,7 @@ pub struct Tui {
     enhanced_keys_supported: bool,
     notification_backend: Option<DesktopNotificationBackend>,
     notification_condition: NotificationCondition,
+    is_zellij: bool,
     // When false, enter_alt_screen() becomes a no-op.
     alt_screen_enabled: bool,
 }
@@ -534,6 +536,10 @@ impl Tui {
         // Cache this to avoid contention with the event reader.
         supports_color::on_cached(supports_color::Stream::Stdout);
         let _ = crate::terminal_palette::default_colors();
+        let is_zellij = matches!(
+            codex_terminal_detection::terminal_info().multiplexer,
+            Some(codex_terminal_detection::Multiplexer::Zellij { .. })
+        );
 
         Self {
             frame_requester,
@@ -551,6 +557,7 @@ impl Tui {
             enhanced_keys_supported,
             notification_backend: Some(detect_backend(NotificationMethod::default())),
             notification_condition: NotificationCondition::default(),
+            is_zellij,
             alt_screen_enabled: true,
         }
     }
@@ -754,6 +761,7 @@ impl Tui {
     fn update_inline_viewport_for_resize_reflow(
         terminal: &mut Terminal,
         height: u16,
+        is_zellij: bool,
     ) -> Result<bool> {
         let size = terminal.size()?;
         let terminal_height_shrank = size.height < terminal.last_known_screen_size.height;
@@ -761,18 +769,23 @@ impl Tui {
         let viewport_was_bottom_aligned =
             terminal.viewport_area.bottom() == terminal.last_known_screen_size.height;
         let previous_area = terminal.viewport_area;
+        let mut needs_full_repaint = false;
 
         let mut area = terminal.viewport_area;
         area.height = height.min(size.height);
         area.width = size.width;
-        let mut needs_full_repaint = false;
 
         if area.bottom() > size.height {
             let scroll_by = area.bottom() - size.height;
             if !terminal_height_shrank {
-                terminal
-                    .backend_mut()
-                    .scroll_region_up(0..area.top(), scroll_by)?;
+                if is_zellij {
+                    Self::scroll_zellij_expanded_viewport(terminal, size, scroll_by)?;
+                    needs_full_repaint = true;
+                } else {
+                    terminal
+                        .backend_mut()
+                        .scroll_region_up(0..area.top(), scroll_by)?;
+                }
             }
             area.y = size.height - area.height;
         } else if terminal_height_grew && viewport_was_bottom_aligned {
@@ -789,24 +802,44 @@ impl Tui {
         Ok(needs_full_repaint)
     }
 
+    /// Push content above the viewport upward with raw newlines. Zellij does not reliably support
+    /// `DECSTBM` scroll regions, so the normal `scroll_region_up` path does not create usable pane
+    /// scrollback there.
+    fn scroll_zellij_expanded_viewport(
+        terminal: &mut Terminal,
+        size: Size,
+        scroll_by: u16,
+    ) -> Result<()> {
+        crossterm::queue!(
+            terminal.backend_mut(),
+            crossterm::cursor::MoveTo(0, size.height.saturating_sub(1))
+        )?;
+        for _ in 0..scroll_by {
+            crossterm::queue!(terminal.backend_mut(), crossterm::style::Print("\n"))?;
+        }
+        Ok(())
+    }
+
     /// Write any buffered history lines above the viewport and clear the buffer.
     fn flush_pending_history_lines(
         terminal: &mut Terminal,
         pending_history_lines: &mut Vec<PendingHistoryLines>,
-    ) -> Result<()> {
+        is_zellij: bool,
+    ) -> Result<bool> {
         if pending_history_lines.is_empty() {
-            return Ok(());
+            return Ok(false);
         }
 
         for batch in pending_history_lines.iter() {
-            crate::insert_history::insert_history_lines_with_wrap_policy(
+            crate::insert_history::insert_history_lines_with_mode_and_wrap_policy(
                 terminal,
                 batch.lines.clone(),
+                crate::insert_history::InsertHistoryMode::new(is_zellij),
                 batch.wrap_policy,
             )?;
         }
         pending_history_lines.clear();
-        Ok(())
+        Ok(is_zellij)
     }
 
     pub fn draw(
@@ -842,11 +875,18 @@ impl Tui {
             let mut area = terminal.viewport_area;
             area.height = height.min(size.height);
             area.width = size.width;
+            let mut needs_full_repaint = false;
             // If the viewport has expanded, scroll everything else up to make room.
             if area.bottom() > size.height {
-                terminal
-                    .backend_mut()
-                    .scroll_region_up(0..area.top(), area.bottom() - size.height)?;
+                let scroll_by = area.bottom() - size.height;
+                if self.is_zellij {
+                    Self::scroll_zellij_expanded_viewport(terminal, size, scroll_by)?;
+                    needs_full_repaint = true;
+                } else {
+                    terminal
+                        .backend_mut()
+                        .scroll_region_up(0..area.top(), scroll_by)?;
+                }
                 area.y = size.height - area.height;
             }
             if area != terminal.viewport_area {
@@ -856,7 +896,14 @@ impl Tui {
                 terminal.set_viewport_area(area);
             }
 
-            Self::flush_pending_history_lines(terminal, &mut self.pending_history_lines)?;
+            needs_full_repaint |= Self::flush_pending_history_lines(
+                terminal,
+                &mut self.pending_history_lines,
+                self.is_zellij,
+            )?;
+            if needs_full_repaint {
+                terminal.invalidate_viewport();
+            }
 
             // Update the y position for suspending so Ctrl-Z can place the cursor correctly.
             #[cfg(unix)]
@@ -947,8 +994,13 @@ impl Tui {
 
             let terminal = &mut self.terminal;
             let needs_full_repaint =
-                Self::update_inline_viewport_for_resize_reflow(terminal, height)?;
-            Self::flush_pending_history_lines(terminal, &mut self.pending_history_lines)?;
+                Self::update_inline_viewport_for_resize_reflow(terminal, height, self.is_zellij)?;
+            let flushed_history = Self::flush_pending_history_lines(
+                terminal,
+                &mut self.pending_history_lines,
+                self.is_zellij,
+            )?;
+            let needs_full_repaint = needs_full_repaint || flushed_history;
 
             if needs_full_repaint {
                 terminal.invalidate_viewport();

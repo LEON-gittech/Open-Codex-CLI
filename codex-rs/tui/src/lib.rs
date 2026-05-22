@@ -1792,13 +1792,31 @@ impl Drop for TerminalRestoreGuard {
 /// - Otherwise, respect the `tui.alternate_screen` config setting:
 ///   - `always`: Use alternate screen
 ///   - `never`: Inline mode only, preserves scrollback
-///   - `auto` (default): Use alternate screen
+///   - `auto` (default): Use alternate screen unless running under Zellij
 fn determine_alt_screen_mode(no_alt_screen: bool, tui_alternate_screen: AltScreenMode) -> bool {
+    determine_alt_screen_mode_for_env(no_alt_screen, tui_alternate_screen, |name| {
+        std::env::var_os(name).is_some()
+    })
+}
+
+fn determine_alt_screen_mode_for_env(
+    no_alt_screen: bool,
+    tui_alternate_screen: AltScreenMode,
+    env_present: impl Fn(&str) -> bool,
+) -> bool {
     if no_alt_screen {
         return false;
     }
 
-    tui_alternate_screen != AltScreenMode::Never
+    match tui_alternate_screen {
+        AltScreenMode::Always => true,
+        AltScreenMode::Never => false,
+        AltScreenMode::Auto => !is_zellij_env(env_present),
+    }
+}
+
+fn is_zellij_env(env_present: impl Fn(&str) -> bool) -> bool {
+    env_present("ZELLIJ") || env_present("ZELLIJ_SESSION_NAME") || env_present("ZELLIJ_VERSION")
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1942,22 +1960,46 @@ mod tests {
     }
 
     #[test]
-    fn alternate_screen_auto_uses_alt_screen() {
-        assert!(determine_alt_screen_mode(
+    fn alternate_screen_auto_uses_alt_screen_outside_zellij() {
+        assert!(determine_alt_screen_mode_for_env(
             /*no_alt_screen*/ false,
             AltScreenMode::Auto,
+            |_| false,
         ));
-        assert!(determine_alt_screen_mode(
+        assert!(determine_alt_screen_mode_for_env(
             /*no_alt_screen*/ false,
             AltScreenMode::Always,
+            |_| false,
         ));
-        assert!(!determine_alt_screen_mode(
+        assert!(!determine_alt_screen_mode_for_env(
             /*no_alt_screen*/ false,
             AltScreenMode::Never,
+            |_| false,
         ));
-        assert!(!determine_alt_screen_mode(
+        assert!(!determine_alt_screen_mode_for_env(
             /*no_alt_screen*/ true,
             AltScreenMode::Auto,
+            |_| false,
+        ));
+    }
+
+    #[test]
+    fn alternate_screen_auto_disables_alt_screen_inside_zellij() {
+        for env_name in ["ZELLIJ", "ZELLIJ_SESSION_NAME", "ZELLIJ_VERSION"] {
+            assert!(
+                !determine_alt_screen_mode_for_env(
+                    /*no_alt_screen*/ false,
+                    AltScreenMode::Auto,
+                    |name| name == env_name,
+                ),
+                "expected {env_name} to disable alt screen in auto mode"
+            );
+        }
+
+        assert!(determine_alt_screen_mode_for_env(
+            /*no_alt_screen*/ false,
+            AltScreenMode::Always,
+            |name| name == "ZELLIJ",
         ));
     }
 
