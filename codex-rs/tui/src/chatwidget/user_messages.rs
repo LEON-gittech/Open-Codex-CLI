@@ -18,6 +18,7 @@ use codex_app_server_protocol::UserInput;
 use codex_protocol::config_types::CollaborationMode;
 use codex_protocol::config_types::CollaborationModeMask;
 use codex_protocol::models::local_image_label_text;
+use codex_protocol::openai_models::ReasoningEffort;
 use codex_protocol::user_input::ByteRange;
 use codex_protocol::user_input::TextElement;
 
@@ -130,6 +131,11 @@ pub(crate) struct ThreadInputState {
     pub(super) active_collaboration_mask: Option<CollaborationModeMask>,
     pub(super) task_running: bool,
     pub(super) agent_turn_running: bool,
+    /// Reasoning effort submitted with the foreground turn that is pending or running.
+    ///
+    /// Carries the per-query xhigh override across thread captures so the status line
+    /// keeps reflecting the active turn's effort after switching back into the thread.
+    pub(super) per_turn_effort_override: Option<ReasoningEffort>,
 }
 
 impl UserMessage {

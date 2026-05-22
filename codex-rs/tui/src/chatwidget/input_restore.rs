@@ -278,6 +278,7 @@ impl ChatWidget {
             active_collaboration_mask: self.active_collaboration_mask.clone(),
             task_running: self.bottom_pane.is_task_running(),
             agent_turn_running: self.turn_lifecycle.agent_turn_running,
+            per_turn_effort_override: self.turn_lifecycle.per_turn_effort_override,
         })
     }
 
@@ -288,6 +289,7 @@ impl ChatWidget {
             self.active_collaboration_mask = input_state.active_collaboration_mask;
             self.turn_lifecycle
                 .restore_running(input_state.agent_turn_running, Instant::now());
+            self.turn_lifecycle.per_turn_effort_override = input_state.per_turn_effort_override;
             self.input_queue.user_turn_pending_start = input_state.user_turn_pending_start;
             self.update_collaboration_mode_indicator();
             self.refresh_model_dependent_surfaces();

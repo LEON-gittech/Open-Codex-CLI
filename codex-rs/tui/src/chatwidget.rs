@@ -1705,21 +1705,17 @@ impl ChatWidget {
             let codex_home = match codex_utils_home_dir::find_codex_home() {
                 Ok(path) => std::path::PathBuf::from(path),
                 Err(err) => {
-                    app_event_tx.send(crate::app_event::AppEvent::SessionBrowserLoaded(
-                        Vec::new(),
-                    ));
+                    app_event_tx.send(crate::app_event::AppEvent::SessionBrowserLoaded(Vec::new()));
                     let _ = err;
                     return;
                 }
             };
             match codex_agent_view::list_sessions(&codex_home, 100).await {
                 Ok(sessions) => {
-                    app_event_tx
-                        .send(crate::app_event::AppEvent::SessionBrowserLoaded(sessions));
+                    app_event_tx.send(crate::app_event::AppEvent::SessionBrowserLoaded(sessions));
                 }
                 Err(_err) => {
-                    app_event_tx
-                        .send(crate::app_event::AppEvent::SessionBrowserLoaded(Vec::new()));
+                    app_event_tx.send(crate::app_event::AppEvent::SessionBrowserLoaded(Vec::new()));
                 }
             }
         });

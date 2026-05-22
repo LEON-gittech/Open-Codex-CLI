@@ -140,7 +140,8 @@ impl SessionBrowserView {
     }
 
     fn selected_summary(&self) -> Option<&SessionSummary> {
-        self.sessions().and_then(|list| list.get(self.selected_index))
+        self.sessions()
+            .and_then(|list| list.get(self.selected_index))
     }
 
     fn move_selection(&mut self, delta: isize) {
@@ -168,19 +169,16 @@ impl SessionBrowserView {
     }
 
     fn activate_selected(&mut self) {
-        let thread_id_opt = self
-            .selected_summary()
-            .and_then(|s| s.thread_id.clone());
+        let thread_id_opt = self.selected_summary().and_then(|s| s.thread_id.clone());
         let Some(thread_id) = thread_id_opt else {
             self.set_status("Selected session has no thread id");
             return;
         };
         let initial_prompt = self.take_compose_text();
-        self.app_event_tx
-            .send(AppEvent::ResumeThreadFromBrowser {
-                thread_id,
-                initial_prompt,
-            });
+        self.app_event_tx.send(AppEvent::ResumeThreadFromBrowser {
+            thread_id,
+            initial_prompt,
+        });
         self.completion = Some(ViewCompletion::Accepted);
     }
 
@@ -194,7 +192,11 @@ impl SessionBrowserView {
     fn take_compose_text(&mut self) -> Option<String> {
         let trimmed = self.compose.trim().to_string();
         self.compose.clear();
-        if trimmed.is_empty() { None } else { Some(trimmed) }
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed)
+        }
     }
 
     fn open_peek(&mut self) {
@@ -224,7 +226,8 @@ impl SessionBrowserView {
         let now = Instant::now();
         match self.pending_delete {
             Some((idx, when))
-                if idx == self.selected_index && now.duration_since(when) <= DELETE_CONFIRM_WINDOW =>
+                if idx == self.selected_index
+                    && now.duration_since(when) <= DELETE_CONFIRM_WINDOW =>
             {
                 let tx = self.app_event_tx.clone();
                 tokio::spawn(async move {
@@ -282,10 +285,15 @@ impl SessionBrowserView {
         let title = Line::from(vec![
             Span::styled(
                 "Open Codex · agent view",
-                Style::default().add_modifier(Modifier::BOLD).fg(Color::Cyan),
+                Style::default()
+                    .add_modifier(Modifier::BOLD)
+                    .fg(Color::Cyan),
             ),
             Span::raw("  "),
-            Span::styled(format!("({total} sessions)"), Style::default().fg(Color::DarkGray)),
+            Span::styled(
+                format!("({total} sessions)"),
+                Style::default().fg(Color::DarkGray),
+            ),
         ]);
         let mut summary_parts: Vec<Span<'static>> = Vec::new();
         for (label, count, color) in [
@@ -305,8 +313,7 @@ impl SessionBrowserView {
             ));
         }
         let summary = Line::from(summary_parts);
-        Paragraph::new(vec![title, summary, Line::raw("")])
-            .render(area, buf);
+        Paragraph::new(vec![title, summary, Line::raw("")]).render(area, buf);
     }
 
     fn render_footer(&self, area: Rect, buf: &mut Buffer) {
@@ -325,7 +332,10 @@ impl SessionBrowserView {
             Line::from(Span::styled(hint, Style::default().fg(Color::DarkGray))),
         ];
         if let Some(msg) = self.status_text() {
-            lines.push(Line::from(Span::styled(msg, Style::default().fg(Color::Yellow))));
+            lines.push(Line::from(Span::styled(
+                msg,
+                Style::default().fg(Color::Yellow),
+            )));
         }
         let para = Paragraph::new(lines).wrap(Wrap { trim: true });
         para.render(area, buf);
@@ -387,7 +397,9 @@ impl SessionBrowserView {
             BrowserState::Loading => {
                 let p = Paragraph::new(Line::from(Span::styled(
                     "Loading sessions from $CODEX_HOME/sessions/…",
-                    Style::default().fg(Color::DarkGray).add_modifier(Modifier::ITALIC),
+                    Style::default()
+                        .fg(Color::DarkGray)
+                        .add_modifier(Modifier::ITALIC),
                 )));
                 p.render(area, buf);
                 return;
@@ -404,7 +416,9 @@ impl SessionBrowserView {
             BrowserState::Loaded(list) if list.is_empty() => {
                 let p = Paragraph::new(Line::from(Span::styled(
                     "No sessions found. Start one with `codex` to populate this view.",
-                    Style::default().fg(Color::DarkGray).add_modifier(Modifier::ITALIC),
+                    Style::default()
+                        .fg(Color::DarkGray)
+                        .add_modifier(Modifier::ITALIC),
                 )))
                 .wrap(Wrap { trim: true });
                 p.render(area, buf);
@@ -427,7 +441,10 @@ impl SessionBrowserView {
         for (visible_idx, summary) in window.iter().enumerate() {
             let absolute_idx = self.view_offset + visible_idx;
             if current_status != Some(summary.status) {
-                lines.push(section_header(summary.status, count_with_status(list, summary.status)));
+                lines.push(section_header(
+                    summary.status,
+                    count_with_status(list, summary.status),
+                ));
                 current_status = Some(summary.status);
             }
             let pending_delete = self
@@ -459,7 +476,11 @@ impl SessionBrowserView {
             PeekState::Closed => return,
             PeekState::Loading { path } => format!("Loading peek — {}", path.display()),
             PeekState::Ready(content) => {
-                let trunc = if content.truncated { " (head truncated)" } else { "" };
+                let trunc = if content.truncated {
+                    " (head truncated)"
+                } else {
+                    ""
+                };
                 format!("Peek — {}{trunc}", content.path.display())
             }
             PeekState::Failed(err) => format!("Peek failed: {err}"),
@@ -488,7 +509,11 @@ impl SessionBrowserView {
         };
         let scroll_y = if let PeekState::Ready(content) = &self.peek {
             let visible = inner.height as usize;
-            content.rendered.len().saturating_sub(visible).min(u16::MAX as usize) as u16
+            content
+                .rendered
+                .len()
+                .saturating_sub(visible)
+                .min(u16::MAX as usize) as u16
         } else {
             0
         };
@@ -749,7 +774,12 @@ fn format_row(
     ordinal: usize,
 ) -> Line<'static> {
     let caret = if selected {
-        Span::styled("›", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))
+        Span::styled(
+            "›",
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        )
     } else {
         Span::raw(" ")
     };

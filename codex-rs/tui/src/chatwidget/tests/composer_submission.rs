@@ -8,6 +8,73 @@ use codex_protocol::permissions::NetworkSandboxPolicy;
 use pretty_assertions::assert_eq;
 use std::collections::VecDeque;
 
+#[test]
+fn xhigh_reasoning_marker_matches_standalone_aliases() {
+    assert!(text_requests_xhigh_reasoning("ulw"));
+    assert!(text_requests_xhigh_reasoning("use ultra reasoning"));
+    assert!(text_requests_xhigh_reasoning("please run xhigh"));
+    assert!(!text_requests_xhigh_reasoning("ultramarine"));
+}
+
+#[tokio::test]
+async fn submission_ultra_marker_uses_xhigh_for_current_turn_only() {
+    let (mut chat, _rx, mut op_rx) = make_chatwidget_manual(Some("gpt-5.3-codex")).await;
+    chat.thread_id = Some(ThreadId::new());
+    set_chatgpt_auth(&mut chat);
+    chat.set_reasoning_effort(Some(ReasoningEffortConfig::Low));
+
+    chat.bottom_pane.set_composer_text(
+        "Use ultra reasoning for this query".to_string(),
+        Vec::new(),
+        Vec::new(),
+    );
+    chat.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+    match next_submit_op(&mut op_rx) {
+        Op::UserTurn { effort, .. } => {
+            assert_eq!(effort, Some(ReasoningEffortConfig::XHigh));
+        }
+        other => panic!("expected Op::UserTurn, got {other:?}"),
+    }
+    // Session default effort must remain unchanged.
+    assert_eq!(
+        chat.current_reasoning_effort(),
+        Some(ReasoningEffortConfig::Low)
+    );
+    // While the foreground turn is pending the per-turn override is recorded.
+    assert_eq!(
+        chat.turn_lifecycle.per_turn_effort_override,
+        Some(ReasoningEffortConfig::XHigh)
+    );
+}
+
+#[tokio::test]
+async fn submission_xhigh_marker_requires_standalone_token() {
+    let (mut chat, _rx, mut op_rx) = make_chatwidget_manual(Some("gpt-5.3-codex")).await;
+    chat.thread_id = Some(ThreadId::new());
+    set_chatgpt_auth(&mut chat);
+    chat.set_reasoning_effort(Some(ReasoningEffortConfig::Low));
+
+    chat.bottom_pane.set_composer_text(
+        "Use ultramarine as the color name".to_string(),
+        Vec::new(),
+        Vec::new(),
+    );
+    chat.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+    match next_submit_op(&mut op_rx) {
+        Op::UserTurn { effort, .. } => {
+            assert_eq!(effort, Some(ReasoningEffortConfig::Low));
+        }
+        other => panic!("expected Op::UserTurn, got {other:?}"),
+    }
+    // Without an xhigh marker the recorded per-turn effort matches the session default.
+    assert_eq!(
+        chat.turn_lifecycle.per_turn_effort_override,
+        Some(ReasoningEffortConfig::Low)
+    );
+}
+
 #[tokio::test]
 async fn submission_preserves_text_elements_and_local_images() {
     let (mut chat, mut rx, mut op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
@@ -953,6 +1020,7 @@ async fn restore_thread_input_state_syncs_sleep_inhibitor_state() {
         active_collaboration_mask: chat.active_collaboration_mask.clone(),
         task_running: true,
         agent_turn_running: true,
+        per_turn_effort_override: None,
     }));
 
     assert!(chat.turn_lifecycle.agent_turn_running);

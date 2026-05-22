@@ -70,10 +70,7 @@ pub(crate) trait BottomPaneView: Renderable {
     }
 
     /// Forward a successfully loaded peek payload to the session browser.
-    fn set_session_browser_peek(
-        &mut self,
-        _content: codex_agent_view::PeekContent,
-    ) -> bool {
+    fn set_session_browser_peek(&mut self, _content: codex_agent_view::PeekContent) -> bool {
         false
     }
 

@@ -870,7 +870,15 @@ impl ChatWidget {
     }
 
     fn model_with_reasoning_display_name(&self) -> String {
-        let label = Self::status_line_reasoning_effort_label(self.effective_reasoning_effort());
+        let active_turn_reasoning_effort =
+            if self.input_queue.user_turn_pending_start || self.foreground_turn_running() {
+                self.turn_lifecycle.per_turn_effort_override
+            } else {
+                None
+            };
+        let label = Self::status_line_reasoning_effort_label(
+            active_turn_reasoning_effort.or(self.effective_reasoning_effort()),
+        );
         let service_tier_label = self
             .current_service_tier()
             .and_then(|service_tier| {

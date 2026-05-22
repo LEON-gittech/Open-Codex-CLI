@@ -366,6 +366,7 @@ async fn restore_thread_input_state_restores_pending_steers_without_downgrading_
         active_collaboration_mask: chat.active_collaboration_mask.clone(),
         agent_turn_running: false,
         task_running: false,
+        per_turn_effort_override: None,
     }));
 
     assert_eq!(

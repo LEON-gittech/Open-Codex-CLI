@@ -511,7 +511,10 @@ impl App {
                 return Ok(());
             }
         };
-        let started = match app_server.resume_thread(self.config.clone(), thread_id).await {
+        let started = match app_server
+            .resume_thread(self.config.clone(), thread_id)
+            .await
+        {
             Ok(started) => started,
             Err(err) => {
                 self.chat_widget
@@ -519,11 +522,8 @@ impl App {
                 return Ok(());
             }
         };
-        let initial_user_message = crate::chatwidget::create_initial_user_message(
-            initial_prompt,
-            Vec::new(),
-            Vec::new(),
-        );
+        let initial_user_message =
+            crate::chatwidget::create_initial_user_message(initial_prompt, Vec::new(), Vec::new());
         self.replace_chat_widget_with_app_server_thread(
             tui,
             app_server,

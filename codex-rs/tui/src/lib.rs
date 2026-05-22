@@ -1332,8 +1332,8 @@ async fn run_ratatui_app(
                         update_action: Some(action),
                         exit_reason: ExitReason::UserRequested,
                         resume_thread_id: None,
-                    resume_initial_prompt: None,
-                    start_new_session: false,
+                        resume_initial_prompt: None,
+                        start_new_session: false,
                     });
                 }
             }
@@ -1466,8 +1466,8 @@ async fn run_ratatui_app(
                 "No saved session found with ID {id_str}. Run `codex {action}` without an ID to choose from existing sessions."
             )),
             resume_thread_id: None,
-        resume_initial_prompt: None,
-        start_new_session: false,
+            resume_initial_prompt: None,
+            start_new_session: false,
         })
     };
 
@@ -1524,8 +1524,8 @@ async fn run_ratatui_app(
                         update_action: None,
                         exit_reason: ExitReason::UserRequested,
                         resume_thread_id: None,
-                    resume_initial_prompt: None,
-                    start_new_session: false,
+                        resume_initial_prompt: None,
+                        start_new_session: false,
                     });
                 }
                 other => other,
@@ -1588,8 +1588,8 @@ async fn run_ratatui_app(
                     update_action: None,
                     exit_reason: ExitReason::UserRequested,
                     resume_thread_id: None,
-                resume_initial_prompt: None,
-                start_new_session: false,
+                    resume_initial_prompt: None,
+                    start_new_session: false,
                 });
             }
             other => other,
@@ -1636,8 +1636,8 @@ async fn run_ratatui_app(
                             update_action: None,
                             exit_reason: ExitReason::UserRequested,
                             resume_thread_id: None,
-                        resume_initial_prompt: None,
-                        start_new_session: false,
+                            resume_initial_prompt: None,
+                            start_new_session: false,
                         });
                     }
                 }

@@ -3885,6 +3885,9 @@ async fn make_test_app() -> App {
         btw_threads: HashMap::new(),
         pending_plugin_enabled_writes: HashMap::new(),
         pending_hook_enabled_writes: HashMap::new(),
+        pending_resume_thread_id: None,
+        pending_resume_prompt: None,
+        pending_start_new_session: false,
     }
 }
 
@@ -3949,6 +3952,9 @@ async fn make_test_app_with_channels() -> (
             btw_threads: HashMap::new(),
             pending_plugin_enabled_writes: HashMap::new(),
             pending_hook_enabled_writes: HashMap::new(),
+            pending_resume_thread_id: None,
+            pending_resume_prompt: None,
+            pending_start_new_session: false,
         },
         rx,
         op_rx,

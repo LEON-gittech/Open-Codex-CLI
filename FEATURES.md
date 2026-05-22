@@ -1,6 +1,6 @@
 # Open Codex Feature Inventory
 
-Last updated: 2026-05-21
+Last updated: 2026-05-22
 
 This file tracks fork-specific features and fixes that should remain visible during README, release-note, and roadmap updates. It is an engineering inventory, not a marketing page. Keep it scoped to behavior implemented in this fork.
 
@@ -52,6 +52,7 @@ Fast-moving prompt packs, hooks, setup flows, and project policies are better ha
 | --- | --- | --- | --- |
 | `/export` | Export the current session transcript to a user-chosen `.md` or `.txt` path. | `/export <path>` | Useful for debugging, archival, and sharing. |
 | Renamed session identity | Renamed sessions show `Session: <name>` in the chat composer and use the name in quit guidance while keeping resume commands direct. | `/rename`, chat composer, quit summary | Resume hints use `open-codex resume <thread-id>` / `open-codex-dev resume <thread-id>` instead of picker wording. |
+| Agent view session browser (beta) | Users can browse saved sessions, peek transcript content, resume a selected thread, or start a new session from the browser. | `codex agents`, composer Left arrow | Beta surface; useful for local session navigation but still expected to evolve. |
 | Claude Code-style rewind UX | Double-Esc rewind supports code + conversation restore and a cleaner picker. | Double-Esc backtrack flow | Recent fixes tightened session scoping and ordering. |
 | Revoke restore scope fix | Conversation-only restore no longer rolls back files. | Revoke/rewind restore logic | Fixed by `b6f62e4867`. |
 | Esc interrupt routing | Single Esc interrupt and double-Esc rewind detection both work without blocking each other. | Composer key handling | Fixed by `0d20c120d8`. |
@@ -92,6 +93,18 @@ Fast-moving prompt packs, hooks, setup flows, and project policies are better ha
 | Default commit attribution | Open Codex can apply the fork's commit attribution identity by default. | git attribution extension/config | Implemented before the recent 0.130.x release series. |
 
 ## Release Notes
+
+### 0.131.6 - 2026-05-22
+
+- Add the first beta version of agent-view: `codex agents` can inspect saved sessions offline, and the TUI session browser can open from the composer with Left arrow.
+- Render the agent-view session browser as a full-screen overlay with grouped session rows, peek preview, delete confirmation, resume, and start-new-session flows.
+- Mark agent-view as beta in this release: the core browsing/resume workflow is available, but UI polish and interaction details may still change.
+- Fix the 0.131 merge regression where standalone `xhigh`, `ultra`, or `ulw` markers no longer submitted the current query with `xhigh` reasoning.
+- Show the per-turn xhigh override in `model-with-reasoning` status-line output while that foreground turn is pending or running, without mutating persistent session defaults.
+- Keep per-turn effort override state across thread switch capture/restore.
+- Fix background task status-line drift so `/ps` and the footer agree when background terminals or subagents start, finish, or are cleared.
+- Preserve Zellij pane scroll behavior by rendering TUI inline under Zellij instead of trapping pane scroll in the alt screen.
+- Tighten subagent spawning guidance around contract-first delegation and quota-aware cleanup.
 
 ### 0.131.5 - 2026-05-21
 

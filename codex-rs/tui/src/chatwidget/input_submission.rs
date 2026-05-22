@@ -308,10 +308,24 @@ impl ChatWidget {
 
         self.maybe_apply_ide_context(&mut items);
 
+        let xhigh_effort_override = text_requests_xhigh_reasoning(&text);
+        let reasoning_effort = if xhigh_effort_override {
+            Some(ReasoningEffortConfig::XHigh)
+        } else {
+            effective_mode.reasoning_effort()
+        };
         let collaboration_mode = if self.collaboration_modes_enabled() {
-            self.active_collaboration_mask
-                .as_ref()
-                .map(|_| effective_mode.clone())
+            self.active_collaboration_mask.as_ref().map(|_| {
+                if xhigh_effort_override {
+                    effective_mode.with_updates(
+                        /*model*/ None,
+                        Some(Some(ReasoningEffortConfig::XHigh)),
+                        /*developer_instructions*/ None,
+                    )
+                } else {
+                    effective_mode.clone()
+                }
+            })
         } else {
             None
         };
@@ -343,7 +357,7 @@ impl ChatWidget {
             AskForApproval::from(self.config.permissions.approval_policy.value()),
             active_permission_profile,
             effective_mode.model().to_string(),
-            effective_mode.reasoning_effort(),
+            reasoning_effort,
             /*summary*/ None,
             service_tier,
             /*final_output_json_schema*/ None,
@@ -355,7 +369,12 @@ impl ChatWidget {
             return (false, None);
         }
         if render_in_history {
+            // Track the submitted reasoning effort so status surfaces can reflect a per-turn
+            // xhigh override while the foreground turn is pending or running. The field is
+            // cleared by `TurnLifecycleState::finish()` when the turn ends.
+            self.turn_lifecycle.per_turn_effort_override = reasoning_effort;
             self.input_queue.user_turn_pending_start = true;
+            self.refresh_status_line();
         }
 
         // Persist the submitted text to cross-session message history. Mentions are encoded into
