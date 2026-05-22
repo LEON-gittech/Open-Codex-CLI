@@ -1,36 +1,37 @@
-# Parallel-First Agent Execution Policy Example
+# Contract-First Agent Execution Policy Example
 
-This file is an extracted example from `~/.codex/AGENTS.md`. It documents the user-scope instruction policy that makes Codex plan with subagents more proactively on complex work.
+This file is an extracted example from `~/.codex/AGENTS.md`. It documents the user-scope instruction policy that makes Codex use subagents only when their output has a clear consumer in the main lane.
 
-The policy intentionally overrides Codex's default conservative stance against automatic agent spawning. It makes subagent usage more aggressive for complex, multi-axis work while keeping edits coordinated through explicit ownership boundaries.
+The policy intentionally avoids "parallel for its own sake". It makes subagent usage contract-driven for complex, multi-axis work while keeping edits coordinated through explicit ownership boundaries.
 
-## High-Priority Parallelism Rule
+## High-Priority Delegation Rule
 
-For non-trivial tasks, first decide whether the work has independent axes. If yes, use parallel read-only subagents before editing.
+For non-trivial tasks, first decide whether subagents would produce independent results that the main lane will actually consume. Do not spawn simply because the task is large.
 
 Prefer:
 
-- parallel exploration, review, docs checking, test discovery, and validation;
+- local sequential work for cheap discovery and immediate blockers;
+- subagents only for independent evidence, review, docs checking, test discovery, and validation with a named consumer decision;
 - one final implementation lane;
 - parallel implementation only when edit boundaries are clearly disjoint.
 
-Do not serialize independent investigation.
+Do not spawn a read-only lane that overlaps with the main lane's current search.
 Do not parallelize tightly coupled edits.
 Do not let multiple agents edit the same files.
-Spawn the smallest useful number of subagents: usually 2-3 for complex tasks, 4-6 for broad audits/reviews, 0-1 for local tasks.
+Spawn the smallest useful number of subagents: usually 0 for local tasks, 1 for one bounded evidence lane, 2-3 only for complex tasks with distinct outputs, and 4-6 only for broad audits/reviews.
 
-If independent investigation axes exist and no subagents are spawned, explicitly justify why sequential execution is better.
+If independent investigation axes exist and no subagents are spawned, justify sequential execution only when the user asked about parallelization or the choice changes the plan.
 
 ## Purpose
 
-Use a parallel-first workflow for complex software engineering tasks.
+Use a contract-first workflow for complex software engineering tasks.
 
-The goal is not to parallelize everything. The goal is to let Codex deliberately decide when independent investigation, review, testing, or implementation lanes can run concurrently, while keeping shared-file edits and dependency-heavy work coordinated.
+The goal is not to parallelize everything. The goal is to let Codex deliberately decide when independent investigation, review, testing, or implementation lanes can run concurrently and when their results must be consumed before moving on.
 
 Default assumption:
 
 - simple, tightly coupled, or single-file tasks should stay local and sequential;
-- complex, multi-axis, multi-module, review-heavy, test-heavy, or research-heavy tasks should be evaluated for parallel subagents;
+- complex, multi-axis, multi-module, review-heavy, test-heavy, or research-heavy tasks should be evaluated for subagents, but only after a consumer decision is named;
 - parallel exploration is preferred over parallel editing;
 - only one agent should usually apply the final patch unless edit boundaries are clearly disjoint.
 
@@ -41,6 +42,7 @@ Before doing substantial work, classify the task by dependency shape.
 Use parallel subagents when:
 
 - subtasks are independent or mostly independent;
+- each subtask has a concrete output that will feed a named decision, test, edit, or release gate;
 - different agents can inspect different modules, layers, files, test suites, logs, or documentation without blocking each other;
 - the task benefits from independent evidence before implementation;
 - the task involves PR review, bug triage, regression analysis, large-codebase exploration, migration planning, test discovery, API/docs verification, or multi-module auditing.
@@ -50,6 +52,8 @@ Do not use parallel subagents when:
 - the task is small and local;
 - the next step depends on immediate local context;
 - the work is mostly a single sequential reasoning chain;
+- the main lane is already inspecting the same files, logs, commands, or question;
+- the subagent's output would be nice-to-have but not consumed before a decision;
 - multiple agents would edit the same files;
 - the acceptance target is unclear;
 - the cost of coordination exceeds the benefit of parallelism.
@@ -68,11 +72,13 @@ For every non-trivial task, do the following internally before acting:
    - shared-file or prerequisite-heavy work -> staged/sequential execution;
    - unclear dependency graph -> do a short focused exploration first.
 5. Decide whether to spawn subagents.
-6. If spawning subagents, choose the smallest useful number of lanes.
-7. Wait for the relevant subagent results before making final implementation decisions.
-8. Synthesize evidence.
-9. Apply the smallest safe change.
-10. Validate against the acceptance criteria.
+6. For every candidate subagent, name the consumer decision where the main lane will use the result.
+7. If spawning subagents, choose the smallest useful number of lanes.
+8. Continue only non-overlapping work while subagents run.
+9. Wait for or explicitly cancel the relevant subagent before crossing its consumer decision.
+10. Synthesize evidence.
+11. Apply the smallest safe change.
+12. Validate against the acceptance criteria.
 
 ## How Many Subagents to Spawn
 
@@ -81,8 +87,8 @@ Choose the number of subagents based on the number of genuinely independent axes
 Default limits:
 
 - 0 subagents: trivial/local task.
-- 1 subagent: one bounded evidence lane useful while the main agent works.
-- 2-3 subagents: normal complex task with several independent investigation axes.
+- 1 subagent: one bounded evidence lane with a clear consumer while the main agent works elsewhere.
+- 2-3 subagents: normal complex task with several independent investigation axes that feed distinct decisions.
 - 4-6 subagents: broad review, migration, audit, or multi-module investigation.
 - More than 6 only when the task is explicitly batch-like and the work items are independent.
 
@@ -142,6 +148,7 @@ Every subagent prompt should include:
 - scope;
 - files/modules/tests to inspect if known;
 - whether it may edit files;
+- the consumer decision where its result will be used;
 - expected output format;
 - confidence/risk requirement;
 - stop condition.
@@ -175,9 +182,9 @@ Return changed files, rationale, and validation performed.
 
 Use parallelism aggressively for:
 
-- read-only investigation;
+- independent read-only investigation with clear consumer decisions;
 - review;
-- grep/search across independent concepts;
+- grep/search across independent concepts not already owned by the main lane;
 - docs/API verification;
 - test discovery;
 - independent test commands;
@@ -207,6 +214,7 @@ When parallel lanes were used, summarize:
 - which lanes ran;
 - what each found;
 - what decision was made from their evidence;
+- whether any lane was cancelled, ignored, or made obsolete and why;
 - what changed;
 - what validation passed or could not be run.
 

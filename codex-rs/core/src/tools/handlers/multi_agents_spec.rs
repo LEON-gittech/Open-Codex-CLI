@@ -14,6 +14,13 @@ const MULTI_AGENT_V1_NAMESPACE_DESCRIPTION: &str = "Tools for spawning and manag
 const SPAWN_AGENT_INHERITED_MODEL_GUIDANCE: &str = "Spawned agents inherit your current model by default. Omit `model` to use that preferred default; set `model` only when an explicit override is needed.";
 const SPAWN_AGENT_MODEL_OVERRIDE_DESCRIPTION: &str = "Optional model override for the new agent. Leave unset to inherit the same model as the parent, which is the preferred default. Only set this when the user explicitly asks for a different model or the task clearly requires one.";
 const SPAWN_AGENT_SERVICE_TIER_OVERRIDE_DESCRIPTION: &str = "Optional service tier override for the new agent. Leave unset unless the user explicitly asks for one.";
+const SPAWN_AGENT_CONTRACT_GUIDANCE_V2: &str = r#"Spawn only when every gate passes:
+- Independent: the work can proceed without sharing mutable state with your current main-lane task.
+- Consumer decision: name the decision, test, edit, or release gate that will consume the result before spawning.
+- Bounded: the subagent has a clear stop condition and compact output contract.
+- Worth it: the expected evidence is more valuable than doing the same search or check locally.
+
+Do not spawn a read-only explorer for the same files, symbols, logs, or docs the main lane is already inspecting. After spawning, do not pass the named Consumer decision until you have consumed the result or explicitly cancelled the lane. The main lane remains responsible for synthesis, verification, and the user-facing answer."#;
 const MAX_MODEL_OVERRIDES_IN_SPAWN_AGENT_DESCRIPTION: usize = 5;
 
 #[derive(Debug, Clone, Default)]
@@ -720,6 +727,7 @@ The spawned agent will have the same tools as you and the ability to spawn its o
 {SPAWN_AGENT_INHERITED_MODEL_GUIDANCE}
 It will be able to send you and other running agents messages, and its final answer will be provided to you when it finishes.
 The new agent's canonical task name will be provided to it along with the message.
+{SPAWN_AGENT_CONTRACT_GUIDANCE_V2}
 {concurrency_guidance}"#
     );
 

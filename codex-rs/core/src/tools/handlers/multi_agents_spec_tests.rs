@@ -70,6 +70,9 @@ fn spawn_agent_tool_v2_requires_task_name_and_lists_visible_models() {
     assert!(description.contains("The spawned agent will have the same tools as you"));
     assert!(description.contains("`max_concurrent_threads_per_session = 4`"));
     assert!(description.contains(SPAWN_AGENT_INHERITED_MODEL_GUIDANCE));
+    assert!(description.contains("Spawn only when every gate passes"));
+    assert!(description.contains("Consumer decision"));
+    assert!(description.contains("Do not spawn a read-only explorer"));
     assert!(
         description
             .contains("Available model overrides (optional; inherited parent model is preferred):")
