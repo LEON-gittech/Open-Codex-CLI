@@ -138,6 +138,9 @@ impl ChatWidget {
 
     pub(super) fn on_turn_diff(&mut self, unified_diff: String) {
         debug!("TurnDiffEvent: {unified_diff}");
+        // Codex just applied a patch — re-query git for the live `+added/-deleted ?untracked`
+        // stats so the status line reflects the change without waiting for the turn to end.
+        self.request_status_line_workspace_changes_refresh();
         self.refresh_status_line();
     }
 
