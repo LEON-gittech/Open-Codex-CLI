@@ -236,6 +236,40 @@ impl ChatWidget {
         );
     }
 
+    /// Roll the most recently rendered user prompt back into the composer when
+    /// the user pressed Esc before the model started responding. Mirrors
+    /// Claude Code's "treat the query as not sent" behavior. Returns `true`
+    /// when there was a pending prompt to restore.
+    pub(super) fn rollback_pending_user_message_to_composer(&mut self) -> bool {
+        let Some(display) = self.last_rendered_user_message_display.take() else {
+            return false;
+        };
+        if display.message.trim().is_empty()
+            && display.local_images.is_empty()
+            && display.remote_image_urls.is_empty()
+        {
+            return false;
+        }
+        let local_images = display
+            .local_images
+            .into_iter()
+            .enumerate()
+            .map(|(idx, path)| crate::bottom_pane::LocalImageAttachment {
+                placeholder: codex_protocol::models::local_image_label_text(idx + 1),
+                path,
+            })
+            .collect();
+        let user_message = UserMessage {
+            text: display.message,
+            local_images,
+            remote_image_urls: display.remote_image_urls,
+            text_elements: display.text_elements,
+            mention_bindings: Vec::new(),
+        };
+        self.restore_user_message_to_composer(user_message);
+        true
+    }
+
     pub(crate) fn capture_thread_input_state(&self) -> Option<ThreadInputState> {
         let draft = self.bottom_pane.composer_draft_snapshot();
         let composer = ThreadComposerState {

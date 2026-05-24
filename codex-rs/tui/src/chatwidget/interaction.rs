@@ -125,6 +125,12 @@ impl ChatWidget {
             && self.bottom_pane.no_modal_or_popup_active()
             && !self.should_handle_vim_insert_escape(key_event)
         {
+            // Pre-response rollback: the user just submitted but the model
+            // has not started its turn yet. Treat the query as "not sent" —
+            // restore the prompt to the composer (Claude Code parity) before
+            // sending the interrupt, so the user can edit and resubmit
+            // without losing the typed text.
+            self.rollback_pending_user_message_to_composer();
             self.submit_op(AppCommand::interrupt());
             return;
         }
