@@ -28,8 +28,6 @@ struct PreparedSlashCommandArgs {
 }
 
 const SIDE_STARTING_CONTEXT_LABEL: &str = "Side starting...";
-const SIDE_REVIEW_UNAVAILABLE_MESSAGE: &str =
-    "'/side' is unavailable while code review is running.";
 const SIDE_SLASH_COMMAND_UNAVAILABLE_HINT: &str =
     "Press Ctrl+C to return to the main thread first.";
 const GOAL_USAGE: &str = "Usage: /goal <objective>";
@@ -102,7 +100,7 @@ impl ChatWidget {
             return false;
         }
         if let Some(mask) = collaboration_modes::plan_mask(self.model_catalog.as_ref()) {
-            self.set_collaboration_mask(mask);
+            self.set_collaboration_mask_from_user_action(mask);
             true
         } else {
             self.add_info_message(
@@ -126,9 +124,12 @@ impl ChatWidget {
         });
     }
 
-    fn request_empty_side_conversation(&mut self) {
+    fn request_empty_side_conversation(&mut self, cmd: SlashCommand) {
         let Some(parent_thread_id) = self.thread_id else {
-            self.add_error_message("'/side' is unavailable before the session starts.".to_string());
+            let command = cmd.command();
+            self.add_error_message(format!(
+                "'/{command}' is unavailable before the session starts."
+            ));
             return;
         };
 
@@ -161,6 +162,7 @@ impl ChatWidget {
                 /*approval_policy*/ None,
                 /*approvals_reviewer*/ None,
                 /*permission_profile*/ None,
+                /*active_permission_profile*/ None,
                 /*windows_sandbox_level*/ None,
                 /*model*/ None,
                 Some(effort),
@@ -295,8 +297,8 @@ impl ChatWidget {
                     );
                 }
             }
-            SlashCommand::Side => {
-                self.request_empty_side_conversation();
+            SlashCommand::Side | SlashCommand::Btw => {
+                self.request_empty_side_conversation(cmd);
             }
             SlashCommand::Btw => {
                 self.add_info_message(BTW_USAGE.to_string(), /*hint*/ None);
@@ -845,11 +847,12 @@ impl ChatWidget {
                     self.bottom_pane.drain_pending_submission_state();
                 }
             }
-            SlashCommand::Side if !trimmed.is_empty() => {
+            SlashCommand::Side | SlashCommand::Btw if !trimmed.is_empty() => {
                 let Some(parent_thread_id) = self.thread_id else {
-                    self.add_error_message(
-                        "'/side' is unavailable before the session starts.".to_string(),
-                    );
+                    let command = cmd.command();
+                    self.add_error_message(format!(
+                        "'/{command}' is unavailable before the session starts."
+                    ));
                     return;
                 };
                 let user_message = self.prepared_inline_user_message(
@@ -1060,6 +1063,7 @@ impl ChatWidget {
             | SlashCommand::Plan
             | SlashCommand::Goal
             | SlashCommand::Side
+            | SlashCommand::Btw
             | SlashCommand::Keymap
             | SlashCommand::Agent
             | SlashCommand::MultiAgents
@@ -1121,11 +1125,14 @@ impl ChatWidget {
     }
 
     fn ensure_side_command_allowed_outside_review(&mut self, cmd: SlashCommand) -> bool {
-        if cmd != SlashCommand::Side || !self.review.is_review_mode {
+        if !matches!(cmd, SlashCommand::Side | SlashCommand::Btw) || !self.review.is_review_mode {
             return true;
         }
 
-        self.add_error_message(SIDE_REVIEW_UNAVAILABLE_MESSAGE.to_string());
+        let command = cmd.command();
+        self.add_error_message(format!(
+            "'/{command}' is unavailable while code review is running."
+        ));
         self.bottom_pane.drain_pending_submission_state();
         false
     }

@@ -105,6 +105,7 @@ fn server_notification_requires_delivery(notification: &ServerNotification) -> b
     matches!(
         notification,
         ServerNotification::TurnCompleted(_)
+            | ServerNotification::ThreadSettingsUpdated(_)
             | ServerNotification::BtwTextDelta(_)
             | ServerNotification::BtwCompleted(_)
     )

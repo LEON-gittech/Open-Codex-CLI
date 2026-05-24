@@ -178,6 +178,7 @@ impl SlashCommand {
                 | SlashCommand::Btw
                 | SlashCommand::Pets
                 | SlashCommand::Side
+                | SlashCommand::Btw
                 | SlashCommand::Resume
                 | SlashCommand::SandboxReadRoot
         )
@@ -248,8 +249,8 @@ impl SlashCommand {
             | SlashCommand::Ide
             | SlashCommand::Quit
             | SlashCommand::Exit
-            | SlashCommand::Btw
-            | SlashCommand::Side => true,
+            | SlashCommand::Side
+            | SlashCommand::Btw => true,
             SlashCommand::Rollout => true,
             SlashCommand::TestApproval => true,
             SlashCommand::Realtime => true,
