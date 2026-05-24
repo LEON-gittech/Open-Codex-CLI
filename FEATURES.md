@@ -1,6 +1,6 @@
 # Open Codex Feature Inventory
 
-Last updated: 2026-05-24
+Last updated: 2026-05-25
 
 This file tracks fork-specific features and fixes that should remain visible during README, release-note, and roadmap updates. It is an engineering inventory, not a marketing page. Keep it scoped to behavior implemented in this fork.
 
@@ -93,6 +93,11 @@ Fast-moving prompt packs, hooks, setup flows, and project policies are better ha
 | Default commit attribution | Open Codex can apply the fork's commit attribution identity by default. | git attribution extension/config | Implemented before the recent 0.130.x release series. |
 
 ## Release Notes
+
+### 0.133.1 - 2026-05-25
+
+- Match Claude Code's "treat the query as not sent" behavior: while a user prompt is awaiting `TurnStarted` from core, pressing Esc now rolls the prompt text back into the composer in addition to issuing the interrupt, so the user can edit and resubmit without retyping.
+- Fix the `workspace-changes` status item (`+added/-deleted ?untracked`) staying frozen after first lookup: refresh it on `TurnDiffUpdated` notifications and at both `finalize_turn` sites alongside the existing branch/git-summary refreshes.
 
 ### 0.133.0 - 2026-05-24
 
