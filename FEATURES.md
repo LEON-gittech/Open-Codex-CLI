@@ -1,6 +1,6 @@
 # Open Codex Feature Inventory
 
-Last updated: 2026-05-22
+Last updated: 2026-05-24
 
 This file tracks fork-specific features and fixes that should remain visible during README, release-note, and roadmap updates. It is an engineering inventory, not a marketing page. Keep it scoped to behavior implemented in this fork.
 
@@ -93,6 +93,17 @@ Fast-moving prompt packs, hooks, setup flows, and project policies are better ha
 | Default commit attribution | Open Codex can apply the fork's commit attribution identity by default. | git attribution extension/config | Implemented before the recent 0.130.x release series. |
 
 ## Release Notes
+
+### 0.133.0 - 2026-05-24
+
+- Merge upstream `openai/codex` through `rust-v0.133.0` (59 upstream commits, 361 files, +18.2k / -2.3k) on top of the 0.131.6 fork base. Backup tag `backup/before-merge-0.133.0-20260524` preserves the pre-merge state.
+- Preserve every fork-specific feature across the merge: agent-view session browser (Left-arrow overlay + `codex agents` subcommand), contract-first subagent spawn guidance with `CollabAgentState` receipt fields surfaced into the background-task panel, Zellij-aware insert_history and alt-screen handling, background subagent/terminal status-line refresh, `/effort` / `/export` / `/rename` / `/btw` / `/collab` / `/memory` / `/memory-overlay`, per-turn `xhigh` / `ulw` / `ultra` reasoning markers reflected live in the status line, active-staging memory overlay, and the `@leonw24/open-codex` npm package identity.
+- Take upstream's new vendor layout in `codex-cli/bin/codex.js` and `scripts/build_npm_package.py` while keeping fork update commands (`npm install -g @leonw24/open-codex@latest`).
+- Merge `core::state::session::SessionState` to use upstream's plural `pending_session_start_sources: VecDeque<...>` while keeping fork `memory_overlay` + `last_injected_memory_overlay_revision`.
+- Chain upstream `sync_active_thread_reasoning_setting(app_server, effort)` and fork `sync_active_thread_model_settings_to_cached_session()` so `/effort` changes propagate both to the app-server and to the locally cached session.
+- Preserve fork `Shift+Tab` reasoning speed toggle and `fast_default_opt_out` tracking while adding upstream `refresh_effective_service_tier` and the new `active_permission_profile` slot in `override_turn_context`.
+- Preserve fork `/btw` (StartBtw lightweight inline thread) dispatch ahead of upstream's combined `Side | Btw` empty-side-conversation handler.
+- Known follow-up: five `Fast` tests (`status_line_fast_mode_*`, `fast_status_indicator_requires_chatgpt_auth`, `/fast` slash-command flow, `user_turn_sends_standard_override_after_fast_is_turned_off`, `queued_fast_slash_applies_before_next_queued_message`) need updates because upstream gated `effective_service_tier` behind `Feature::FastMode` and the existing tests do not enable that feature in setup.
 
 ### 0.131.6 - 2026-05-22
 
