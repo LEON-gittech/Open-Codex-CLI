@@ -1,4 +1,5 @@
 use super::*;
+use codex_protocol::config_types::ServiceTier;
 use crate::bottom_pane::goal_status_indicator_line;
 use crate::chatwidget::rate_limits::NUDGE_MODEL_SLUG;
 use crate::chatwidget::rate_limits::get_limits_duration;
@@ -1640,8 +1641,9 @@ async fn commentary_completion_restores_status_indicator_before_exec_begin() {
 async fn fast_status_indicator_requires_chatgpt_auth() {
     let (mut chat, _rx, _op_rx) = make_chatwidget_manual(Some("gpt-5.4")).await;
     set_fast_mode_test_catalog(&mut chat);
+    chat.set_feature_enabled(Feature::FastMode, /*enabled*/ true);
     assert!(get_available_model(&chat, "gpt-5.4").supports_fast_mode());
-    chat.set_service_tier(Some("fast".to_string()));
+    chat.set_service_tier(Some(ServiceTier::Fast.request_value().to_string()));
 
     assert!(!chat.should_show_fast_status(chat.current_model(), chat.current_service_tier(),));
 
@@ -1657,7 +1659,7 @@ async fn fast_status_indicator_is_hidden_for_models_without_fast_support() {
     let (mut chat, _rx, _op_rx) = make_chatwidget_manual(Some("gpt-5.3-codex")).await;
     set_fast_mode_test_catalog(&mut chat);
     assert!(!get_available_model(&chat, "gpt-5.3-codex").supports_fast_mode());
-    chat.set_service_tier(Some("fast".to_string()));
+    chat.set_service_tier(Some(ServiceTier::Fast.request_value().to_string()));
     set_chatgpt_auth(&mut chat);
     set_fast_mode_test_catalog(&mut chat);
     assert!(!get_available_model(&chat, "gpt-5.3-codex").supports_fast_mode());
@@ -2318,12 +2320,13 @@ async fn interrupted_turn_clears_visible_running_hook() {
 #[tokio::test]
 async fn status_line_fast_mode_renders_on_and_off() {
     let (mut chat, _rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.set_feature_enabled(Feature::FastMode, /*enabled*/ true);
     chat.config.tui_status_line = Some(vec!["fast-mode".to_string()]);
 
     chat.refresh_status_line();
     assert_eq!(status_line_text(&chat), Some("Fast off".to_string()));
 
-    chat.set_service_tier(Some("fast".to_string()));
+    chat.set_service_tier(Some(ServiceTier::Fast.request_value().to_string()));
     chat.refresh_status_line();
     assert_eq!(status_line_text(&chat), Some("Fast on".to_string()));
 }
@@ -2336,7 +2339,7 @@ async fn status_line_fast_mode_footer_snapshot() {
     let (mut chat, _rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
     chat.show_welcome_banner = false;
     chat.config.tui_status_line = Some(vec!["fast-mode".to_string()]);
-    chat.set_service_tier(Some("fast".to_string()));
+    chat.set_service_tier(Some(ServiceTier::Fast.request_value().to_string()));
     chat.refresh_status_line();
 
     let width = 80;
@@ -2355,6 +2358,7 @@ async fn status_line_fast_mode_footer_snapshot() {
 async fn status_line_model_with_reasoning_includes_fast_for_fast_capable_models() {
     let (mut chat, _rx, _op_rx) = make_chatwidget_manual(Some("gpt-5.4")).await;
     set_fast_mode_test_catalog(&mut chat);
+    chat.set_feature_enabled(Feature::FastMode, /*enabled*/ true);
     assert!(get_available_model(&chat, "gpt-5.4").supports_fast_mode());
     chat.config.cwd = test_project_path().abs();
     chat.config.tui_status_line = Some(vec![
@@ -2363,7 +2367,7 @@ async fn status_line_model_with_reasoning_includes_fast_for_fast_capable_models(
         "current-dir".to_string(),
     ]);
     chat.set_reasoning_effort(Some(ReasoningEffortConfig::XHigh));
-    chat.set_service_tier(Some("fast".to_string()));
+    chat.set_service_tier(Some(ServiceTier::Fast.request_value().to_string()));
     set_chatgpt_auth(&mut chat);
     set_fast_mode_test_catalog(&mut chat);
     assert!(get_available_model(&chat, "gpt-5.4").supports_fast_mode());
@@ -2511,7 +2515,7 @@ async fn status_line_model_with_reasoning_fast_footer_snapshot() {
         "current-dir".to_string(),
     ]);
     chat.set_reasoning_effort(Some(ReasoningEffortConfig::XHigh));
-    chat.set_service_tier(Some("fast".to_string()));
+    chat.set_service_tier(Some(ServiceTier::Fast.request_value().to_string()));
     set_chatgpt_auth(&mut chat);
     set_fast_mode_test_catalog(&mut chat);
     assert!(get_available_model(&chat, "gpt-5.4").supports_fast_mode());
@@ -2545,7 +2549,7 @@ async fn status_line_model_with_reasoning_context_remaining_footer_snapshot() {
         "current-dir".to_string(),
     ]);
     chat.set_reasoning_effort(Some(ReasoningEffortConfig::XHigh));
-    chat.set_service_tier(Some("fast".to_string()));
+    chat.set_service_tier(Some(ServiceTier::Fast.request_value().to_string()));
     set_chatgpt_auth(&mut chat);
     set_fast_mode_test_catalog(&mut chat);
     assert!(get_available_model(&chat, "gpt-5.4").supports_fast_mode());
