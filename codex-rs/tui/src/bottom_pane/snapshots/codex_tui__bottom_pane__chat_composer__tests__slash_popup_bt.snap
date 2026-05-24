@@ -1,9 +1,10 @@
 ---
 source: tui/src/bottom_pane/chat_composer.rs
+assertion_line: 7851
 expression: terminal.backend()
 ---
-"                                                            "
+"────────────────────────────────────────────────────────────"
 "› /bt                                                       "
 "                                                            "
-"                                                            "
-"  /btw  start a side conversation in an ephemeral fork      "
+"────────────────────────────────────────────────────────────"
+"  /btw  ask a quick side question without switching threads "

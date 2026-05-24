@@ -1,10 +1,11 @@
 ---
 source: tui/src/app/tests.rs
+assertion_line: 3865
 expression: rendered
 ---
-╭────────────────────────────────────────────────────╮
-│ >_ OpenAI Codex (v<VERSION>)                       │
-│                                                    │
-│ model:     gpt-5.4 xhigh   fast   /model to change │
-│ directory: /tmp/project                            │
-╰────────────────────────────────────────────────────╯
+╭─────────────────────────────────────────────╮
+│ >_ OpenAI Codex (v<VERSION>)                │
+│                                             │
+│ model:     gpt-5.4 xhigh   /model to change │
+│ directory: /tmp/project                     │
+╰─────────────────────────────────────────────╯

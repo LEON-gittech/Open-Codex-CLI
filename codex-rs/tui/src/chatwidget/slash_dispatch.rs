@@ -300,9 +300,6 @@ impl ChatWidget {
             SlashCommand::Side | SlashCommand::Btw => {
                 self.request_empty_side_conversation(cmd);
             }
-            SlashCommand::Btw => {
-                self.add_info_message(BTW_USAGE.to_string(), /*hint*/ None);
-            }
             SlashCommand::Agent => {
                 self.open_agent_profiles_popup();
             }
@@ -847,24 +844,6 @@ impl ChatWidget {
                     self.bottom_pane.drain_pending_submission_state();
                 }
             }
-            SlashCommand::Side | SlashCommand::Btw if !trimmed.is_empty() => {
-                let Some(parent_thread_id) = self.thread_id else {
-                    let command = cmd.command();
-                    self.add_error_message(format!(
-                        "'/{command}' is unavailable before the session starts."
-                    ));
-                    return;
-                };
-                let user_message = self.prepared_inline_user_message(
-                    args,
-                    text_elements,
-                    local_images,
-                    remote_image_urls,
-                    mention_bindings,
-                    source,
-                );
-                self.request_side_conversation(parent_thread_id, Some(user_message));
-            }
             SlashCommand::Btw if !trimmed.is_empty() => {
                 let Some(parent_thread_id) = self.thread_id else {
                     self.add_error_message(
@@ -881,6 +860,23 @@ impl ChatWidget {
                     source,
                 );
                 self.request_btw_side_question(parent_thread_id, user_message);
+            }
+            SlashCommand::Side if !trimmed.is_empty() => {
+                let Some(parent_thread_id) = self.thread_id else {
+                    self.add_error_message(
+                        "'/side' is unavailable before the session starts.".to_string(),
+                    );
+                    return;
+                };
+                let user_message = self.prepared_inline_user_message(
+                    args,
+                    text_elements,
+                    local_images,
+                    remote_image_urls,
+                    mention_bindings,
+                    source,
+                );
+                self.request_side_conversation(parent_thread_id, Some(user_message));
             }
             SlashCommand::Review if !trimmed.is_empty() => {
                 self.submit_op(AppCommand::review(ReviewTarget::Custom {
