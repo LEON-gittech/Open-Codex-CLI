@@ -66,7 +66,7 @@ Fast-moving prompt packs, hooks, setup flows, and project policies are better ha
 | `/agent` and `/subagents` split | `/agent` lists agent profiles, while `/subagents` opens the subagent thread picker for live, resumable, and reviewable threads. | Slash commands | Closed review rows do not imply spawn quota is still held; quota availability is determined by active/interrupted runtime handles. |
 | Subagent completion wakeups | Completed subagent work wakes the parent turn without requiring manual wait/close. | Core completion events | Added/fixed around `8670c2c842`. |
 | Subagent quota reclamation | Completed subagents are reclaimed from spawn quota, and spawn performs opportunistic cleanup when quota is exhausted. | Subagent runtime, spawn path | Interrupted subagents remain active/resumable quota holders. Fixed by `5348fb6fcd`. |
-| Parallel-first subagent policy | Complex tasks are encouraged to use independent read-only exploration, review, validation, and release-check lanes. | `~/.codex/AGENTS.md`, `docs/parallel-first-agent-execution.md` | Instruction-policy feature, not a hardcoded scheduler. |
+| Parallel-first subagent policy | Complex tasks are encouraged to use independent read-only exploration, review, validation, and release-check lanes. | `~/.codex/AGENTS.md` (see [`docs/open-codex/`](docs/open-codex/) for the snippet + full policy doc) | Instruction-policy feature, not a hardcoded scheduler. |
 
 ### Update and release experience
 

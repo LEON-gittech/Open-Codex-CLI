@@ -55,6 +55,24 @@ The goal of **Open Codex CLI** is not to diverge for the sake of divergence. The
 - solve real Codex CLI usage problems I run into, whether they are bugs or features worth borrowing from Claude Code
 - keep improving the Codex CLI experience under `zellij` (**Fuck Off Tmux!**)
 
+## Fork Reference Docs
+
+Operator-facing reference material that ships with the fork (subagent
+delegation policy, `~/.codex/AGENTS.md` snippet, etc.) is collected under
+[`docs/open-codex/`](docs/open-codex/) so it stays separated from the
+upstream `docs/*.md` namespace and survives merges cleanly.
+
+| Topic | File |
+| --- | --- |
+| Index of fork reference docs | [`docs/open-codex/README.md`](docs/open-codex/README.md) |
+| Drop-in `~/.codex/AGENTS.md` snippet (contract-first subagent rules, per-query reasoning markers, `/btw` vs `/side` etiquette) | [`docs/open-codex/agents-md-snippet.md`](docs/open-codex/agents-md-snippet.md) |
+| Full contract-first subagent execution policy with decision procedure, lane counts, edit-ownership rules | [`docs/open-codex/parallel-first-agent-execution.md`](docs/open-codex/parallel-first-agent-execution.md) |
+
+The runtime mirror of the four-gate subagent spawn policy lives in
+`codex-rs/core/src/tools/handlers/multi_agents_spec.rs::SPAWN_AGENT_CONTRACT_GUIDANCE_V2`,
+so the same contract is injected into the model's `spawn_agent` tool
+description even when `~/.codex/AGENTS.md` is empty.
+
 ## Current Delta and Roadmap vs. Latest Upstream Codex CLI
 
 This fork is currently based on the latest upstream `openai/codex` and adds a small set of focused CLI improvements from recent fork-specific commits:
@@ -153,7 +171,7 @@ This is intended for "by the way" questions that are useful during work but shou
 
 ### 8. Parallel-first subagent planning policy
 
-Implemented through the user-scope `~/.codex/AGENTS.md` instruction layer, with an extracted repo example in [`docs/parallel-first-agent-execution.md`](docs/parallel-first-agent-execution.md):
+Implemented through the user-scope `~/.codex/AGENTS.md` instruction layer, with an extracted repo example in [`docs/open-codex/parallel-first-agent-execution.md`](docs/open-codex/parallel-first-agent-execution.md):
 
 - overrides Codex's default conservative stance against automatic agent spawning with an explicit, more aggressive subagent policy for complex work
 - classifies non-trivial work by independent investigation, review, test, docs, and validation axes before editing
@@ -359,6 +377,22 @@ Codex CLI 是开源的，但上游仓库当前对外部代码贡献采用 invita
 - 解决我在实际使用 Codex CLI 时遇到的体验问题，不管它们是 bug，还是值得从 Claude Code 借鉴过来的 feature
 - 持续优化 Codex CLI 在 `zellij` 下的使用体验（**Fuck Off Tmux!**）
 
+## Fork 参考文档
+
+fork 自有的运行规约（子代理委派策略、`~/.codex/AGENTS.md` 模板等）统一放在
+[`docs/open-codex/`](docs/open-codex/) 下，与上游 `docs/*.md` 命名空间分离，
+便于合 upstream 时不冲突，也便于用户单独引用。
+
+| 主题 | 文件 |
+| --- | --- |
+| fork 参考文档索引 | [`docs/open-codex/README.md`](docs/open-codex/README.md) |
+| `~/.codex/AGENTS.md` 即贴即用片段（contract-first 子代理规则、per-query reasoning 标记、`/btw` 与 `/side` 用法约定） | [`docs/open-codex/agents-md-snippet.md`](docs/open-codex/agents-md-snippet.md) |
+| 完整 contract-first 子代理执行策略（决策流程、lane 数量、edit ownership 规则） | [`docs/open-codex/parallel-first-agent-execution.md`](docs/open-codex/parallel-first-agent-execution.md) |
+
+四 gate 子代理 spawn 策略在运行时的镜像在
+`codex-rs/core/src/tools/handlers/multi_agents_spec.rs::SPAWN_AGENT_CONTRACT_GUIDANCE_V2`，
+所以即使用户没装 `~/.codex/AGENTS.md`，模型也能在 `spawn_agent` 工具描述里看到同样的契约。
+
 ## 当前相对最新 Upstream Codex CLI 的差异与路线图
 
 这个 fork 目前基于最新的 `openai/codex`，并在最近几条 fork 自有 commit 的基础上增加了几项聚焦的 CLI 改进：
@@ -457,7 +491,7 @@ Codex CLI 是开源的，但上游仓库当前对外部代码贡献采用 invita
 
 ### 8. Parallel-first subagent planning policy
 
-通过 user-scope `~/.codex/AGENTS.md` 指令层实现，并在 repo 中抽取了示例文件：[`docs/parallel-first-agent-execution.md`](docs/parallel-first-agent-execution.md)。
+通过 user-scope `~/.codex/AGENTS.md` 指令层实现，并在 repo 中抽取了示例文件：[`docs/open-codex/parallel-first-agent-execution.md`](docs/open-codex/parallel-first-agent-execution.md)。
 
 - 显式覆盖 Codex 原本对 automatic agent spawning 的保守/禁止姿态，为复杂任务启用更激进的 subagent policy
 - 在编辑前先按 independent investigation、review、test、docs、validation 等轴判断任务是否适合拆分
