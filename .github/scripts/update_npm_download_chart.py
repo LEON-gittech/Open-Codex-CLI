@@ -189,32 +189,30 @@ def svg_text(x, y, text, extra=""):
 
 
 def generate_svg(package_name, cumulative_rows):
-    # Scale width with bucket count so a 5-week chart isn't stretched across
-    # the same canvas as a 26-week one. Clamp to a min so the header text
-    # never wraps, and to the historical max (960) so long histories don't
-    # blow past the README column width.
-    per_bucket = 40
-    min_width = 560
-    max_width = 960
-    left = 70
-    right = 32
-    bucket_count = max(1, len(cumulative_rows))
-    width = max(min_width, min(max_width, left + right + per_bucket * bucket_count))
-    height = 300
-    top = 58
-    bottom = 56
-    chart_w = width - left - right
-    chart_h = height - top - bottom
+    # Portrait "stat card" sized to sit beside the unleashed banner in the
+    # README 8:2 row. The banner is ~16:9 at 760 wide → ~427 tall on render;
+    # this card's SVG is 400×900 so at the README's 190 display width it
+    # comes out ~427 tall and lines up with the banner edge.
+    width = 400
+    height = 900
+    pad = 32
+    chart_top = 360
+    chart_bottom = 760
+    chart_w = width - 2 * pad
+    chart_h = chart_bottom - chart_top
+
     max_downloads = max([downloads for _, downloads in cumulative_rows] or [0])
     upper = nice_upper_bound(max_downloads)
 
     def x_for(index):
-        if len(cumulative_rows) == 1:
-            return left + chart_w / 2.0
-        return left + (chart_w * index / float(len(cumulative_rows) - 1))
+        if len(cumulative_rows) <= 1:
+            return pad + chart_w / 2.0
+        return pad + (chart_w * index / float(len(cumulative_rows) - 1))
 
     def y_for(value):
-        return top + chart_h - (chart_h * value / float(upper))
+        if upper <= 0:
+            return chart_bottom
+        return chart_bottom - (chart_h * value / float(upper))
 
     points = []
     for index, (_, downloads) in enumerate(cumulative_rows):
@@ -225,26 +223,20 @@ def generate_svg(package_name, cumulative_rows):
     else:
         path = ""
 
+    # Horizontal grid lines spanning the card width.
     grid_lines = []
     for step in range(5):
         value = int(upper * step / 4)
         y = y_for(value)
         grid_lines.append(
-            '<line x1="{left}" y1="{y:.1f}" x2="{right_x}" y2="{y:.1f}" stroke="#243047" stroke-width="1" />'.format(
-                left=left,
+            '<line x1="{left}" y1="{y:.1f}" x2="{right}" y2="{y:.1f}" stroke="#243047" stroke-width="1" />'.format(
+                left=pad,
                 y=y,
-                right_x=width - right,
-            )
-        )
-        grid_lines.append(
-            svg_text(
-                18,
-                y + 4,
-                fmt_count(value),
-                'font-size="12" fill="#8b9ab8"',
+                right=width - pad,
             )
         )
 
+    # Date labels at start / middle / end of the trend.
     labels = []
     if cumulative_rows:
         label_indexes = sorted(
@@ -252,19 +244,24 @@ def generate_svg(package_name, cumulative_rows):
         )
         for index in label_indexes:
             start, _ = cumulative_rows[index]
+            anchor = "middle"
+            if index == 0:
+                anchor = "start"
+            elif index == len(cumulative_rows) - 1:
+                anchor = "end"
             labels.append(
                 svg_text(
                     x_for(index),
-                    height - 22,
+                    chart_bottom + 36,
                     "{} {}".format(start.strftime("%b"), start.day),
-                    'font-size="12" fill="#8b9ab8" text-anchor="middle"',
+                    'font-size="24" fill="#8b9ab8" text-anchor="{}"'.format(anchor),
                 )
             )
 
     dots = []
     for x, y, downloads in points:
         dots.append(
-            '<circle cx="{x:.1f}" cy="{y:.1f}" r="4" fill="#8b5cf6" stroke="#dbe7ff" stroke-width="2"><title>{downloads} downloads</title></circle>'.format(
+            '<circle cx="{x:.1f}" cy="{y:.1f}" r="8" fill="#8b5cf6" stroke="#dbe7ff" stroke-width="3"><title>{downloads} downloads</title></circle>'.format(
                 x=x,
                 y=y,
                 downloads=downloads,
@@ -282,9 +279,9 @@ def generate_svg(package_name, cumulative_rows):
 
     return """<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}" role="img" aria-labelledby="title desc">
   <title id="title">{package_name} cumulative npm downloads</title>
-  <desc id="desc">Cumulative npm downloads sampled at weekly boundaries across the last {weeks} complete 7-day periods. Latest cumulative total: {latest} downloads.</desc>
+  <desc id="desc">Cumulative npm downloads sampled at weekly boundaries across {weeks} complete 7-day periods. Latest cumulative total: {latest} downloads.</desc>
   <defs>
-    <linearGradient id="line" x1="0" x2="1" y1="0" y2="0">
+    <linearGradient id="line" x1="0" x2="0" y1="1" y2="0">
       <stop offset="0%" stop-color="#22d3ee" />
       <stop offset="55%" stop-color="#8b5cf6" />
       <stop offset="100%" stop-color="#f472b6" />
@@ -294,17 +291,20 @@ def generate_svg(package_name, cumulative_rows):
       <stop offset="100%" stop-color="#8b5cf6" stop-opacity="0" />
     </linearGradient>
   </defs>
-  <rect width="{width}" height="{height}" rx="16" fill="#0b1020" />
-  <rect x="1" y="1" width="{inner_w}" height="{inner_h}" rx="15" fill="none" stroke="#26324a" />
-  <text x="{left}" y="30" font-family="Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="18" font-weight="700" fill="#f8fafc">npm total downloads</text>
-  <text x="{left}" y="50" font-family="Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="12" fill="#8b9ab8">{package_name} · cumulative {latest_fmt} · +{delta_fmt} over the last {weeks} periods · through {through}</text>
+  <rect width="{width}" height="{height}" rx="22" fill="#0b1020" />
+  <rect x="1" y="1" width="{inner_w}" height="{inner_h}" rx="21" fill="none" stroke="#26324a" />
   <g font-family="Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif">
+    <text x="{cx}" y="80" font-size="32" font-weight="700" fill="#f8fafc" text-anchor="middle">npm downloads</text>
+    <text x="{cx}" y="118" font-size="22" fill="#8b9ab8" text-anchor="middle">cumulative · {weeks} weeks</text>
+    <text x="{cx}" y="240" font-size="96" font-weight="800" fill="#f8fafc" text-anchor="middle">{latest_fmt}</text>
+    <text x="{cx}" y="290" font-size="24" fill="#22d3ee" text-anchor="middle">+{delta_fmt} since {first_fmt}</text>
     {grid}
-    <line x1="{left}" y1="{baseline:.1f}" x2="{right_x}" y2="{baseline:.1f}" stroke="#3a4867" stroke-width="1.2" />
-    <path d="{area_path} L {last_x:.1f} {baseline:.1f} L {left:.1f} {baseline:.1f} Z" fill="url(#fill)" />
-    <path d="{path}" fill="none" stroke="url(#line)" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" />
+    <line x1="{pad}" y1="{baseline:.1f}" x2="{right}" y2="{baseline:.1f}" stroke="#3a4867" stroke-width="1.4" />
+    <path d="{area_path} L {last_x:.1f} {baseline:.1f} L {first_x:.1f} {baseline:.1f} Z" fill="url(#fill)" />
+    <path d="{path}" fill="none" stroke="url(#line)" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" />
     {dots}
     {labels}
+    <text x="{cx}" y="{footer_y}" font-size="22" fill="#5d6b88" text-anchor="middle">through {through}</text>
   </g>
 </svg>
 """.format(
@@ -317,14 +317,18 @@ def generate_svg(package_name, cumulative_rows):
         latest=latest,
         latest_fmt=fmt_count(latest),
         delta_fmt=fmt_count(window_delta),
+        first_fmt=fmt_count(first),
         through=through,
-        left=left,
-        baseline=top + chart_h,
-        right_x=width - right,
+        pad=pad,
+        cx=width / 2.0,
+        baseline=chart_bottom,
+        right=width - pad,
+        footer_y=height - 32,
         grid="\n    ".join(grid_lines),
         path=path,
         area_path=path,
-        last_x=points[-1][0] if points else left,
+        first_x=points[0][0] if points else pad,
+        last_x=points[-1][0] if points else pad,
         dots="\n    ".join(dots),
         labels="\n    ".join(labels),
     )
