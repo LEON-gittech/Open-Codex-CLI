@@ -18,7 +18,7 @@
 </p>
 
 <p align="center">
-  <a href="https://www.npmjs.com/package/@leonw24/open-codex"><img src="https://raw.githubusercontent.com/LEON-gittech/Open-Codex-CLI/main/.github/npm-total-downloads.svg" alt="Open Codex CLI cumulative npm downloads chart" width="960" /></a>
+  <a href="https://www.npmjs.com/package/@leonw24/open-codex"><img src="https://raw.githubusercontent.com/LEON-gittech/Open-Codex-CLI/main/.github/npm-total-downloads.svg" alt="Open Codex CLI cumulative npm downloads chart" /></a>
 </p>
 
 <p align="center">

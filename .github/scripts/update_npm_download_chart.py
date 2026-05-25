@@ -189,10 +189,18 @@ def svg_text(x, y, text, extra=""):
 
 
 def generate_svg(package_name, cumulative_rows):
-    width = 960
-    height = 300
+    # Scale width with bucket count so a 5-week chart isn't stretched across
+    # the same canvas as a 26-week one. Clamp to a min so the header text
+    # never wraps, and to the historical max (960) so long histories don't
+    # blow past the README column width.
+    per_bucket = 40
+    min_width = 560
+    max_width = 960
     left = 70
     right = 32
+    bucket_count = max(1, len(cumulative_rows))
+    width = max(min_width, min(max_width, left + right + per_bucket * bucket_count))
+    height = 300
     top = 58
     bottom = 56
     chart_w = width - left - right
