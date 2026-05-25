@@ -97,10 +97,20 @@ def fetch_daily_downloads_since(package_name, since):
 
 def aggregate_cumulative(daily_rows, window_weeks):
     """Bucket daily rows into 7-day periods of the visible window and emit
-    the running total at each bucket boundary, including history before
-    the window so the line starts at the lifetime cumulative count."""
+    the running total at each bucket boundary.
+
+    Walks every bucket back to the earliest known day (no artificial floor at
+    `window_weeks`), then drops any leading buckets whose cumulative total is
+    still zero. The visual line therefore starts at the first week the
+    package saw any downloads — no flat run of zeros before launch — and
+    grows monotonically from there.
+
+    When real history is longer than `window_weeks`, the displayed range is
+    clamped to the most recent `window_weeks` periods so the dashboard stays
+    readable; the displayed line still starts at the lifetime baseline
+    because the running total carries pre-window downloads.
+    """
     end = latest_complete_period_end()
-    first_visible = end - timedelta(days=(window_weeks * 7) - 1)
 
     by_day = {}
     for row in daily_rows:
@@ -110,15 +120,20 @@ def aggregate_cumulative(daily_rows, window_weeks):
             continue
         by_day[day] = int(row.get("downloads", 0))
 
-    pre_total = 0
-    for day, count in by_day.items():
-        if day < first_visible:
-            pre_total += count
+    if not by_day:
+        return []
+
+    earliest_day = min(by_day)
+    # Align to a Monday-anchored 7-day bucket whose end day matches `end` so
+    # the rightmost label is always the latest complete period.
+    total_days = (end - earliest_day).days + 1
+    bucket_count = max(1, math.ceil(total_days / 7.0))
+    first_bucket_start = end - timedelta(days=bucket_count * 7 - 1)
 
     buckets = []
-    running = pre_total
-    for i in range(window_weeks):
-        start = first_visible + timedelta(days=i * 7)
+    running = 0
+    for i in range(bucket_count):
+        start = first_bucket_start + timedelta(days=i * 7)
         bucket_end = start + timedelta(days=6)
         bucket_sum = sum(
             count
@@ -127,7 +142,19 @@ def aggregate_cumulative(daily_rows, window_weeks):
         )
         running += bucket_sum
         buckets.append((start, running))
-    return buckets
+
+    # Drop leading buckets that are still at zero (pre-launch padding).
+    first_nonzero = next(
+        (idx for idx, (_, total) in enumerate(buckets) if total > 0),
+        len(buckets),
+    )
+    visible = buckets[first_nonzero:]
+
+    # If real history exceeds the trend window, keep only the most recent
+    # `window_weeks` buckets to keep the chart readable.
+    if len(visible) > window_weeks:
+        visible = visible[-window_weeks:]
+    return visible
 
 
 def nice_upper_bound(value):
