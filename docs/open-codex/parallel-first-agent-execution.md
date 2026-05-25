@@ -8,6 +8,8 @@ The policy intentionally avoids "parallel for its own sake". It makes subagent u
 
 For non-trivial tasks, first decide whether subagents would produce independent results that the main lane will actually consume. Do not spawn simply because the task is large.
 
+Subagent spawning does not require an explicit user request. A direct request for parallel work is a strong positive trigger, but the normal decision is still contract-based: independent, consumable, bounded, and worth the coordination cost.
+
 Prefer:
 
 - local sequential work for cheap discovery and immediate blockers;
@@ -20,7 +22,7 @@ Do not parallelize tightly coupled edits.
 Do not let multiple agents edit the same files.
 Spawn the smallest useful number of subagents: usually 0 for local tasks, 1 for one bounded evidence lane, 2-3 only for complex tasks with distinct outputs, and 4-6 only for broad audits/reviews.
 
-If independent investigation axes exist and no subagents are spawned, justify sequential execution only when the user asked about parallelization or the choice changes the plan.
+Do not use "the user did not explicitly ask for subagents" as a no-spawn reason. If independent investigation axes exist and no subagents are spawned, justify sequential execution only when the user asked about parallelization or the choice changes the plan.
 
 ## Purpose
 
@@ -79,6 +81,13 @@ For every non-trivial task, do the following internally before acting:
 10. Synthesize evidence.
 11. Apply the smallest safe change.
 12. Validate against the acceptance criteria.
+
+When inspecting background terminals or processes after an interruption, do not
+stop them merely because they look unrelated or consume CPU. First determine
+ownership and whether they block the active request by holding a required lock,
+port, artifact, disk budget, or by polluting the target output. Stop them only
+when they belong to the current task, directly block required work, risk
+corrupting the active artifact, or the user explicitly asks.
 
 ## How Many Subagents to Spawn
 

@@ -105,6 +105,7 @@ impl ChatWidget {
 
     pub(super) fn on_agent_message_delta(&mut self, delta: String) {
         self.restore_foreground_turn_activity();
+        self.transcript.saw_agent_output_this_turn = true;
         self.handle_streaming_delta(delta);
     }
 
@@ -113,6 +114,7 @@ impl ChatWidget {
             return;
         }
         self.restore_foreground_turn_activity();
+        self.transcript.saw_agent_output_this_turn = true;
         if !self.transcript.plan_item_active {
             self.transcript.plan_item_active = true;
             self.transcript.plan_delta_buffer.clear();
@@ -190,6 +192,7 @@ impl ChatWidget {
 
     pub(super) fn on_agent_reasoning_delta(&mut self, delta: String) {
         self.restore_foreground_turn_activity();
+        self.transcript.saw_agent_output_this_turn = true;
         // For reasoning deltas, do not stream to history. Accumulate the
         // current reasoning block and extract the first bold element
         // (between **/**) as the chunk header. Show this header as status.

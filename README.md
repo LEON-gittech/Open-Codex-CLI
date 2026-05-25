@@ -55,24 +55,6 @@ The goal of **Open Codex CLI** is not to diverge for the sake of divergence. The
 - solve real Codex CLI usage problems I run into, whether they are bugs or features worth borrowing from Claude Code
 - keep improving the Codex CLI experience under `zellij` (**Fuck Off Tmux!**)
 
-## Fork Reference Docs
-
-Operator-facing reference material that ships with the fork (subagent
-delegation policy, `~/.codex/AGENTS.md` snippet, etc.) is collected under
-[`docs/open-codex/`](docs/open-codex/) so it stays separated from the
-upstream `docs/*.md` namespace and survives merges cleanly.
-
-| Topic | File |
-| --- | --- |
-| Index of fork reference docs | [`docs/open-codex/README.md`](docs/open-codex/README.md) |
-| Drop-in `~/.codex/AGENTS.md` snippet (contract-first subagent rules, per-query reasoning markers, `/btw` vs `/side` etiquette) | [`docs/open-codex/agents-md-snippet.md`](docs/open-codex/agents-md-snippet.md) |
-| Full contract-first subagent execution policy with decision procedure, lane counts, edit-ownership rules | [`docs/open-codex/parallel-first-agent-execution.md`](docs/open-codex/parallel-first-agent-execution.md) |
-
-The runtime mirror of the four-gate subagent spawn policy lives in
-`codex-rs/core/src/tools/handlers/multi_agents_spec.rs::SPAWN_AGENT_CONTRACT_GUIDANCE_V2`,
-so the same contract is injected into the model's `spawn_agent` tool
-description even when `~/.codex/AGENTS.md` is empty.
-
 ## Current Delta and Roadmap vs. Latest Upstream Codex CLI
 
 This fork is currently based on the latest upstream `openai/codex` and adds a small set of focused CLI improvements from recent fork-specific commits:
@@ -185,6 +167,30 @@ This is an instruction-policy feature rather than a hardcoded scheduler: it enab
 
 From recent fork-specific TUI changes:
 
+This section has two paired layers: the user-facing spawn policy that decides
+when subagents should exist, and the runtime/TUI behavior that lets those
+subagents run without blocking normal chat.
+
+The user-scope subagent spawn policy guide lives under
+[`docs/open-codex/`](docs/open-codex/) so it stays separate from upstream
+`docs/*.md` during merges:
+
+Subagent spawning does not require an explicit user request. Explicit
+parallel/subagent requests are strong positive triggers; the normal gate is
+whether a lane is independent, consumable, bounded, and worth the coordination
+cost.
+
+| Guide | Purpose |
+| --- | --- |
+| [`docs/open-codex/README.md`](docs/open-codex/README.md) | Index for the Open Codex user-scope subagent policy docs and their runtime mirrors. |
+| [`docs/open-codex/agents-md-snippet.md`](docs/open-codex/agents-md-snippet.md) | Drop-in `~/.codex/AGENTS.md` snippet for the contract-first spawn gates, small stable profiles, per-query reasoning markers, and `/btw` vs `/side` etiquette. |
+| [`docs/open-codex/parallel-first-agent-execution.md`](docs/open-codex/parallel-first-agent-execution.md) | Full policy rationale and decision procedure: when to spawn, how many lanes to use, when to wait, and how to keep edit ownership bounded. |
+
+The runtime mirror of the four-gate spawn policy lives in
+`codex-rs/core/src/tools/handlers/multi_agents_spec.rs::SPAWN_AGENT_CONTRACT_GUIDANCE_V2`,
+so the same contract is injected into the model's `spawn_agent` tool
+description even when `~/.codex/AGENTS.md` is empty.
+
 The feature is centered on two background lanes:
 
 - **Terminal commands** — long-running terminal sessions continue in the background instead of keeping the main turn blocked by foreground waiting or polling. Empty `command/exec/write` interactions keep the terminal backgrounded, so normal chat input can be submitted while the shell process continues.
@@ -195,6 +201,7 @@ The shared interaction model is:
 - `Ctrl+B` sends the current terminal activity to the background while keeping streamed output available.
 - `Down` opens a live task panel with separate `Tasks`, `Subagents`, and `Terminals` sections.
 - `Enter` opens details, `x` stops the selected stoppable background item, and `Esc`/`Left` closes the panel.
+- background terminals/processes should not be stopped merely because they look unrelated or consume CPU; stop only work that belongs to the active task, blocks required resources, risks corrupting the active artifact, or was explicitly requested to be stopped.
 - the status line keeps foreground `Working` state separate from background subagent/terminal counts.
 - terminal details show runtime and recent output; subagent details show role, task, status, runtime, progress, and task-boundary context.
 - `/agent` shows available agent profiles, while `/subagents` opens the subagent thread picker/switching workflow for live, resumable, and closed-but-reviewable threads.
@@ -377,22 +384,6 @@ Codex CLI 是开源的，但上游仓库当前对外部代码贡献采用 invita
 - 解决我在实际使用 Codex CLI 时遇到的体验问题，不管它们是 bug，还是值得从 Claude Code 借鉴过来的 feature
 - 持续优化 Codex CLI 在 `zellij` 下的使用体验（**Fuck Off Tmux!**）
 
-## Fork 参考文档
-
-fork 自有的运行规约（子代理委派策略、`~/.codex/AGENTS.md` 模板等）统一放在
-[`docs/open-codex/`](docs/open-codex/) 下，与上游 `docs/*.md` 命名空间分离，
-便于合 upstream 时不冲突，也便于用户单独引用。
-
-| 主题 | 文件 |
-| --- | --- |
-| fork 参考文档索引 | [`docs/open-codex/README.md`](docs/open-codex/README.md) |
-| `~/.codex/AGENTS.md` 即贴即用片段（contract-first 子代理规则、per-query reasoning 标记、`/btw` 与 `/side` 用法约定） | [`docs/open-codex/agents-md-snippet.md`](docs/open-codex/agents-md-snippet.md) |
-| 完整 contract-first 子代理执行策略（决策流程、lane 数量、edit ownership 规则） | [`docs/open-codex/parallel-first-agent-execution.md`](docs/open-codex/parallel-first-agent-execution.md) |
-
-四 gate 子代理 spawn 策略在运行时的镜像在
-`codex-rs/core/src/tools/handlers/multi_agents_spec.rs::SPAWN_AGENT_CONTRACT_GUIDANCE_V2`，
-所以即使用户没装 `~/.codex/AGENTS.md`，模型也能在 `spawn_agent` 工具描述里看到同样的契约。
-
 ## 当前相对最新 Upstream Codex CLI 的差异与路线图
 
 这个 fork 目前基于最新的 `openai/codex`，并在最近几条 fork 自有 commit 的基础上增加了几项聚焦的 CLI 改进：
@@ -505,6 +496,27 @@ fork 自有的运行规约（子代理委派策略、`~/.codex/AGENTS.md` 模板
 
 来自最近几条 fork 自有 TUI 改动：
 
+这一段分成两层：先是用户侧的 subagent spawn policy，决定什么时候应该 spawn
+subagent；再是 runtime/TUI 层，保证这些 subagent 可以非阻塞运行、可见、可管理。
+
+用户侧 subagent spawn policy guide 统一放在
+[`docs/open-codex/`](docs/open-codex/) 下，与上游 `docs/*.md` 命名空间分离，
+便于合 upstream 时不冲突，也便于用户单独引用：
+
+spawn subagent 不需要用户显式要求。用户显式要求 parallel/subagent 只是强触发；
+常规判断标准仍然是该 lane 是否 independent、consumable、bounded，并且值得付出
+coordination cost。
+
+| Guide | 用途 |
+| --- | --- |
+| [`docs/open-codex/README.md`](docs/open-codex/README.md) | Open Codex 用户侧 subagent policy 文档索引，以及它们和 runtime mirror 的对应关系。 |
+| [`docs/open-codex/agents-md-snippet.md`](docs/open-codex/agents-md-snippet.md) | 可直接贴进 `~/.codex/AGENTS.md` 的片段，覆盖 contract-first spawn gates、小而稳定的 profile 集合、per-query reasoning 标记，以及 `/btw` 与 `/side` 的使用约定。 |
+| [`docs/open-codex/parallel-first-agent-execution.md`](docs/open-codex/parallel-first-agent-execution.md) | 完整策略说明：什么时候 spawn、spawn 多少 lanes、什么时候必须等待结果、如何保持 edit ownership 有边界。 |
+
+四 gate 子代理 spawn 策略在运行时的镜像在
+`codex-rs/core/src/tools/handlers/multi_agents_spec.rs::SPAWN_AGENT_CONTRACT_GUIDANCE_V2`，
+所以即使用户没装 `~/.codex/AGENTS.md`，模型也能在 `spawn_agent` 工具描述里看到同样的契约。
+
 这个能力围绕两个 background lanes 展开：
 
 - **Terminal commands** — 长时间运行的 terminal session 会进入后台继续执行，不再通过前台 waiting / polling 阻塞主 turn。空的 `command/exec/write` 交互会保持 terminal backgrounded，因此 shell process 继续运行时也可以正常提交新的聊天输入。
@@ -515,6 +527,7 @@ fork 自有的运行规约（子代理委派策略、`~/.codex/AGENTS.md` 模板
 - `Ctrl+B` 把当前 terminal activity 送到后台，同时保留后续 streamed output。
 - `Down` 打开实时 task panel，并区分 `Tasks`、`Subagents`、`Terminals`。
 - `Enter` 打开详情，`x` 停止当前选中的 stoppable 后台项，`Esc`/`Left` 关闭 panel。
+- 不应该仅仅因为 background terminal/process 看起来和当前 query 无关或者占 CPU 就停止它；只有它属于当前任务、阻塞必要资源、可能污染/破坏当前 artifact，或者用户明确要求停止时才停。
 - status line 会把前台 `Working` 状态和后台 subagent/terminal 数量分开显示。
 - terminal detail 展示运行时间和最近输出；subagent detail 展示 role、task、status、运行时间、progress 和任务边界信息。
 - `/agent` 用于查看可用 agent profiles，`/subagents` 打开 subagent thread picker / 切换工作流，覆盖 live、resumable、以及 closed-but-reviewable threads。

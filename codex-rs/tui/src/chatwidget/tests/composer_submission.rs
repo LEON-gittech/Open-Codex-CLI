@@ -1020,6 +1020,57 @@ async fn pending_steer_esc_does_not_steal_vim_insert_escape() {
 }
 
 #[tokio::test]
+async fn esc_rolls_back_submitted_prompt_after_turn_started_before_output() {
+    let (mut chat, _rx, mut op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.thread_id = Some(ThreadId::new());
+    set_chatgpt_auth(&mut chat);
+    let prompt = "edit this before the model speaks";
+
+    chat.bottom_pane
+        .set_composer_text(prompt.to_string(), Vec::new(), Vec::new());
+    chat.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    let _ = next_submit_op(&mut op_rx);
+    handle_turn_started(&mut chat, "turn-1");
+
+    chat.handle_key_event(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+
+    next_interrupt_op(&mut op_rx);
+    assert_eq!(chat.bottom_pane.composer_text(), prompt);
+}
+
+#[tokio::test]
+async fn esc_after_agent_output_interrupts_without_rolling_back_prompt() {
+    let (mut chat, mut rx, mut op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.thread_id = Some(ThreadId::new());
+    set_chatgpt_auth(&mut chat);
+
+    chat.bottom_pane.set_composer_text(
+        "do not restore after partial output".to_string(),
+        Vec::new(),
+        Vec::new(),
+    );
+    chat.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    let _ = next_submit_op(&mut op_rx);
+    handle_turn_started(&mut chat, "turn-1");
+    chat.on_agent_message_delta("partial answer".to_string());
+    chat.bottom_pane.set_task_running(/*running*/ true);
+
+    chat.handle_key_event(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+
+    loop {
+        match rx.try_recv() {
+            Ok(AppEvent::CodexOp(Op::Interrupt)) => break,
+            Ok(_) => continue,
+            Err(TryRecvError::Empty) => panic!("expected interrupt app event but queue was empty"),
+            Err(TryRecvError::Disconnected) => {
+                panic!("expected interrupt app event but channel closed")
+            }
+        }
+    }
+    assert_eq!(chat.bottom_pane.composer_text(), "");
+}
+
+#[tokio::test]
 async fn restore_thread_input_state_syncs_sleep_inhibitor_state() {
     let (mut chat, _rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
     chat.set_feature_enabled(Feature::PreventIdleSleep, /*enabled*/ true);

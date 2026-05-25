@@ -1,8 +1,8 @@
 use super::*;
-use codex_protocol::config_types::ServiceTier;
 use crate::bottom_pane::goal_status_indicator_line;
 use crate::chatwidget::rate_limits::NUDGE_MODEL_SLUG;
 use crate::chatwidget::rate_limits::get_limits_duration;
+use codex_protocol::config_types::ServiceTier;
 use pretty_assertions::assert_eq;
 use ratatui::backend::TestBackend;
 use serial_test::serial;

@@ -94,6 +94,13 @@ Fast-moving prompt packs, hooks, setup flows, and project policies are better ha
 
 ## Release Notes
 
+### 0.133.2 - 2026-05-25
+
+- Extend Claude-style Esc rollback through the `TurnStarted`-before-first-output window: if the model has not emitted assistant text, reasoning, plan output, or tool/command activity yet, Esc restores the submitted prompt to the composer and interrupts the turn.
+- Keep Esc interrupt semantics after output begins: once any assistant output or work activity appears, Esc remains interrupt-only and does not silently restore/clear partial responses.
+- Clarify the Open Codex subagent spawn policy: explicit user requests for parallel/subagent work are strong triggers, but not prerequisites; the real gate is whether a lane is independent, consumable, bounded, and worth the coordination cost.
+- Document the background terminal/process ownership rule: do not stop unrelated work merely because it consumes CPU; stop only current-task-owned, blocking, artifact-risking, or explicitly requested work.
+
 ### 0.133.1 - 2026-05-25
 
 - Match Claude Code's "treat the query as not sent" behavior: while a user prompt is awaiting `TurnStarted` from core, pressing Esc now rolls the prompt text back into the composer in addition to issuing the interrupt, so the user can edit and resubmit without retyping.

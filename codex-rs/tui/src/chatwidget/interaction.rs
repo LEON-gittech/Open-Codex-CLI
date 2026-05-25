@@ -118,18 +118,29 @@ impl ChatWidget {
             return;
         }
 
+        // Pre-response rollback window. Two conditions count as "model has
+        // not started replying yet":
+        //   1. The user just submitted and core has not even acked with
+        //      `TurnStarted` (`user_turn_pending_start`).
+        //   2. The turn is running but no agent text, reasoning, plan delta,
+        //      or tool/command activity has surfaced yet.
+        // Both windows treat Esc as "this query was never sent": restore
+        // the prompt to the composer (Claude Code parity) and interrupt the
+        // pending turn. Once the model has produced *any* output we fall
+        // through to the normal interrupt-only path so partial replies are
+        // not silently discarded.
+        let agent_turn_in_flight =
+            self.input_queue.user_turn_pending_start || self.turn_lifecycle.agent_turn_running;
+        let agent_produced_output =
+            self.transcript.saw_agent_output_this_turn || self.transcript.had_work_activity;
         if matches!(key_event.code, KeyCode::Esc)
             && matches!(key_event.kind, KeyEventKind::Press | KeyEventKind::Repeat)
-            && self.input_queue.user_turn_pending_start
+            && agent_turn_in_flight
+            && !agent_produced_output
             && self.bottom_pane.composer_is_empty()
             && self.bottom_pane.no_modal_or_popup_active()
             && !self.should_handle_vim_insert_escape(key_event)
         {
-            // Pre-response rollback: the user just submitted but the model
-            // has not started its turn yet. Treat the query as "not sent" —
-            // restore the prompt to the composer (Claude Code parity) before
-            // sending the interrupt, so the user can edit and resubmit
-            // without losing the typed text.
             self.rollback_pending_user_message_to_composer();
             self.submit_op(AppCommand::interrupt());
             return;

@@ -33,6 +33,11 @@ pub(super) struct TranscriptState {
     pub(super) needs_final_message_separator: bool,
     /// Whether the current turn performed "work" (exec commands, MCP tool calls, patch applications).
     pub(super) had_work_activity: bool,
+    /// Whether the current turn has produced assistant text, reasoning, or a
+    /// plan delta. The pre-response Esc rollback combines this with work
+    /// activity to decide whether the prompt should still be treated as "not
+    /// sent".
+    pub(super) saw_agent_output_this_turn: bool,
     /// Whether the current turn emitted a plan update.
     pub(super) saw_plan_update_this_turn: bool,
     /// Whether the current turn emitted a proposed plan item that has not been superseded by a
@@ -111,6 +116,7 @@ impl TranscriptState {
         self.saw_plan_update_this_turn = false;
         self.saw_plan_item_this_turn = false;
         self.had_work_activity = false;
+        self.saw_agent_output_this_turn = false;
         self.latest_proposed_plan_markdown = None;
         self.plan_delta_buffer.clear();
         self.plan_item_active = false;

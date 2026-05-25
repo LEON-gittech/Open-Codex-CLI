@@ -22,6 +22,9 @@ For non-trivial work, before editing or spawning anything, decide whether
 subagents would produce independent results the main lane will actually
 consume. Do not spawn simply because the task is large.
 
+The user does not need to explicitly ask for subagents. Treat an explicit
+request for parallel work as a strong positive trigger, not as a prerequisite.
+
 Spawn only when every gate passes:
 
 - **Independent** — the work can proceed without sharing mutable state with
@@ -49,6 +52,11 @@ in one implementation lane unless edit boundaries are clearly disjoint.
 After spawning, do not cross the named consumer decision until you have
 consumed the result or explicitly cancelled the lane. The main lane stays
 responsible for synthesis, verification, and the final user-facing answer.
+
+Do not stop or kill background terminals/processes merely because they look
+unrelated or consume CPU. Stop them only when they belong to the current task,
+directly block required work, risk corrupting the active artifact, or the user
+explicitly asks.
 
 ## Per-query reasoning markers
 
