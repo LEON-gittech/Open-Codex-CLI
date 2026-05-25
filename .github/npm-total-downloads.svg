@@ -15,26 +15,26 @@
   <rect width="400" height="900" rx="22" fill="#0b1020" />
   <rect x="1" y="1" width="398" height="898" rx="21" fill="none" stroke="#26324a" />
   <g font-family="Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif">
-    <text x="200.0" y="80" font-size="32" font-weight="700" fill="#f8fafc" text-anchor="middle">npm downloads</text>
-    <text x="200.0" y="118" font-size="22" fill="#8b9ab8" text-anchor="middle">cumulative · 5 weeks</text>
-    <text x="200.0" y="240" font-size="96" font-weight="800" fill="#f8fafc" text-anchor="middle">10.3k</text>
-    <text x="200.0" y="290" font-size="24" fill="#22d3ee" text-anchor="middle">+10.3k since 18</text>
-    <line x1="32" y1="760.0" x2="368" y2="760.0" stroke="#243047" stroke-width="1" />
-    <line x1="32" y1="660.0" x2="368" y2="660.0" stroke="#243047" stroke-width="1" />
-    <line x1="32" y1="560.0" x2="368" y2="560.0" stroke="#243047" stroke-width="1" />
-    <line x1="32" y1="460.0" x2="368" y2="460.0" stroke="#243047" stroke-width="1" />
-    <line x1="32" y1="360.0" x2="368" y2="360.0" stroke="#243047" stroke-width="1" />
-    <line x1="32" y1="760.0" x2="368" y2="760.0" stroke="#3a4867" stroke-width="1.4" />
-    <path d="M 32.0 759.4 L 116.0 727.2 L 200.0 638.4 L 284.0 479.3 L 368.0 395.4 L 368.0 760.0 L 32.0 760.0 Z" fill="url(#fill)" />
-    <path d="M 32.0 759.4 L 116.0 727.2 L 200.0 638.4 L 284.0 479.3 L 368.0 395.4" fill="none" stroke="url(#line)" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" />
-    <circle cx="32.0" cy="759.4" r="8" fill="#8b5cf6" stroke="#dbe7ff" stroke-width="3"><title>18 downloads</title></circle>
-    <circle cx="116.0" cy="727.2" r="8" fill="#8b5cf6" stroke="#dbe7ff" stroke-width="3"><title>927 downloads</title></circle>
-    <circle cx="200.0" cy="638.4" r="8" fill="#8b5cf6" stroke="#dbe7ff" stroke-width="3"><title>3433 downloads</title></circle>
-    <circle cx="284.0" cy="479.3" r="8" fill="#8b5cf6" stroke="#dbe7ff" stroke-width="3"><title>7928 downloads</title></circle>
-    <circle cx="368.0" cy="395.4" r="8" fill="#8b5cf6" stroke="#dbe7ff" stroke-width="3"><title>10296 downloads</title></circle>
-    <text x="32.0" y="796" font-size="24" fill="#8b9ab8" text-anchor="start">Apr 20</text>
-    <text x="200.0" y="796" font-size="24" fill="#8b9ab8" text-anchor="middle">May 4</text>
-    <text x="368.0" y="796" font-size="24" fill="#8b9ab8" text-anchor="end">May 18</text>
-    <text x="200.0" y="868" font-size="22" fill="#5d6b88" text-anchor="middle">through 2026-05-24</text>
+    <text x="200.0" y="60" font-size="32" font-weight="700" fill="#f8fafc" text-anchor="middle">npm downloads</text>
+    <text x="200.0" y="98" font-size="22" fill="#8b9ab8" text-anchor="middle">cumulative · 5 weeks</text>
+    <line x1="32" y1="730.0" x2="368" y2="730.0" stroke="#243047" stroke-width="1" />
+    <line x1="32" y1="580.0" x2="368" y2="580.0" stroke="#243047" stroke-width="1" />
+    <line x1="32" y1="430.0" x2="368" y2="430.0" stroke="#243047" stroke-width="1" />
+    <line x1="32" y1="280.0" x2="368" y2="280.0" stroke="#243047" stroke-width="1" />
+    <line x1="32" y1="130.0" x2="368" y2="130.0" stroke="#243047" stroke-width="1" />
+    <line x1="32" y1="730.0" x2="368" y2="730.0" stroke="#3a4867" stroke-width="1.4" />
+    <path d="M 32.0 729.0 L 116.0 680.8 L 200.0 547.7 L 284.0 308.9 L 368.0 183.1 L 368.0 730.0 L 32.0 730.0 Z" fill="url(#fill)" />
+    <path d="M 32.0 729.0 L 116.0 680.8 L 200.0 547.7 L 284.0 308.9 L 368.0 183.1" fill="none" stroke="url(#line)" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" />
+    <circle cx="32.0" cy="729.0" r="8" fill="#8b5cf6" stroke="#dbe7ff" stroke-width="3"><title>18 downloads</title></circle>
+    <circle cx="116.0" cy="680.8" r="8" fill="#8b5cf6" stroke="#dbe7ff" stroke-width="3"><title>927 downloads</title></circle>
+    <circle cx="200.0" cy="547.7" r="8" fill="#8b5cf6" stroke="#dbe7ff" stroke-width="3"><title>3433 downloads</title></circle>
+    <circle cx="284.0" cy="308.9" r="8" fill="#8b5cf6" stroke="#dbe7ff" stroke-width="3"><title>7928 downloads</title></circle>
+    <circle cx="368.0" cy="183.1" r="8" fill="#8b5cf6" stroke="#dbe7ff" stroke-width="3"><title>10296 downloads</title></circle>
+    <text x="32.0" y="766" font-size="24" fill="#8b9ab8" text-anchor="start">Apr 20</text>
+    <text x="200.0" y="766" font-size="24" fill="#8b9ab8" text-anchor="middle">May 4</text>
+    <text x="368.0" y="766" font-size="24" fill="#8b9ab8" text-anchor="end">May 18</text>
+    <text x="200.0" y="830" font-size="56" font-weight="800" fill="#f8fafc" text-anchor="middle">10.3k</text>
+    <text x="200.0" y="862" font-size="20" fill="#22d3ee" text-anchor="middle">+10.3k since 18</text>
+    <text x="200.0" y="890" font-size="16" fill="#5d6b88" text-anchor="middle">through 2026-05-24</text>
   </g>
 </svg>

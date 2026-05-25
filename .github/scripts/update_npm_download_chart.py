@@ -193,11 +193,20 @@ def generate_svg(package_name, cumulative_rows):
     # README 8:2 row. The banner is ~16:9 at 760 wide → ~427 tall on render;
     # this card's SVG is 400×900 so at the README's 190 display width it
     # comes out ~427 tall and lines up with the banner edge.
+    #
+    # Layout (chart given most of the vertical real estate so the trend
+    # line visually reaches the top of the card, not just the top of a
+    # tiny middle band):
+    #   0..130   header (title + subtitle)
+    #   130..730 chart area (600 tall)
+    #   730..780 date labels
+    #   790..870 hero stat ("10.3k" + delta)
+    #   870..900 footer (through {date})
     width = 400
     height = 900
     pad = 32
-    chart_top = 360
-    chart_bottom = 760
+    chart_top = 130
+    chart_bottom = 730
     chart_w = width - 2 * pad
     chart_h = chart_bottom - chart_top
 
@@ -297,17 +306,17 @@ def generate_svg(package_name, cumulative_rows):
   <rect width="{width}" height="{height}" rx="22" fill="#0b1020" />
   <rect x="1" y="1" width="{inner_w}" height="{inner_h}" rx="21" fill="none" stroke="#26324a" />
   <g font-family="Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif">
-    <text x="{cx}" y="80" font-size="32" font-weight="700" fill="#f8fafc" text-anchor="middle">npm downloads</text>
-    <text x="{cx}" y="118" font-size="22" fill="#8b9ab8" text-anchor="middle">cumulative · {weeks} weeks</text>
-    <text x="{cx}" y="240" font-size="96" font-weight="800" fill="#f8fafc" text-anchor="middle">{latest_fmt}</text>
-    <text x="{cx}" y="290" font-size="24" fill="#22d3ee" text-anchor="middle">+{delta_fmt} since {first_fmt}</text>
+    <text x="{cx}" y="60" font-size="32" font-weight="700" fill="#f8fafc" text-anchor="middle">npm downloads</text>
+    <text x="{cx}" y="98" font-size="22" fill="#8b9ab8" text-anchor="middle">cumulative · {weeks} weeks</text>
     {grid}
     <line x1="{pad}" y1="{baseline:.1f}" x2="{right}" y2="{baseline:.1f}" stroke="#3a4867" stroke-width="1.4" />
     <path d="{area_path} L {last_x:.1f} {baseline:.1f} L {first_x:.1f} {baseline:.1f} Z" fill="url(#fill)" />
     <path d="{path}" fill="none" stroke="url(#line)" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" />
     {dots}
     {labels}
-    <text x="{cx}" y="{footer_y}" font-size="22" fill="#5d6b88" text-anchor="middle">through {through}</text>
+    <text x="{cx}" y="830" font-size="56" font-weight="800" fill="#f8fafc" text-anchor="middle">{latest_fmt}</text>
+    <text x="{cx}" y="862" font-size="20" fill="#22d3ee" text-anchor="middle">+{delta_fmt} since {first_fmt}</text>
+    <text x="{cx}" y="{footer_y}" font-size="16" fill="#5d6b88" text-anchor="middle">through {through}</text>
   </g>
 </svg>
 """.format(
@@ -326,7 +335,7 @@ def generate_svg(package_name, cumulative_rows):
         cx=width / 2.0,
         baseline=chart_bottom,
         right=width - pad,
-        footer_y=height - 32,
+        footer_y=890,
         grid="\n    ".join(grid_lines),
         path=path,
         area_path=path,
