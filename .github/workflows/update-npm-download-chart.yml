@@ -22,12 +22,12 @@ jobs:
       - name: Commit chart update
         run: |
           set -euo pipefail
-          if git diff --quiet -- .github/npm-weekly-downloads.svg; then
+          if git diff --quiet -- .github/npm-total-downloads.svg; then
             echo "No chart changes."
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add .github/npm-weekly-downloads.svg
+          git add .github/npm-total-downloads.svg
           git commit -m "Update npm download chart"
           git push
