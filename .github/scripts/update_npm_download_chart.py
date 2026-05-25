@@ -202,7 +202,10 @@ def generate_svg(package_name, cumulative_rows):
     chart_h = chart_bottom - chart_top
 
     max_downloads = max([downloads for _, downloads in cumulative_rows] or [0])
-    upper = nice_upper_bound(max_downloads)
+    # Cap the y-axis at "current cumulative + 1k" so the latest point sits
+    # near the top of the trend area instead of getting squashed when
+    # `nice_upper_bound` jumps to the next 2× / 5× / 10× tier.
+    upper = max(max_downloads + 1000, 1000)
 
     def x_for(index):
         if len(cumulative_rows) <= 1:
