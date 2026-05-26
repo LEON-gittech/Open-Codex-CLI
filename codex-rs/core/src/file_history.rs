@@ -82,7 +82,10 @@ impl FileHistory {
     }
 
     #[cfg(test)]
-    fn track_changes_for_test(&mut self, changes: Vec<AppliedPatchChange>) -> anyhow::Result<()> {
+    pub(crate) fn track_changes_for_test(
+        &mut self,
+        changes: Vec<AppliedPatchChange>,
+    ) -> anyhow::Result<()> {
         self.track_changes(&changes)
     }
 
@@ -356,6 +359,43 @@ mod tests {
         assert_eq!(
             std::fs::read_to_string(&file).expect("read restored file"),
             "one\n"
+        );
+    }
+
+    #[tokio::test]
+    async fn load_or_new_preserves_checkpoints_for_later_restore() {
+        let temp = TempDir::new().expect("tempdir");
+        let state_path = temp.path().join("state.json");
+        let file = temp.path().join("file.txt");
+        std::fs::write(&file, "before\n").expect("write file");
+
+        {
+            let mut history = FileHistory::new(state_path.clone());
+            history
+                .begin_turn("turn-1".to_string(), temp.path().to_path_buf())
+                .expect("begin turn");
+            std::fs::write(&file, "after\n").expect("mutate file");
+            history
+                .track_changes_for_test(vec![AppliedPatchChange {
+                    path: file.clone(),
+                    change: AppliedPatchFileChange::Update {
+                        move_path: None,
+                        old_content: "before\n".to_string(),
+                        overwritten_move_content: None,
+                        new_content: "after\n".to_string(),
+                    },
+                }])
+                .expect("track delta");
+        }
+
+        let mut resumed_history = FileHistory::load_or_new(state_path).expect("load history");
+        resumed_history
+            .restore_before_last_n_turns(/*num_turns*/ 1)
+            .expect("restore");
+
+        assert_eq!(
+            std::fs::read_to_string(&file).expect("read restored file"),
+            "before\n"
         );
     }
 }

@@ -11,6 +11,8 @@ use crate::skills::SkillRenderSideEffects;
 use crate::skills::render::SkillMetadataBudget;
 use crate::test_support::models_manager_with_provider;
 use crate::tools::format_exec_output_str;
+use codex_apply_patch::AppliedPatchChange;
+use codex_apply_patch::AppliedPatchFileChange;
 use codex_config::ConfigLayerStack;
 use codex_config::ConfigLayerStackOrdering;
 use codex_config::LoaderOverrides;
@@ -2490,6 +2492,65 @@ async fn thread_rollback_drops_last_turn_from_history() {
             if rollback.num_turns == 1
         )
     }));
+}
+
+#[tokio::test]
+async fn file_history_checkpoint_persists_under_thread_id() -> anyhow::Result<()> {
+    let (sess, _rx) = make_session_with_config_and_rx(|_| {}).await?;
+    let turn_context = sess
+        .new_default_turn_with_sub_id("turn-1".to_string())
+        .await;
+
+    handlers::begin_file_history_turn(sess.as_ref(), turn_context.as_ref()).await;
+
+    let config = sess.get_config().await;
+    let state_path = config
+        .codex_home
+        .join("file-history")
+        .join(format!("{}.json", sess.conversation_id));
+    let persisted = std::fs::read_to_string(state_path).expect("read persisted file history");
+    assert!(persisted.contains("turn-1"));
+    Ok(())
+}
+
+#[tokio::test]
+async fn file_history_restore_rolls_back_tracked_file_changes() -> anyhow::Result<()> {
+    let worktree = tempfile::tempdir().expect("create worktree");
+    let file = worktree.path().join("file.txt");
+    std::fs::write(&file, "before\n").expect("write file");
+
+    let (sess, _rx) = make_session_with_config_and_rx(|config| {
+        config.cwd = worktree.path().abs();
+    })
+    .await?;
+    let turn_context = sess
+        .new_default_turn_with_sub_id("turn-1".to_string())
+        .await;
+    handlers::begin_file_history_turn(sess.as_ref(), turn_context.as_ref()).await;
+
+    std::fs::write(&file, "after\n").expect("mutate file");
+    sess.services
+        .file_history
+        .lock()
+        .await
+        .track_changes_for_test(vec![AppliedPatchChange {
+            path: file.clone(),
+            change: AppliedPatchFileChange::Update {
+                move_path: None,
+                old_content: "before\n".to_string(),
+                overwritten_move_content: None,
+                new_content: "after\n".to_string(),
+            },
+        }])
+        .expect("track change");
+
+    handlers::file_history_restore(&sess, "sub-1".to_string(), /*num_turns*/ 1).await;
+
+    assert_eq!(
+        std::fs::read_to_string(&file).expect("read restored file"),
+        "before\n"
+    );
+    Ok(())
 }
 
 #[tokio::test]

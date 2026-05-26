@@ -27,6 +27,7 @@ impl ChatWidget {
         }
         self.refresh_plan_mode_nudge();
         self.turn_lifecycle.reset_thread();
+        self.pre_response_rewind_pending = false;
         self.thread_name = session.thread_name.clone();
         self.bottom_pane.set_session_name(self.thread_name.clone());
         self.current_goal_status_indicator = None;

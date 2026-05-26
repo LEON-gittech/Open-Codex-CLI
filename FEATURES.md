@@ -53,7 +53,8 @@ Fast-moving prompt packs, hooks, setup flows, and project policies are better ha
 | `/export` | Export the current session transcript to a user-chosen `.md` or `.txt` path. | `/export <path>` | Useful for debugging, archival, and sharing. |
 | Renamed session identity | Renamed sessions show `Session: <name>` in the chat composer and use the name in quit guidance while keeping resume commands direct. | `/rename`, chat composer, quit summary | Resume hints use `open-codex resume <thread-id>` / `open-codex-dev resume <thread-id>` instead of picker wording. |
 | Agent view session browser (beta) | Users can browse saved sessions, peek transcript content, resume a selected thread, or start a new session from the browser. | `codex agents`, composer Left arrow | Beta surface; useful for local session navigation but still expected to evolve. |
-| Claude Code-style rewind UX | Double-Esc rewind supports code + conversation restore and a cleaner picker. | Double-Esc backtrack flow | Recent fixes tightened session scoping and ordering. |
+| Claude Code-style rewind UX | Double-Esc rewind supports code + conversation restore and a cleaner picker. | Double-Esc backtrack flow | Recent fixes tightened session scoping, ordering, and pre-response Esc rewind. |
+| Persistent code rewind checkpoints | Code restore uses per-thread file-history checkpoints that survive TUI exit/resume. | User turn start, apply_patch tracking, `FileHistoryRestore` | Restores tracked patch edits for the current thread only, not unrelated sessions or untracked global git state. |
 | Revoke restore scope fix | Conversation-only restore no longer rolls back files. | Revoke/rewind restore logic | Fixed by `b6f62e4867`. |
 | Esc interrupt routing | Single Esc interrupt and double-Esc rewind detection both work without blocking each other. | Composer key handling | Fixed by `0d20c120d8`. |
 
@@ -93,6 +94,13 @@ Fast-moving prompt packs, hooks, setup flows, and project policies are better ha
 | Default commit attribution | Open Codex can apply the fork's commit attribution identity by default. | git attribution extension/config | Implemented before the recent 0.130.x release series. |
 
 ## Release Notes
+
+### 0.133.3 - 2026-05-27
+
+- Wire code rewind all the way through core: `FileHistoryRestore` now restores tracked file checkpoints instead of being a no-op.
+- Persist file-history checkpoints under the current thread id, so code restore still works after quitting and resuming the same session.
+- Start file-history checkpoints when a real user turn begins, matching Claude Code's snapshot-before-edits model while keeping restore scoped to the current Open Codex thread.
+- Extend the pre-response Esc rewind path so the submitted prompt returns to the composer, the interrupted turn is rolled back from conversation history, and the transient interrupt notice is not left behind.
 
 ### 0.133.2 - 2026-05-25
 

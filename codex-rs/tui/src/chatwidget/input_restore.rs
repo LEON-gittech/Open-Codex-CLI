@@ -97,12 +97,18 @@ impl ChatWidget {
     /// When there are queued user messages, restore them into the composer
     /// separated by newlines rather than auto-submitting the next one.
     pub(super) fn on_interrupted_turn(&mut self, reason: TurnAbortReason) {
+        let should_rewind_submitted_turn =
+            reason == TurnAbortReason::Interrupted && self.pre_response_rewind_pending;
+        self.pre_response_rewind_pending = false;
+
         // Finalize, log a gentle prompt, and clear running state.
         self.finalize_turn();
         let send_pending_steers_immediately =
             self.input_queue.submit_pending_steers_after_interrupt;
         self.input_queue.submit_pending_steers_after_interrupt = false;
-        if self.interrupted_turn_notice_mode != InterruptedTurnNoticeMode::Suppress {
+        if !should_rewind_submitted_turn
+            && self.interrupted_turn_notice_mode != InterruptedTurnNoticeMode::Suppress
+        {
             if send_pending_steers_immediately {
                 self.add_to_history(history_cell::new_info_event(
                     "Model interrupted to submit steer instructions.".to_owned(),
@@ -118,7 +124,9 @@ impl ChatWidget {
         // The server has already discarded pending input by the time the
         // interrupted turn reaches the UI, so any unacknowledged steers still
         // tracked here must be restored locally instead of waiting for a later commit.
-        if send_pending_steers_immediately {
+        if should_rewind_submitted_turn {
+            self.submit_op(AppCommand::thread_rollback(/*num_turns*/ 1));
+        } else if send_pending_steers_immediately {
             let pending_steers = self
                 .input_queue
                 .pending_steers
@@ -318,6 +326,7 @@ impl ChatWidget {
 
     pub(crate) fn restore_thread_input_state(&mut self, input_state: Option<ThreadInputState>) {
         let restored_task_running = input_state.as_ref().is_some_and(|state| state.task_running);
+        self.pre_response_rewind_pending = false;
         if let Some(input_state) = input_state {
             self.current_collaboration_mode = input_state.current_collaboration_mode;
             self.active_collaboration_mask = input_state.active_collaboration_mask;

@@ -141,8 +141,12 @@ impl ChatWidget {
             && self.bottom_pane.no_modal_or_popup_active()
             && !self.should_handle_vim_insert_escape(key_event)
         {
-            self.rollback_pending_user_message_to_composer();
-            self.submit_op(AppCommand::interrupt());
+            if self.rollback_pending_user_message_to_composer() {
+                self.pre_response_rewind_pending = true;
+            }
+            if !self.submit_op(AppCommand::interrupt()) {
+                self.pre_response_rewind_pending = false;
+            }
             return;
         }
 

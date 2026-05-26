@@ -308,6 +308,7 @@ pub(super) async fn make_chatwidget_manual(
         external_editor_state: ExternalEditorState::Closed,
         realtime_conversation: RealtimeConversationUiState::default(),
         last_rendered_user_message_display: None,
+        pre_response_rewind_pending: false,
         last_non_retry_error: None,
         last_plan_update_items: Vec::new(),
     };
@@ -335,6 +336,21 @@ pub(super) fn next_interrupt_op(op_rx: &mut tokio::sync::mpsc::UnboundedReceiver
             Ok(_) => continue,
             Err(TryRecvError::Empty) => panic!("expected interrupt op but queue was empty"),
             Err(TryRecvError::Disconnected) => panic!("expected interrupt op but channel closed"),
+        }
+    }
+}
+
+pub(super) fn next_thread_rollback_op(op_rx: &mut tokio::sync::mpsc::UnboundedReceiver<Op>) -> u32 {
+    loop {
+        match op_rx.try_recv() {
+            Ok(Op::ThreadRollback { num_turns }) => return num_turns,
+            Ok(_) => continue,
+            Err(TryRecvError::Empty) => {
+                panic!("expected thread rollback op but queue was empty")
+            }
+            Err(TryRecvError::Disconnected) => {
+                panic!("expected thread rollback op but channel closed")
+            }
         }
     }
 }

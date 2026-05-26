@@ -8,10 +8,12 @@ use codex_protocol::protocol::Submission;
 use tracing::Instrument;
 use tracing::debug_span;
 use tracing::info_span;
+use tracing::warn;
 
 use crate::session::SteerInputError;
 use crate::session::session::Session;
 use crate::session::session::SessionSettingsUpdate;
+use crate::session::turn_context::TurnContext;
 
 use crate::config::Config;
 use crate::realtime_context::REALTIME_TURN_TOKEN_BUDGET;
@@ -61,7 +63,6 @@ use serde_json::Value;
 use std::sync::Arc;
 use tracing::debug;
 use tracing::info;
-use tracing::warn;
 
 pub async fn interrupt(sess: &Arc<Session>) {
     sess.interrupt_task().await;
@@ -245,6 +246,7 @@ pub(super) async fn user_input_or_turn_inner(
                 Some(sess.mcp_elicitation_reviewer()),
             )
             .await;
+            begin_file_history_turn(sess, current_context.as_ref()).await;
             let accepted_items = items.clone();
             sess.spawn_task(
                 Arc::clone(&current_context),
@@ -572,6 +574,62 @@ pub async fn thread_rollback(sess: &Arc<Session>, sub_id: String, num_turns: u32
     .await;
 }
 
+pub async fn file_history_restore(sess: &Arc<Session>, sub_id: String, num_turns: u32) {
+    if num_turns == 0 {
+        sess.send_event_raw(Event {
+            id: sub_id,
+            msg: EventMsg::Error(ErrorEvent {
+                message: "num_turns must be >= 1".to_string(),
+                codex_error_info: Some(CodexErrorInfo::ThreadRollbackFailed),
+            }),
+        })
+        .await;
+        return;
+    }
+
+    let has_active_turn = { sess.active_turn.lock().await.is_some() };
+    if has_active_turn {
+        sess.send_event_raw(Event {
+            id: sub_id,
+            msg: EventMsg::Error(ErrorEvent {
+                message: "Cannot restore file history while a turn is in progress.".to_string(),
+                codex_error_info: Some(CodexErrorInfo::ThreadRollbackFailed),
+            }),
+        })
+        .await;
+        return;
+    }
+
+    let restore_result = {
+        let mut file_history = sess.services.file_history.lock().await;
+        file_history.restore_before_last_n_turns(num_turns)
+    };
+    if let Err(err) = restore_result {
+        sess.send_event_raw(Event {
+            id: sub_id,
+            msg: EventMsg::Error(ErrorEvent {
+                message: format!("failed to restore file history: {err}"),
+                codex_error_info: Some(CodexErrorInfo::ThreadRollbackFailed),
+            }),
+        })
+        .await;
+    }
+}
+
+pub(super) async fn begin_file_history_turn(sess: &Session, turn_context: &TurnContext) {
+    #[allow(deprecated)]
+    let cwd = turn_context.cwd.to_path_buf();
+    if let Err(err) = sess
+        .services
+        .file_history
+        .lock()
+        .await
+        .begin_turn(turn_context.sub_id.clone(), cwd)
+    {
+        warn!("failed to begin file history checkpoint: {err}");
+    }
+}
+
 pub(super) async fn persist_thread_memory_mode_update(
     sess: &Arc<Session>,
     mode: ThreadMemoryMode,
@@ -814,6 +872,10 @@ pub(super) async fn submission_loop(
                 }
                 Op::ThreadRollback { num_turns } => {
                     thread_rollback(&sess, sub.id.clone(), num_turns).await;
+                    false
+                }
+                Op::FileHistoryRestore { num_turns } => {
+                    file_history_restore(&sess, sub.id.clone(), num_turns).await;
                     false
                 }
                 Op::SetThreadMemoryMode { mode } => {

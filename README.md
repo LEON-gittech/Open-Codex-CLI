@@ -127,7 +127,19 @@ From recent fork-specific changes:
 
 This brings a Claude Code-style export flow into the TUI without requiring external scripts or manual transcript scraping.
 
-### 6. Reasoning effort controls and per-turn status visibility
+### 6. Claude Code-style rewind and persistent code restore
+
+From recent fork-specific changes:
+
+- double-Esc rewind supports conversation restore, code restore, or both from the same picker
+- pre-response Esc rewind treats a just-submitted query as editable again: the prompt returns to the composer, the interrupted turn is removed from conversation history, and no stale interrupt notice is left behind
+- code restore records per-thread file-history checkpoints before a real user turn can edit files
+- checkpoints are stored under the thread id, so restore still works after quitting and resuming the same session
+- code restore is scoped to tracked edits in the current session thread; it does not reset unrelated sessions or global git state
+
+This keeps rewind close to Claude Code's workflow while preserving Open Codex's session/thread boundaries.
+
+### 7. Reasoning effort controls and per-turn status visibility
 
 From recent fork-specific changes:
 
@@ -141,7 +153,7 @@ From recent fork-specific changes:
 
 This keeps two intent levels separate: `Shift+Tab` is a persistent speed/default switch, while `ulw`/`ultra`/`xhigh` markers stay current-turn-only. The status line describes the active foreground turn without making a temporary marker look like a persistent configuration change.
 
-### 7. Lightweight `/btw` side questions
+### 8. Lightweight `/btw` side questions
 
 From recent fork-specific changes:
 
@@ -151,7 +163,7 @@ From recent fork-specific changes:
 
 This is intended for "by the way" questions that are useful during work but should not become the primary task thread.
 
-### 8. Parallel-first subagent planning policy
+### 9. Parallel-first subagent planning policy
 
 Implemented through the user-scope `~/.codex/AGENTS.md` instruction layer, with an extracted repo example in [`docs/open-codex/parallel-first-agent-execution.md`](docs/open-codex/parallel-first-agent-execution.md):
 
@@ -456,7 +468,19 @@ Codex CLI 是开源的，但上游仓库当前对外部代码贡献采用 invita
 
 这让类似 Claude Code 的会话导出能力直接进入 TUI，而不需要额外脚本或手工抓 transcript。
 
-### 6. Reasoning effort 控制与单 turn 状态可见性
+### 6. Claude Code-style rewind 与持久化代码回滚
+
+来自最近几条 fork 自有改动：
+
+- double-Esc rewind 可以从同一个 picker 里选择只恢复 conversation、只恢复 code，或同时恢复两者
+- pre-response Esc rewind 会把刚提交但尚未产生输出的 query 当作可继续编辑：prompt 回到 composer，interrupted turn 从 conversation history 中移除，并且不会留下过期的 interrupt notice
+- code restore 会在真实 user turn 可能编辑文件前记录 per-thread file-history checkpoint
+- checkpoint 按 thread id 落盘，因此退出并 resume 同一个 session 后仍然可以恢复
+- code restore 只作用于当前 session thread 中被追踪的文件改动，不会 reset 其他 session 或全局 git 状态
+
+这让 rewind 体验更接近 Claude Code，同时保留 Open Codex 的 session/thread 边界。
+
+### 7. Reasoning effort 控制与单 turn 状态可见性
 
 来自最近几条 fork 自有改动：
 
@@ -470,7 +494,7 @@ Codex CLI 是开源的，但上游仓库当前对外部代码贡献采用 invita
 
 这里把两层意图区分开：`Shift+Tab` 是持久化 speed/default switch，而 `ulw`、`ultra`、`xhigh` marker 仍然只影响当前 turn。status line 会描述当前前台 turn，但不会把一次性的 marker 伪装成持久配置变更。
 
-### 7. 轻量 `/btw` side questions
+### 8. 轻量 `/btw` side questions
 
 来自最近几条 fork 自有改动：
 
@@ -480,7 +504,7 @@ Codex CLI 是开源的，但上游仓库当前对外部代码贡献采用 invita
 
 这个能力适合“顺便问一下”的问题：它对当前工作有帮助，但不应该接管主任务线程。
 
-### 8. Parallel-first subagent planning policy
+### 9. Parallel-first subagent planning policy
 
 通过 user-scope `~/.codex/AGENTS.md` 指令层实现，并在 repo 中抽取了示例文件：[`docs/open-codex/parallel-first-agent-execution.md`](docs/open-codex/parallel-first-agent-execution.md)。
 

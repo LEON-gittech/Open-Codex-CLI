@@ -1021,7 +1021,7 @@ async fn pending_steer_esc_does_not_steal_vim_insert_escape() {
 
 #[tokio::test]
 async fn esc_rolls_back_submitted_prompt_after_turn_started_before_output() {
-    let (mut chat, _rx, mut op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    let (mut chat, mut rx, mut op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
     chat.thread_id = Some(ThreadId::new());
     set_chatgpt_auth(&mut chat);
     let prompt = "edit this before the model speaks";
@@ -1036,6 +1036,18 @@ async fn esc_rolls_back_submitted_prompt_after_turn_started_before_output() {
 
     next_interrupt_op(&mut op_rx);
     assert_eq!(chat.bottom_pane.composer_text(), prompt);
+
+    handle_turn_interrupted(&mut chat, "turn-1");
+    assert_eq!(next_thread_rollback_op(&mut op_rx), 1);
+    let rendered_after_interrupt = drain_insert_history(&mut rx)
+        .into_iter()
+        .map(|lines| lines_to_single_string(&lines))
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        !rendered_after_interrupt.contains("Conversation interrupted"),
+        "pre-response rewind should not leave an interrupt notice in history: {rendered_after_interrupt:?}"
+    );
 }
 
 #[tokio::test]

@@ -284,6 +284,7 @@ impl ChatWidget {
         self.last_rendered_user_message_display = None;
         match notification.turn.status {
             TurnStatus::Completed => {
+                self.pre_response_rewind_pending = false;
                 self.last_non_retry_error = None;
                 self.on_task_complete(
                     /*last_agent_message*/ None,
@@ -304,6 +305,7 @@ impl ChatWidget {
                 self.on_interrupted_turn(reason);
             }
             TurnStatus::Failed => {
+                self.pre_response_rewind_pending = false;
                 if let Some(error) = notification.turn.error {
                     if self.last_non_retry_error.as_ref()
                         == Some(&(notification.turn.id.clone(), error.message.clone()))

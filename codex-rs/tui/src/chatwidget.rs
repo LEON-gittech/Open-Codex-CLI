@@ -715,6 +715,7 @@ pub(crate) struct ChatWidget {
     external_editor_state: ExternalEditorState,
     realtime_conversation: RealtimeConversationUiState,
     last_rendered_user_message_display: Option<UserMessageDisplay>,
+    pre_response_rewind_pending: bool,
     last_non_retry_error: Option<(String, String)>,
     background_activities: VecDeque<BackgroundActivity>,
     last_plan_update_items: Vec<codex_protocol::plan_tool::PlanItemArg>,

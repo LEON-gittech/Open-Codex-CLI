@@ -219,6 +219,7 @@ impl ChatWidget {
             external_editor_state: ExternalEditorState::Closed,
             realtime_conversation: RealtimeConversationUiState::default(),
             last_rendered_user_message_display: None,
+            pre_response_rewind_pending: false,
             last_non_retry_error: None,
             background_activities: VecDeque::new(),
             last_plan_update_items: Vec::new(),
