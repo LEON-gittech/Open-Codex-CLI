@@ -23,35 +23,35 @@
     <line x1="32" y1="280.0" x2="368" y2="280.0" stroke="#243047" stroke-width="1" />
     <line x1="32" y1="130.0" x2="368" y2="130.0" stroke="#243047" stroke-width="1" />
     <line x1="32" y1="730.0" x2="368" y2="730.0" stroke="#3a4867" stroke-width="1.4" />
-    <path d="M 32.0 720.7 L 48.0 690.0 L 64.0 545.2 L 80.0 385.8 L 96.0 274.4 L 112.0 252.5 L 128.0 238.7 L 144.0 237.2 L 160.0 234.4 L 176.0 230.5 L 192.0 224.7 L 208.0 218.5 L 224.0 211.3 L 240.0 198.6 L 256.0 197.1 L 272.0 192.7 L 288.0 180.9 L 304.0 180.5 L 320.0 179.8 L 336.0 179.1 L 352.0 173.1 L 368.0 172.9 L 368.0 730.0 L 32.0 730.0 Z" fill="url(#fill)" />
-    <path d="M 32.0 720.7 L 48.0 690.0 L 64.0 545.2 L 80.0 385.8 L 96.0 274.4 L 112.0 252.5 L 128.0 238.7 L 144.0 237.2 L 160.0 234.4 L 176.0 230.5 L 192.0 224.7 L 208.0 218.5 L 224.0 211.3 L 240.0 198.6 L 256.0 197.1 L 272.0 192.7 L 288.0 180.9 L 304.0 180.5 L 320.0 179.8 L 336.0 179.1 L 352.0 173.1 L 368.0 172.9" fill="none" stroke="url(#line)" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" />
-    <circle cx="32.0" cy="720.7" r="8" fill="#8b5cf6" stroke="#dbe7ff" stroke-width="3"><title>216 downloads</title></circle>
-    <circle cx="48.0" cy="690.0" r="8" fill="#8b5cf6" stroke="#dbe7ff" stroke-width="3"><title>932 downloads</title></circle>
-    <circle cx="64.0" cy="545.2" r="8" fill="#8b5cf6" stroke="#dbe7ff" stroke-width="3"><title>4305 downloads</title></circle>
-    <circle cx="80.0" cy="385.8" r="8" fill="#8b5cf6" stroke="#dbe7ff" stroke-width="3"><title>8019 downloads</title></circle>
-    <circle cx="96.0" cy="274.4" r="8" fill="#8b5cf6" stroke="#dbe7ff" stroke-width="3"><title>10616 downloads</title></circle>
-    <circle cx="112.0" cy="252.5" r="8" fill="#8b5cf6" stroke="#dbe7ff" stroke-width="3"><title>11126 downloads</title></circle>
-    <circle cx="128.0" cy="238.7" r="8" fill="#8b5cf6" stroke="#dbe7ff" stroke-width="3"><title>11448 downloads</title></circle>
-    <circle cx="144.0" cy="237.2" r="8" fill="#8b5cf6" stroke="#dbe7ff" stroke-width="3"><title>11483 downloads</title></circle>
-    <circle cx="160.0" cy="234.4" r="8" fill="#8b5cf6" stroke="#dbe7ff" stroke-width="3"><title>11547 downloads</title></circle>
+    <path d="M 32.0 703.8 L 48.0 689.9 L 64.0 507.9 L 80.0 364.9 L 96.0 262.9 L 112.0 252.0 L 128.0 238.3 L 144.0 237.0 L 160.0 234.4 L 176.0 230.5 L 192.0 224.5 L 208.0 218.4 L 224.0 210.5 L 240.0 197.3 L 256.0 196.8 L 272.0 188.8 L 288.0 180.9 L 304.0 180.4 L 320.0 179.7 L 336.0 179.1 L 352.0 173.1 L 368.0 172.9 L 368.0 730.0 L 32.0 730.0 Z" fill="url(#fill)" />
+    <path d="M 32.0 703.8 L 48.0 689.9 L 64.0 507.9 L 80.0 364.9 L 96.0 262.9 L 112.0 252.0 L 128.0 238.3 L 144.0 237.0 L 160.0 234.4 L 176.0 230.5 L 192.0 224.5 L 208.0 218.4 L 224.0 210.5 L 240.0 197.3 L 256.0 196.8 L 272.0 188.8 L 288.0 180.9 L 304.0 180.4 L 320.0 179.7 L 336.0 179.1 L 352.0 173.1 L 368.0 172.9" fill="none" stroke="url(#line)" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" />
+    <circle cx="32.0" cy="703.8" r="8" fill="#8b5cf6" stroke="#dbe7ff" stroke-width="3"><title>610 downloads</title></circle>
+    <circle cx="48.0" cy="689.9" r="8" fill="#8b5cf6" stroke="#dbe7ff" stroke-width="3"><title>934 downloads</title></circle>
+    <circle cx="64.0" cy="507.9" r="8" fill="#8b5cf6" stroke="#dbe7ff" stroke-width="3"><title>5175 downloads</title></circle>
+    <circle cx="80.0" cy="364.9" r="8" fill="#8b5cf6" stroke="#dbe7ff" stroke-width="3"><title>8507 downloads</title></circle>
+    <circle cx="96.0" cy="262.9" r="8" fill="#8b5cf6" stroke="#dbe7ff" stroke-width="3"><title>10883 downloads</title></circle>
+    <circle cx="112.0" cy="252.0" r="8" fill="#8b5cf6" stroke="#dbe7ff" stroke-width="3"><title>11138 downloads</title></circle>
+    <circle cx="128.0" cy="238.3" r="8" fill="#8b5cf6" stroke="#dbe7ff" stroke-width="3"><title>11457 downloads</title></circle>
+    <circle cx="144.0" cy="237.0" r="8" fill="#8b5cf6" stroke="#dbe7ff" stroke-width="3"><title>11488 downloads</title></circle>
+    <circle cx="160.0" cy="234.4" r="8" fill="#8b5cf6" stroke="#dbe7ff" stroke-width="3"><title>11548 downloads</title></circle>
     <circle cx="176.0" cy="230.5" r="8" fill="#8b5cf6" stroke="#dbe7ff" stroke-width="3"><title>11638 downloads</title></circle>
-    <circle cx="192.0" cy="224.7" r="8" fill="#8b5cf6" stroke="#dbe7ff" stroke-width="3"><title>11774 downloads</title></circle>
-    <circle cx="208.0" cy="218.5" r="8" fill="#8b5cf6" stroke="#dbe7ff" stroke-width="3"><title>11919 downloads</title></circle>
-    <circle cx="224.0" cy="211.3" r="8" fill="#8b5cf6" stroke="#dbe7ff" stroke-width="3"><title>12086 downloads</title></circle>
-    <circle cx="240.0" cy="198.6" r="8" fill="#8b5cf6" stroke="#dbe7ff" stroke-width="3"><title>12382 downloads</title></circle>
-    <circle cx="256.0" cy="197.1" r="8" fill="#8b5cf6" stroke="#dbe7ff" stroke-width="3"><title>12417 downloads</title></circle>
-    <circle cx="272.0" cy="192.7" r="8" fill="#8b5cf6" stroke="#dbe7ff" stroke-width="3"><title>12519 downloads</title></circle>
-    <circle cx="288.0" cy="180.9" r="8" fill="#8b5cf6" stroke="#dbe7ff" stroke-width="3"><title>12793 downloads</title></circle>
-    <circle cx="304.0" cy="180.5" r="8" fill="#8b5cf6" stroke="#dbe7ff" stroke-width="3"><title>12804 downloads</title></circle>
-    <circle cx="320.0" cy="179.8" r="8" fill="#8b5cf6" stroke="#dbe7ff" stroke-width="3"><title>12819 downloads</title></circle>
+    <circle cx="192.0" cy="224.5" r="8" fill="#8b5cf6" stroke="#dbe7ff" stroke-width="3"><title>11778 downloads</title></circle>
+    <circle cx="208.0" cy="218.4" r="8" fill="#8b5cf6" stroke="#dbe7ff" stroke-width="3"><title>11920 downloads</title></circle>
+    <circle cx="224.0" cy="210.5" r="8" fill="#8b5cf6" stroke="#dbe7ff" stroke-width="3"><title>12105 downloads</title></circle>
+    <circle cx="240.0" cy="197.3" r="8" fill="#8b5cf6" stroke="#dbe7ff" stroke-width="3"><title>12411 downloads</title></circle>
+    <circle cx="256.0" cy="196.8" r="8" fill="#8b5cf6" stroke="#dbe7ff" stroke-width="3"><title>12423 downloads</title></circle>
+    <circle cx="272.0" cy="188.8" r="8" fill="#8b5cf6" stroke="#dbe7ff" stroke-width="3"><title>12610 downloads</title></circle>
+    <circle cx="288.0" cy="180.9" r="8" fill="#8b5cf6" stroke="#dbe7ff" stroke-width="3"><title>12795 downloads</title></circle>
+    <circle cx="304.0" cy="180.4" r="8" fill="#8b5cf6" stroke="#dbe7ff" stroke-width="3"><title>12805 downloads</title></circle>
+    <circle cx="320.0" cy="179.7" r="8" fill="#8b5cf6" stroke="#dbe7ff" stroke-width="3"><title>12821 downloads</title></circle>
     <circle cx="336.0" cy="179.1" r="8" fill="#8b5cf6" stroke="#dbe7ff" stroke-width="3"><title>12836 downloads</title></circle>
     <circle cx="352.0" cy="173.1" r="8" fill="#8b5cf6" stroke="#dbe7ff" stroke-width="3"><title>12976 downloads</title></circle>
     <circle cx="368.0" cy="172.9" r="8" fill="#8b5cf6" stroke="#dbe7ff" stroke-width="3"><title>12980 downloads</title></circle>
-    <text x="32.0" y="766" font-size="24" fill="#8b9ab8" text-anchor="start">Apr 21</text>
-    <text x="208.0" y="766" font-size="24" fill="#8b9ab8" text-anchor="middle">Jul 7</text>
-    <text x="368.0" y="766" font-size="24" fill="#8b9ab8" text-anchor="end">Sep 15</text>
+    <text x="32.0" y="766" font-size="24" fill="#8b9ab8" text-anchor="start">Apr 22</text>
+    <text x="208.0" y="766" font-size="24" fill="#8b9ab8" text-anchor="middle">Jul 8</text>
+    <text x="368.0" y="766" font-size="24" fill="#8b9ab8" text-anchor="end">Sep 16</text>
     <text x="200.0" y="830" font-size="56" font-weight="800" fill="#f8fafc" text-anchor="middle">13.0k</text>
-    <text x="200.0" y="862" font-size="20" fill="#22d3ee" text-anchor="middle">+12.8k since 216</text>
-    <text x="200.0" y="890" font-size="16" fill="#5d6b88" text-anchor="middle">through 2026-09-21</text>
+    <text x="200.0" y="862" font-size="20" fill="#22d3ee" text-anchor="middle">+12.4k since 610</text>
+    <text x="200.0" y="890" font-size="16" fill="#5d6b88" text-anchor="middle">through 2026-09-22</text>
   </g>
 </svg>
